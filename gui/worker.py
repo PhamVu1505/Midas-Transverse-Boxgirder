@@ -14,9 +14,6 @@ from src.result_reader import (parse_beam_force, _build_element_thickness,
                                _classify_check_elements, extract_check_points)
 
 
-EXCEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                          'data', 'Midas-Transverse-Boxgirder-analysis.xls')
-
 DXF_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        'input', 'dxf')
 
@@ -27,14 +24,15 @@ class GenerateWorker(QThread):
     section_done = pyqtSignal(str, str)  # name, svg_path
     finished_all = pyqtSignal(int)       # count
 
-    def __init__(self, dxf_paths: list, output_dir: str):
+    def __init__(self, dxf_paths: list, output_dir: str, excel_path: str = None):
         super().__init__()
         self.dxf_paths = dxf_paths
         self.output_dir = output_dir
+        self.excel_path = excel_path
 
     def run(self):
         count = 0
-        excel = EXCEL_PATH if os.path.exists(EXCEL_PATH) else None
+        excel = self.excel_path if self.excel_path and os.path.exists(self.excel_path) else None
 
         for dxf_path in self.dxf_paths:
             name = os.path.splitext(os.path.basename(dxf_path))[0]
@@ -80,13 +78,14 @@ class ResultsWorker(QThread):
     section_done = pyqtSignal(str, dict)  # name, check_points
     finished_all = pyqtSignal(int)
 
-    def __init__(self, section_dirs: list):
+    def __init__(self, section_dirs: list, excel_path: str = None):
         super().__init__()
         self.section_dirs = section_dirs
+        self.excel_path = excel_path
 
     def run(self):
         count = 0
-        excel = EXCEL_PATH if os.path.exists(EXCEL_PATH) else None
+        excel = self.excel_path if self.excel_path and os.path.exists(self.excel_path) else None
 
         for section_dir in self.section_dirs:
             name = os.path.basename(section_dir.rstrip('/\\'))

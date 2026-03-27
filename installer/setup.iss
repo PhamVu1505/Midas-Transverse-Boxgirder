@@ -25,9 +25,12 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 [Files]
 ; Main application (PyInstaller output)
 Source: "..\dist\MidasTransverseBoxgirder\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; User guide
+Source: "..\docs\USER-GUIDE.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Midas Transverse Boxgirder"; Filename: "{app}\MidasTransverseBoxgirder.exe"
+Name: "{group}\User Guide"; Filename: "{app}\USER-GUIDE.txt"
 Name: "{autodesktop}\Midas Transverse Boxgirder"; Filename: "{app}\MidasTransverseBoxgirder.exe"; Tasks: desktopicon
 
 [Run]

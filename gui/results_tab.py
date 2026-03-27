@@ -47,6 +47,18 @@ class ResultsTab(QWidget):
     def _init_ui(self):
         layout = QVBoxLayout(self)
 
+        # Excel data row
+        row_excel = QHBoxLayout()
+        row_excel.addWidget(QLabel('Excel data:'))
+        self.excel_edit = QLineEdit()
+        self.excel_edit.setPlaceholderText('Select Excel file (.xls) for material & load data...')
+        self.excel_edit.setReadOnly(True)
+        row_excel.addWidget(self.excel_edit, 1)
+        btn_excel = QPushButton('Browse...')
+        btn_excel.clicked.connect(self._browse_excel)
+        row_excel.addWidget(btn_excel)
+        layout.addLayout(row_excel)
+
         # Output folder row
         row1 = QHBoxLayout()
         row1.addWidget(QLabel('Output folder:'))
@@ -118,6 +130,13 @@ class ResultsTab(QWidget):
                 item.setBackground(color)
                 self.table.setItem(i, j, item)
 
+    def _browse_excel(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, 'Select Excel Data File', '',
+            'Excel Files (*.xls *.xlsx);;All Files (*)')
+        if path:
+            self.excel_edit.setText(path)
+
     def _browse_folder(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select Output Folder', self.folder_edit.text())
         if folder:
@@ -157,7 +176,8 @@ class ResultsTab(QWidget):
         self.all_results.clear()
         self.section_combo.clear()
 
-        self.worker = ResultsWorker(self.found_dirs)
+        excel_path = self.excel_edit.text().strip() or None
+        self.worker = ResultsWorker(self.found_dirs, excel_path)
         self.worker.log.connect(self._on_log)
         self.worker.section_done.connect(self._on_section_done)
         self.worker.finished_all.connect(self._on_finished)

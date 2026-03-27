@@ -37,6 +37,18 @@ class GenerateTab(QWidget):
         row1.addWidget(btn_folder)
         layout.addLayout(row1)
 
+        # Excel data row
+        row_excel = QHBoxLayout()
+        row_excel.addWidget(QLabel('Excel data:'))
+        self.excel_edit = QLineEdit()
+        self.excel_edit.setPlaceholderText('Select Excel file (.xls) for material & load data...')
+        self.excel_edit.setReadOnly(True)
+        row_excel.addWidget(self.excel_edit, 1)
+        btn_excel = QPushButton('Browse...')
+        btn_excel.clicked.connect(self._browse_excel)
+        row_excel.addWidget(btn_excel)
+        layout.addLayout(row_excel)
+
         # Output dir row
         row2 = QHBoxLayout()
         row2.addWidget(QLabel('Output dir:'))
@@ -104,6 +116,13 @@ class GenerateTab(QWidget):
                     self.file_list.addItem(f)
             self.dxf_edit.setText(f'{self.file_list.count()} file(s) selected')
 
+    def _browse_excel(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, 'Select Excel Data File', '',
+            'Excel Files (*.xls *.xlsx);;All Files (*)')
+        if path:
+            self.excel_edit.setText(path)
+
     def _browse_output(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select Output Folder', self.out_edit.text())
         if folder:
@@ -126,12 +145,13 @@ class GenerateTab(QWidget):
             self.status_bar.showMessage('No DXF files selected.')
             return
 
+        excel_path = self.excel_edit.text().strip() or None
         output_dir = self.out_edit.text() or 'output'
         self.btn_generate.setEnabled(False)
         self.log_area.clear()
         self.status_bar.showMessage(f'Generating {len(dxf_paths)} section(s)...')
 
-        self.worker = GenerateWorker(dxf_paths, output_dir)
+        self.worker = GenerateWorker(dxf_paths, output_dir, excel_path)
         self.worker.log.connect(self._on_log)
         self.worker.section_done.connect(self._on_section_done)
         self.worker.finished_all.connect(self._on_finished)
