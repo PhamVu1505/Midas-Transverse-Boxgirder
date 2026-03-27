@@ -6,9 +6,9 @@ import glob
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                               QLineEdit, QLabel, QComboBox, QTableWidget,
                               QTableWidgetItem, QPlainTextEdit, QFileDialog,
-                              QHeaderView)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFont
+                              QHeaderView, QSplitter)
+from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QFontMetrics
 
 from .worker import ResultsWorker
 
@@ -35,6 +35,143 @@ DATA_ROWS = [
     ('  -> element', 'Mser_ref', '{}'),
 ]
 
+# Check point colors for diagram
+POINT_COLORS = {
+    'A': QColor(220, 50, 50),     # red
+    'B': QColor(200, 80, 80),
+    'C': QColor(180, 60, 60),
+    'D': QColor(160, 40, 40),
+    'E': QColor(50, 80, 200),     # blue
+    'F': QColor(70, 100, 220),
+    'G': QColor(40, 160, 60),     # green
+    'H': QColor(60, 140, 80),
+}
+
+
+class CheckPointDiagram(QWidget):
+    """Simple schematic of box girder cross-section with check points A-H."""
+
+    def __init__(self):
+        super().__init__()
+        self.setMinimumSize(320, 220)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w = self.width()
+        h = self.height()
+
+        # Margins
+        mx, my = 40, 25
+        cw = w - 2 * mx  # content width
+        ch = h - 2 * my  # content height
+
+        # Box girder proportions (normalized)
+        # Total width = 1.0, box width ~ 0.56, height ~ 0.6
+        bw = 0.56   # box width ratio
+        bh = 0.65   # box height ratio
+        tt = 0.06   # top slab thickness
+        tb = 0.05   # bottom slab thickness
+        tw = 0.03   # web thickness
+        cant_drop = 0.08  # cantilever tip drop
+
+        # Convert to pixel coords
+        def px(rx): return mx + rx * cw
+        def py(ry): return my + ry * ch
+
+        # Outer profile
+        x_left = 0.0
+        x_right = 1.0
+        x_wL = (1.0 - bw) / 2
+        x_wR = (1.0 + bw) / 2
+        y_top = 0.0
+        y_tip = cant_drop
+        y_wj = cant_drop + 0.02  # web junction
+        y_bot = bh
+
+        # Draw filled outer shape
+        from PyQt6.QtGui import QPolygonF
+        from PyQt6.QtCore import QPointF
+
+        outer = QPolygonF([
+            QPointF(px(x_left), py(y_top)),
+            QPointF(px(x_right), py(y_top)),
+            QPointF(px(x_right), py(y_tip)),
+            QPointF(px(x_wR), py(y_wj)),
+            QPointF(px(x_wR), py(y_bot)),
+            QPointF(px(x_wL), py(y_bot)),
+            QPointF(px(x_wL), py(y_wj)),
+            QPointF(px(x_left), py(y_tip)),
+        ])
+
+        # Inner void
+        ix_L = x_wL + tw
+        ix_R = x_wR - tw
+        iy_top = tt
+        iy_bot = bh - tb
+        inner = QPolygonF([
+            QPointF(px(ix_L), py(iy_top + 0.02)),
+            QPointF(px(0.5 - 0.12), py(iy_top)),
+            QPointF(px(0.5 + 0.12), py(iy_top)),
+            QPointF(px(ix_R), py(iy_top + 0.02)),
+            QPointF(px(ix_R), py(iy_bot - 0.02)),
+            QPointF(px(ix_R - 0.01), py(iy_bot)),
+            QPointF(px(ix_L + 0.01), py(iy_bot)),
+            QPointF(px(ix_L), py(iy_bot - 0.02)),
+        ])
+
+        # Fill concrete
+        p.setPen(QPen(QColor(80, 80, 80), 1.5))
+        p.setBrush(QBrush(QColor(220, 220, 220)))
+        p.drawPolygon(outer)
+
+        # Fill void (white)
+        p.setBrush(QBrush(QColor(255, 255, 255)))
+        p.drawPolygon(inner)
+
+        # ── Draw check points ──
+        font = QFont('Arial', 9, QFont.Weight.Bold)
+        p.setFont(font)
+        fm = QFontMetrics(font)
+        r = 10  # circle radius
+
+        points_pos = {
+            # (rx, ry, label_offset_x, label_offset_y)
+            'A': (0.50, tt / 2, 0, -16),                           # top center
+            'B': (x_wL + tw / 2 + 0.03, tt / 2 + 0.01, -20, -16), # top haunch L
+            'C': (x_wR - tw / 2 - 0.03, tt / 2 + 0.01, 8, -16),   # top haunch R
+            'D': (x_left + 0.06, y_tip / 2, -18, -14),             # cantilever
+            'E': (0.50, bh - tb / 2, 0, 14),                       # bot center
+            'F': (x_wL + tw / 2 + 0.03, bh - tb / 2 - 0.01, -20, 14),  # bot haunch
+            'G': (x_wR, (y_wj + 0.5 * (y_wj + iy_top)) / 2 + 0.06, 14, -4),  # web upper
+            'H': (x_wL, (iy_bot + y_bot) / 2 - 0.02, -24, -4),    # web lower
+        }
+
+        for pt, (rx, ry, lox, loy) in points_pos.items():
+            cx = px(rx)
+            cy = py(ry)
+            color = POINT_COLORS[pt]
+
+            # Circle
+            p.setPen(QPen(color, 2))
+            p.setBrush(QBrush(color))
+            p.drawEllipse(QRectF(cx - r/2, cy - r/2, r, r))
+
+            # Label
+            p.setPen(QPen(color, 1))
+            label = f'{pt}'
+            lw = fm.horizontalAdvance(label)
+            p.drawText(int(cx + lox - lw / 2), int(cy + loy), label)
+
+        # ── Legend ──
+        ly = h - 12
+        p.setFont(QFont('Arial', 7))
+        p.setPen(QPen(QColor(100, 100, 100)))
+        legend = 'A-D: Top slab | E-F: Bottom slab | G-H: Web'
+        p.drawText(mx, ly, legend)
+
+        p.end()
+
 
 class ResultsTab(QWidget):
     def __init__(self, status_bar):
@@ -46,18 +183,6 @@ class ResultsTab(QWidget):
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-
-        # Excel data row
-        row_excel = QHBoxLayout()
-        row_excel.addWidget(QLabel('Excel data:'))
-        self.excel_edit = QLineEdit()
-        self.excel_edit.setPlaceholderText('Select Excel file (.xls) for material & load data...')
-        self.excel_edit.setReadOnly(True)
-        row_excel.addWidget(self.excel_edit, 1)
-        btn_excel = QPushButton('Browse...')
-        btn_excel.clicked.connect(self._browse_excel)
-        row_excel.addWidget(btn_excel)
-        layout.addLayout(row_excel)
 
         # Output folder row
         row1 = QHBoxLayout()
@@ -92,6 +217,9 @@ class ResultsTab(QWidget):
         row3.addStretch()
         layout.addLayout(row3)
 
+        # Table + Diagram side by side
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
         # Check table
         self.table = QTableWidget(len(DATA_ROWS), 8)
         self.table.setHorizontalHeaderLabels(POINTS)
@@ -99,14 +227,20 @@ class ResultsTab(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setMinimumWidth(180)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.setMaximumHeight(250)
         self._style_table_headers()
-        layout.addWidget(self.table)
+        splitter.addWidget(self.table)
+
+        # Diagram
+        self.diagram = CheckPointDiagram()
+        splitter.addWidget(self.diagram)
+
+        splitter.setSizes([550, 320])
+        layout.addWidget(splitter, 1)
 
         # Log
         self.log_area = QPlainTextEdit()
         self.log_area.setReadOnly(True)
-        self.log_area.setMaximumHeight(150)
+        self.log_area.setMaximumHeight(120)
         self.log_area.setStyleSheet('font-family: Consolas, monospace; font-size: 11px;')
         layout.addWidget(self.log_area)
 
@@ -129,13 +263,6 @@ class ResultsTab(QWidget):
                 item = QTableWidgetItem('')
                 item.setBackground(color)
                 self.table.setItem(i, j, item)
-
-    def _browse_excel(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, 'Select Excel Data File', '',
-            'Excel Files (*.xls *.xlsx);;All Files (*)')
-        if path:
-            self.excel_edit.setText(path)
 
     def _browse_folder(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select Output Folder', self.folder_edit.text())
@@ -176,8 +303,7 @@ class ResultsTab(QWidget):
         self.all_results.clear()
         self.section_combo.clear()
 
-        excel_path = self.excel_edit.text().strip() or None
-        self.worker = ResultsWorker(self.found_dirs, excel_path)
+        self.worker = ResultsWorker(self.found_dirs)
         self.worker.log.connect(self._on_log)
         self.worker.section_done.connect(self._on_section_done)
         self.worker.finished_all.connect(self._on_finished)
@@ -206,13 +332,13 @@ class ResultsTab(QWidget):
         bold_font.setBold(True)
 
         current_group = ''
-        for j, p in enumerate(POINTS):
+        for j, pt in enumerate(POINTS):
             if GROUPS[j]:
                 current_group = GROUPS[j]
             color = GROUP_COLORS.get(current_group, QColor(255, 255, 255))
 
             for i, (label, key, fmt) in enumerate(DATA_ROWS):
-                val = check_points[p][key]
+                val = check_points[pt][key]
                 if isinstance(val, str):
                     text = val
                 else:

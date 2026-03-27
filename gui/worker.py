@@ -78,14 +78,13 @@ class ResultsWorker(QThread):
     section_done = pyqtSignal(str, dict)  # name, check_points
     finished_all = pyqtSignal(int)
 
-    def __init__(self, section_dirs: list, excel_path: str = None):
+    def __init__(self, section_dirs: list):
         super().__init__()
         self.section_dirs = section_dirs
-        self.excel_path = excel_path
 
     def run(self):
         count = 0
-        excel = self.excel_path if self.excel_path and os.path.exists(self.excel_path) else None
+        excel = None  # Results pipeline doesn't need Excel (only topo needed)
 
         for section_dir in self.section_dirs:
             name = os.path.basename(section_dir.rstrip('/\\'))
