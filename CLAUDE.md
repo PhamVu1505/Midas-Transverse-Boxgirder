@@ -32,14 +32,14 @@ Tự động hóa toàn bộ quy trình phân tích khung ngang tại các mặt
               ┌───────────────▼───────┐  ┌───────▼────────────┐
               │   GENERATE PIPELINE   │  │   RESULTS PIPELINE │
               │                       │  │                     │
-              │  dxf_reader.py        │  │  result_reader.py   │
-              │       ↓               │  │  (parse Beam Force  │
-              │  frame_builder.py     │  │   XLS → check       │
-              │       ↓               │  │   points A-H)       │
-              │  mct_frame_writer.py  │  │       ↓             │
-              │  (nodes, elements,    │  │  Excel output       │
-              │   sections, loads,    │  │  (openpyxl)         │
-              │   combinations)       │  │                     │
+              │  dxf_reader.py        │  │  topo.json (from    │
+              │       ↓               │  │   Generate step)    │
+              │  frame_builder.py     │  │       ↓             │
+              │       ↓               │  │  result_reader.py   │
+              │  mct_frame_writer.py  │  │  (BF XLS + MCT      │
+              │  (nodes, elements,    │  │   → check A-H)      │
+              │   sections, loads,    │  │       ↓             │
+              │   combinations)       │  │  Excel output       │
               │       ↓               │  └─────────────────────┘
               │  svg_export.py        │
               │  (visualization)      │
@@ -93,7 +93,7 @@ Midas-Transverse-Boxgirder/
 └── tests/                           # Validation scripts
 ```
 
-## Trạng thái hiện tại (v1.0.0)
+## Trạng thái hiện tại (v1.1-dev)
 
 | Module | Trạng thái |
 |--------|-----------|
@@ -108,9 +108,20 @@ Midas-Transverse-Boxgirder/
 | GUI Desktop (`run_gui.py` - PyQt6) | ✅ Hoàn thành |
 | Excel Output (check points) | ✅ Hoàn thành |
 | Installer (PyInstaller + Inno Setup) | ✅ Hoàn thành |
-| Mở rộng mặt cắt 2 hộp | ⬜ Planned |
+| Results: manual BF↔MCT matching (topo.json) | ✅ Hoàn thành |
+| Check point diagram A-H | ✅ Hoàn thành |
+| Application icon | ✅ Hoàn thành |
 
 **Tested**: S1, S7, S12, S16, S20, SLT — tất cả tạo MCT đúng.
+
+### Backlog (v2.0)
+| Task | Mô tả |
+|------|--------|
+| T13 | Mặt cắt 2 hộp (1 OUTPOLY + 2 INPOLY) — nhánh riêng |
+| T19 | Tùy biến khoảng cách node lan can (hiện fix 0.4m) |
+| T20 | Cảnh báo/thông báo lỗi khi import DXF |
+| T21 | Tùy biến load combinations |
+| T22 | Tối ưu GUI xuất kết quả theo folder (batch scan) |
 
 ## Quy ước quan trọng
 

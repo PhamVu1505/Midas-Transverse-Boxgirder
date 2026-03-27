@@ -1,7 +1,7 @@
 """Background workers for Generate and Results processing."""
 
+import json
 import os
-import glob
 
 import ezdxf
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -12,10 +12,6 @@ from src.mct_frame_writer import write_mct
 from src.svg_export import export_frame_svg
 from src.result_reader import (parse_beam_force, _build_element_thickness,
                                _classify_check_elements, extract_check_points)
-
-
-DXF_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       'input', 'dxf')
 
 
 class GenerateWorker(QThread):
@@ -55,6 +51,11 @@ class GenerateWorker(QThread):
                 with open(mct_path, 'w', encoding='utf-8') as f:
                     f.write(mct_text)
 
+                # Save topology for Results step (element IDs, sections, ranges)
+                topo_path = os.path.join(section_dir, f'{name}_topo.json')
+                with open(topo_path, 'w', encoding='utf-8') as f:
+                    json.dump(topo, f, indent=2)
+
                 svg_path = os.path.join(section_dir, f'{name}_frame.svg')
                 try:
                     export_frame_svg(outpoly, inpoly, svg_path, name)
@@ -73,85 +74,103 @@ class GenerateWorker(QThread):
 
 
 class ResultsWorker(QThread):
-    """Process Beam Force results for sections."""
+    """Process Beam Force results matched with MCT topology files."""
     log = pyqtSignal(str)
-    section_done = pyqtSignal(str, dict)  # name, check_points
-    finished_all = pyqtSignal(int)
+    section_done = pyqtSignal(str, dict)       # name, check_points
+    error_mismatch = pyqtSignal(str, int, int, str)  # name, mct_count, result_count, bf_path
+    finished_all = pyqtSignal(int)             # count
 
-    def __init__(self, section_dirs: list):
+    def __init__(self, pairs: list, output_dir: str):
         super().__init__()
-        self.section_dirs = section_dirs
+        self.pairs = pairs          # [(name, bf_path, topo_path), ...]
+        self.output_dir = output_dir
+        self._retries = []          # [(name, new_bf_path, topo_path)]
 
     def run(self):
         count = 0
-        excel = None  # Results pipeline doesn't need Excel (only topo needed)
-
-        for section_dir in self.section_dirs:
-            name = os.path.basename(section_dir.rstrip('/\\'))
-
-            # Find Beam Force XLS
-            xls_files = glob.glob(os.path.join(section_dir, 'Beam Force*.xls'))
-            if not xls_files:
-                continue
-            xls_path = xls_files[0]
-
-            # Find DXF
-            dxf_path = os.path.join(DXF_DIR, f'{name}.dxf')
-            if not os.path.exists(dxf_path):
-                self.log.emit(f'[{name}] No DXF found')
-                continue
-
-            try:
-                self.log.emit(f'[{name}] Parsing: {os.path.basename(xls_path)}')
-
-                doc = ezdxf.readfile(dxf_path)
-                msp = doc.modelspace()
-                frame = build_frame(
-                    _get_polyline_vertices(msp, 'OUTPOLY'),
-                    _get_polyline_vertices(msp, 'INPOLY'))
-                _, topo = write_mct(frame, name, excel)
-
-                results = parse_beam_force(xls_path)
-                result_elems = set(r['elem'] for r in results)
-                mct_elems = set(eid for eid, _, _, _ in topo['elements'])
-
-                if result_elems != mct_elems:
-                    self.log.emit(f'[{name}] ERROR: Element mismatch! '
-                                  f'MCT={len(mct_elems)}, Results={len(result_elems)}')
-                    continue
-
-                self.log.emit(f'[{name}] {len(results)} records, {len(result_elems)} elements — OK')
-
-                thick_map = _build_element_thickness(topo['elements'], topo['sections'])
-                top_eids = list(range(topo['eid_top_start'], topo['eid_top_end'] + 1))
-                bot_eids = list(range(topo['e_bot_first'], topo['e_bot_last'] + 1))
-                wL_eids = list(range(topo['eid_wL_start'], topo['eid_wL_end'] + 1))
-                wR_eids = list(range(topo['eid_wR_start'], topo['eid_wR_end'] + 1))
-
-                check_elems = _classify_check_elements(
-                    topo['top_ids'], top_eids,
-                    topo['wL_insert_idx'], topo['wR_insert_idx'],
-                    topo['bot_ids'], bot_eids, wL_eids, wR_eids,
-                    topo['eid_top_start'])
-
-                check_points = extract_check_points(results, check_elems, thick_map)
-
-                # Save text + Excel
-                from src.result_reader import format_check_table
-                txt_path = os.path.join(section_dir, f'{name}_check.txt')
-                with open(txt_path, 'w', encoding='utf-8') as f:
-                    f.write(format_check_table(name, check_points))
-                self.log.emit(f'[{name}] Saved: {txt_path}')
-
-                from run import _export_excel
-                xlsx_path = os.path.join(section_dir, f'{name}_check.xlsx')
-                _export_excel(name, check_points, xlsx_path)
-                self.log.emit(f'[{name}] Saved: {xlsx_path}')
-
-                self.section_done.emit(name, check_points)
+        for name, bf_path, topo_path in self.pairs:
+            ok = self._process_one(name, bf_path, topo_path)
+            if ok:
                 count += 1
 
-            except Exception as e:
-                self.log.emit(f'[{name}] ERROR: {e}')
+        # Process any retries queued via retry_section()
+        while self._retries:
+            retry_name, retry_bf, retry_topo = self._retries.pop(0)
+            ok = self._process_one(retry_name, retry_bf, retry_topo)
+            if ok:
+                count += 1
 
         self.finished_all.emit(count)
+
+    def _process_one(self, name, bf_path, topo_path):
+        """Process a single section. Returns True on success."""
+        section_dir = os.path.join(self.output_dir, name)
+        os.makedirs(section_dir, exist_ok=True)
+
+        try:
+            self.log.emit(f'[{name}] Loading topology: {os.path.basename(topo_path)}')
+            with open(topo_path, 'r', encoding='utf-8') as f:
+                topo = json.load(f)
+
+            # Convert JSON lists back to tuples for compatibility
+            topo['elements'] = [tuple(e) for e in topo['elements']]
+            topo['sections'] = [tuple(s) for s in topo['sections']]
+
+            self.log.emit(f'[{name}] Parsing: {os.path.basename(bf_path)}')
+            results = parse_beam_force(bf_path)
+            result_elems = set(r['elem'] for r in results)
+            mct_elems = set(eid for eid, _, _, _ in topo['elements'])
+
+            if result_elems != mct_elems:
+                self.log.emit(f'[{name}] Element mismatch: '
+                              f'MCT={len(mct_elems)}, Results={len(result_elems)}')
+                self.error_mismatch.emit(name, len(mct_elems),
+                                         len(result_elems), bf_path)
+                return False
+
+            self.log.emit(f'[{name}] {len(results)} records, '
+                          f'{len(result_elems)} elements — OK')
+
+            thick_map = _build_element_thickness(topo['elements'], topo['sections'])
+            top_eids = list(range(topo['eid_top_start'], topo['eid_top_end'] + 1))
+            bot_eids = list(range(topo['e_bot_first'], topo['e_bot_last'] + 1))
+            wL_eids = list(range(topo['eid_wL_start'], topo['eid_wL_end'] + 1))
+            wR_eids = list(range(topo['eid_wR_start'], topo['eid_wR_end'] + 1))
+
+            check_elems = _classify_check_elements(
+                topo['top_ids'], top_eids,
+                topo['wL_insert_idx'], topo['wR_insert_idx'],
+                topo['bot_ids'], bot_eids, wL_eids, wR_eids,
+                topo['eid_top_start'])
+
+            check_points = extract_check_points(results, check_elems, thick_map)
+
+            # Save text report
+            from src.result_reader import format_check_table
+            txt_path = os.path.join(section_dir, f'{name}_check.txt')
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                f.write(format_check_table(name, check_points))
+            self.log.emit(f'[{name}] Saved: {txt_path}')
+
+            # Save Excel report
+            from run import _export_excel
+            xlsx_path = os.path.join(section_dir, f'{name}_check.xlsx')
+            _export_excel(name, check_points, xlsx_path)
+            self.log.emit(f'[{name}] Saved: {xlsx_path}')
+
+            self.section_done.emit(name, check_points)
+            return True
+
+        except Exception as e:
+            self.log.emit(f'[{name}] ERROR: {e}')
+            return False
+
+    def retry_section(self, name, new_bf_path):
+        """Queue a section for retry with a different Beam Force file."""
+        topo_path = None
+        for n, _, tp in self.pairs:
+            if n == name:
+                topo_path = tp
+                break
+        if topo_path:
+            self._retries.append((name, new_bf_path, topo_path))

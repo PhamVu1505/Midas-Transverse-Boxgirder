@@ -52,7 +52,7 @@ class GenerateTab(QWidget):
         # Output dir row
         row2 = QHBoxLayout()
         row2.addWidget(QLabel('Output dir:'))
-        self.out_edit = QLineEdit('output')
+        self.out_edit = QLineEdit('.')
         row2.addWidget(self.out_edit, 1)
         btn_out = QPushButton('Browse...')
         btn_out.clicked.connect(self._browse_output)
@@ -100,7 +100,7 @@ class GenerateTab(QWidget):
 
     def _browse_files(self):
         files, _ = QFileDialog.getOpenFileNames(
-            self, 'Select DXF Files', 'input/dxf', 'DXF Files (*.dxf)')
+            self, 'Select DXF Files', '.', 'DXF Files (*.dxf)')
         if files:
             for f in files:
                 if not self._in_list(f):
@@ -108,7 +108,7 @@ class GenerateTab(QWidget):
             self.dxf_edit.setText(f'{self.file_list.count()} file(s) selected')
 
     def _browse_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, 'Select DXF Folder', 'input/dxf')
+        folder = QFileDialog.getExistingDirectory(self, 'Select DXF Folder', '.')
         if folder:
             dxf_files = sorted(glob.glob(os.path.join(folder, '*.dxf')))
             for f in dxf_files:
@@ -118,7 +118,7 @@ class GenerateTab(QWidget):
 
     def _browse_excel(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, 'Select Excel Data File', '',
+            self, 'Select Excel Data File', '.',
             'Excel Files (*.xls *.xlsx);;All Files (*)')
         if path:
             self.excel_edit.setText(path)

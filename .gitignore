@@ -29,6 +29,9 @@ dist/
 # Generated output
 output/
 
+# Test folders
+testptn/
+
 # Claude Code settings (personal)
 .claude/
 
