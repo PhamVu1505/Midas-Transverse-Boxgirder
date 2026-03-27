@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# IDE
+.vscode/
+.idea/
+
+# AutoCAD temp
+*.bak
+*.dwl
+*.dwl2
+
+# Midas/Civil temp
+*.mcb
+*.MOUT
+*.OUT
+*.CA1
+*.CA3
+*.CA3B1
+*.spa
+
+# Generated output
+output/
+
+# Claude Code settings (personal)
+.claude/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
