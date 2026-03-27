@@ -7,7 +7,7 @@ echo === Step 1: PyInstaller ===
 cd /d "%~dp0.."
 pyinstaller --noconfirm --onedir --windowed ^
     --name "MidasTransverseBoxgirder" ^
-    ^
+    --icon "installer\icon.ico" ^
     --hidden-import "src.dxf_reader" ^
     --hidden-import "src.frame_builder" ^
     --hidden-import "src.mct_frame_writer" ^

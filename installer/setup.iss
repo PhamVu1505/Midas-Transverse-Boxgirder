@@ -15,6 +15,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
+SetupIconFile=icon.ico
+UninstallDisplayIcon={app}\MidasTransverseBoxgirder.exe
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -25,13 +27,15 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 [Files]
 ; Main application (PyInstaller output)
 Source: "..\dist\MidasTransverseBoxgirder\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Icon
+Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 ; User guide
 Source: "..\docs\USER-GUIDE.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Midas Transverse Boxgirder"; Filename: "{app}\MidasTransverseBoxgirder.exe"
+Name: "{group}\Midas Transverse Boxgirder"; Filename: "{app}\MidasTransverseBoxgirder.exe"; IconFilename: "{app}\icon.ico"
 Name: "{group}\User Guide"; Filename: "{app}\USER-GUIDE.txt"
-Name: "{autodesktop}\Midas Transverse Boxgirder"; Filename: "{app}\MidasTransverseBoxgirder.exe"; Tasks: desktopicon
+Name: "{autodesktop}\Midas Transverse Boxgirder"; Filename: "{app}\MidasTransverseBoxgirder.exe"; IconFilename: "{app}\icon.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\MidasTransverseBoxgirder.exe"; Description: "Launch application"; Flags: nowait postinstall skipifsilent
