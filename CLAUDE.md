@@ -115,25 +115,30 @@ Midas-Transverse-Boxgirder/
 ## Quy ước quan trọng
 
 ### DXF Format (LWPOLYLINE)
-- **OUTPOLY** (layer `OUTPOLY`): 8 đỉnh = đường viền ngoài mặt cắt
-- **INPOLY** (layer `INPOLY`): 10 đỉnh = lỗ rỗng bên trong
+- **OUTPOLY** (layer `OUTPOLY`): đường viền ngoài mặt cắt (thường 8 đỉnh, có thể khác)
+- **INPOLY** (layer `INPOLY`): lỗ rỗng bên trong (thường 10 đỉnh, có thể khác)
 - **TEXT** (layer `TEXT`): tên mặt cắt (vd: "s16")
+- Số đỉnh không cố định — chương trình tự phân loại vai trò từng đỉnh
 
 ### Hệ tọa độ
 - **DXF**: X ngang, Y đứng (Y=0 tại mặt trên, Y<0 xuống dưới)
 - **MCT**: X ngang (tâm=0), Y=0, Z đứng (Z=0 đáy, Z=H đỉnh)
 - **Ánh xạ**: `MCT_X = DXF_X - x_center`, `MCT_Z = H + DXF_Y`
 
-### Mô hình phần tử hữu hạn
-- 50 nodes: Bottom slab (1-13), Left web (14-18), Right web (19-23), Top slab (101-127)
-- 48 elements: Bottom slab (1-12), Left web (13-17), Right web (18-22), Top slab (101-126), Connectors (201-202)
+### Mô hình phần tử hữu hạn (adaptive)
+- Số nodes/elements **KHÔNG cố định** — phụ thuộc hình dạng DXF
+- **Keypoints** = mỗi điểm thay đổi chiều dày (từ đỉnh OUTPOLY/INPOLY) → tự động tạo node
+- **Intermediate nodes** = chia đều giữa keypoints theo `target_len` (mặc định 0.5m)
+- **Barrier nodes** = 2 node cách mép 0.4m (cho tải lan can)
+- **Connectors** = 2 elements nối web junction → top slab
+- Cấu trúc: Top slab → Web left → Bottom slab → Web right (khung kín)
 
 ### Section Offset Convention
-| Vị trí | Sect IDs | Offset |
-|--------|----------|--------|
-| Top slab | 1-24, 49, 50 | **CT** |
-| Bottom slab | 37-48 | **CB** |
-| Web + connectors | 25-36 | **CC** |
+| Vị trí | Offset | Lý do |
+|--------|--------|-------|
+| Top slab | **CT** | Nodes tại mặt trên, slab treo xuống |
+| Bottom slab | **CB** | Nodes tại mặt dưới, slab nhô lên |
+| Web + connectors | **CC** | Nodes tại centroid |
 
 ### Tải trọng
 - 9 static load cases: Self Weight, TpG+/-, System Temp, WS, WL, Barrier, Pavement, Median Strip

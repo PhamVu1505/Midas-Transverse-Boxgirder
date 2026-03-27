@@ -32,7 +32,7 @@ python run.py input/dxf/S1.dxf input/dxf/S7.dxf input/dxf/S12.dxf
 
 ### Generate (DXF → MCT)
 - Đọc mặt cắt từ file DXF (LWPOLYLINE format)
-- Tự động tạo mô hình FEM: 50 nodes, 48 elements, 50 sections
+- Tự động tạo mô hình FEM: adaptive nodes/elements theo hình dạng mặt cắt
 - 9 static load cases + AASHTO HL93 moving loads + 16 LRFD combinations
 - Xuất file MCT sẵn sàng import vào Midas/Civil
 - SVG visualization cho mỗi mặt cắt

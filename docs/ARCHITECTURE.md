@@ -54,9 +54,10 @@
       ▼
 ┌──────────────────┐
 │ frame_builder.py │  → FrameModel (nodes, elements, sections)
-│                  │    - Adaptive node spacing (key points, haunch, interior)
-│                  │    - 50 nodes, 48 elements, 50 sections
-│                  │    - Barrier/connector elements
+│                  │    - Adaptive node spacing (keypoints + intermediate)
+│                  │    - Số node/element phụ thuộc hình dạng DXF
+│                  │    - target_len=0.5m, barrier_len=0.4m
+│                  │    - Barrier + connector elements
 └─────┬────────────┘
       ▼
 ┌────────────────────┐     ┌──────────────────┐
