@@ -115,13 +115,14 @@ Midas-Transverse-Boxgirder/
 **Tested**: S1, S7, S12, S16, S20, SLT — tất cả tạo MCT đúng.
 
 ### Backlog (v2.0)
-| Task | Mô tả |
-|------|--------|
-| T13 | Mặt cắt 2 hộp (1 OUTPOLY + 2 INPOLY) — nhánh riêng |
-| T19 | Tùy biến khoảng cách node lan can (hiện fix 0.4m) |
-| T20 | Cảnh báo/thông báo lỗi khi import DXF |
-| T21 | Tùy biến load combinations |
-| T22 | Tối ưu GUI xuất kết quả theo folder (batch scan) |
+| Task | Ưu tiên | Mô tả |
+|------|---------|--------|
+| **T23** | 🔴 **CAO** | **Tự nhận diện cáp DƯL ngang từ DXF** — đọc layer cáp (vd: `TENDON`/`PT`), trích vị trí + hình dạng profile cáp; thông số cáp (đường kính, số tao, lực căng, loss, anchor set...) lấy từ Excel template; xuất block tendon + tendon load vào MCT |
+| T13 | TB | Mặt cắt 2 hộp (1 OUTPOLY + 2 INPOLY) — nhánh riêng |
+| T19 | TB | Tùy biến khoảng cách node lan can (hiện fix 0.4m) |
+| T20 | TB | Cảnh báo/thông báo lỗi khi import DXF |
+| T21 | TB | Tùy biến load combinations |
+| T22 | TB | Tối ưu GUI xuất kết quả theo folder (batch scan) |
 
 ## Quy ước quan trọng
 
