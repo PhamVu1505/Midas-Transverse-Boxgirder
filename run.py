@@ -15,9 +15,10 @@ import glob
 
 import ezdxf
 
-from src.dxf_reader import _get_polyline_vertices
+from src.dxf_reader import _get_polyline_vertices, read_pt_cables
 from src.frame_builder import build_frame
 from src.mct_frame_writer import write_mct
+from src.pt_property_reader import read_pt_properties
 from src.result_reader import (parse_beam_force, _build_element_thickness,
                                _classify_check_elements, extract_check_points,
                                format_check_table)
@@ -31,8 +32,11 @@ EXCEL_PATH = os.path.join(os.path.dirname(__file__),
 # Generate: DXF → MCT + SVG
 # ─────────────────────────────────────────────
 
-def _generate_one(dxf_path: str, output_dir: str):
-    """Generate MCT + SVG for one DXF file into output_dir/name/."""
+def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
+    """Generate MCT + SVG for one DXF file into output_dir/name/.
+
+    include_pt: True/False/None (None = auto-detect from DXF layers).
+    """
     name = os.path.splitext(os.path.basename(dxf_path))[0]
     section_dir = os.path.join(output_dir, name)
     os.makedirs(section_dir, exist_ok=True)
@@ -42,13 +46,20 @@ def _generate_one(dxf_path: str, output_dir: str):
     msp = doc.modelspace()
     outpoly = _get_polyline_vertices(msp, 'OUTPOLY')
     inpoly = _get_polyline_vertices(msp, 'INPOLY')
+    pt_cables = read_pt_cables(msp) if include_pt is not False else []
 
     print(f'[{name}] Building frame...')
     frame = build_frame(outpoly, inpoly)
 
     excel = EXCEL_PATH if os.path.exists(EXCEL_PATH) else None
+    pt_props = read_pt_properties(excel) if (excel and pt_cables) else None
+    if pt_cables:
+        print(f'[{name}] PT cables detected: {[n for n, _ in pt_cables]}')
+
     print(f'[{name}] Writing MCT...')
-    mct_text, topo = write_mct(frame, name, excel)
+    mct_text, topo = write_mct(frame, name, excel,
+                               pt_cables=pt_cables, pt_props=pt_props,
+                               include_pt=include_pt)
 
     mct_path = os.path.join(section_dir, f'{name}_frame.mct')
     with open(mct_path, 'w', encoding='utf-8') as f:
@@ -71,6 +82,7 @@ def cmd_generate(args):
     """Handle 'generate' command."""
     paths = args.input
     output_dir = args.output_dir
+    include_pt = False if getattr(args, 'no_pt', False) else None
 
     dxf_files = []
     for p in paths:
@@ -88,7 +100,7 @@ def cmd_generate(args):
     print(f'Generating {len(dxf_files)} section(s)...\n')
     for dxf_path in dxf_files:
         try:
-            _generate_one(dxf_path, output_dir)
+            _generate_one(dxf_path, output_dir, include_pt=include_pt)
         except Exception as e:
             print(f'  [ERROR] {dxf_path}: {e}')
             import traceback
@@ -362,6 +374,8 @@ def main():
     gen_parser.add_argument('input', nargs='+', help='DXF file(s) or directory')
     gen_parser.add_argument('-d', '--output-dir', default='output',
                            help='Output root directory (default: output)')
+    gen_parser.add_argument('--no-pt', action='store_true',
+                           help='Skip PT tendon detection even if DXF has PT-* layers')
 
     # results
     res_parser = subparsers.add_parser('results', help='Beam Force → check table + Excel')

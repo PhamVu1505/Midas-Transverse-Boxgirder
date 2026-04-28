@@ -5,7 +5,7 @@ import glob
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                               QLineEdit, QLabel, QListWidget, QPlainTextEdit,
-                              QFileDialog, QSplitter, QAbstractItemView)
+                              QFileDialog, QSplitter, QAbstractItemView, QCheckBox)
 from PyQt6.QtCore import Qt
 
 from .worker import GenerateWorker
@@ -67,6 +67,13 @@ class GenerateTab(QWidget):
 
         # Buttons
         btn_row = QHBoxLayout()
+        self.chk_pt = QCheckBox('Include PT cables (auto-detect from DXF layer PT-<LOC>-<N>)')
+        self.chk_pt.setChecked(True)
+        self.chk_pt.setToolTip(
+            'Khi tick: scan DXF layers PT-TOP-N / PT-BOT-N / PT-WEB-L-N / PT-WEB-R-N\n'
+            'và sinh block *TDN-PROPERTY / *TDN-PROFILE / *TDN-PRESTRESS.\n'
+            'Bỏ tick: bỏ qua PT, MCT chỉ chứa khung không cáp.')
+        btn_row.addWidget(self.chk_pt)
         btn_row.addStretch()
         self.btn_clear = QPushButton('Clear')
         self.btn_clear.clicked.connect(self._clear)
@@ -147,11 +154,15 @@ class GenerateTab(QWidget):
 
         excel_path = self.excel_edit.text().strip() or None
         output_dir = self.out_edit.text() or 'output'
+        # None = auto-detect (only generate PT block if DXF has PT-* layers)
+        # False = explicitly skip PT
+        include_pt = None if self.chk_pt.isChecked() else False
         self.btn_generate.setEnabled(False)
         self.log_area.clear()
         self.status_bar.showMessage(f'Generating {len(dxf_paths)} section(s)...')
 
-        self.worker = GenerateWorker(dxf_paths, output_dir, excel_path)
+        self.worker = GenerateWorker(dxf_paths, output_dir, excel_path,
+                                     include_pt=include_pt)
         self.worker.log.connect(self._on_log)
         self.worker.section_done.connect(self._on_section_done)
         self.worker.finished_all.connect(self._on_finished)

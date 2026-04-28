@@ -11,10 +11,13 @@ Hệ tọa độ DXF: X ngang, Y đứng (Y max tại top, Y min tại bottom)
 """
 
 import os
+import re
 import ezdxf
 from .geometry import CrossSectionGeometry
 
 _TOL = 0.01  # Tolerance 10mm
+
+PT_LAYER_RE = re.compile(r'^PT-(TOP|BOT|WEB-L|WEB-R)-(\d+)$', re.IGNORECASE)
 
 
 def read_dxf(dxf_path: str) -> CrossSectionGeometry:
@@ -39,7 +42,41 @@ def read_dxf(dxf_path: str) -> CrossSectionGeometry:
         raise ValueError(f"INPOLY cần ít nhất 6 đỉnh, chỉ tìm thấy {len(inpoly_verts)}")
 
     geo = _extract_geometry(section_name, outpoly_verts, inpoly_verts)
+    geo.pt_cables = read_pt_cables(msp)
     return geo
+
+
+def read_pt_cables(msp) -> list:
+    """Quét tất cả LWPOLYLINE trên các layer khớp pattern ^PT-(TOP|BOT|WEB-L|WEB-R)-(\\d+)$.
+
+    Returns:
+        list of (layer_name, [(x_dxf, y_dxf, bulge), ...]) sorted by (location_priority, index).
+        bulge = DXF bulge field of vertex i = curvature of edge i→i+1 (tan(θ/4)).
+        location_priority: TOP=0, WEB-L=1, WEB-R=2, BOT=3.
+    """
+    cables_by_layer = {}
+    for e in msp.query('LWPOLYLINE'):
+        layer = e.dxf.layer
+        m = PT_LAYER_RE.match(layer)
+        if not m:
+            continue
+        pts = [(round(x, 6), round(y, 6), round(b, 6))
+               for x, y, b in e.get_points(format='xyb')]
+        if layer in cables_by_layer:
+            print(f'  [WARN] PT layer {layer!r} có nhiều hơn 1 LWPOLYLINE — chỉ giữ entity đầu tiên.')
+            continue
+        cables_by_layer[layer] = pts
+
+    loc_priority = {'TOP': 0, 'WEB-L': 1, 'WEB-R': 2, 'BOT': 3}
+
+    def _key(item):
+        layer = item[0]
+        m = PT_LAYER_RE.match(layer)
+        loc = m.group(1).upper()
+        idx = int(m.group(2))
+        return (loc_priority.get(loc, 99), idx)
+
+    return sorted(cables_by_layer.items(), key=_key)
 
 
 def _extract_section_name(msp, dxf_path: str) -> str:

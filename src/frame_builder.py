@@ -65,6 +65,8 @@ def build_frame(outpoly_dxf: list, inpoly_dxf: list,
     return {
         'H': H,
         'x_center': x_c,
+        'y_top_dxf': y_top,
+        'y_bot_dxf': y_bot,
         'outpoly_mct': out,
         'inpoly_mct': inn,
         'top_slab': top_slab,

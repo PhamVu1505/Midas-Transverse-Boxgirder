@@ -10,12 +10,16 @@ Minimal MCT: UNIT, STRUCTYPE, MATERIAL, NODE, ELEMENT, SECTION, GROUP, CONSTRAIN
 """
 
 import os
+from .geometry import Tendon, TendonProperty
 from .material_reader import read_material, write_material_mct
 from .load_reader import read_loads
 
 
 def write_mct(frame: dict, section_name: str = 'Section',
-              excel_path: str = None) -> str:
+              excel_path: str = None,
+              pt_cables: list = None,
+              pt_props: TendonProperty = None,
+              include_pt: bool = None) -> str:
     """Tạo file MCT từ frame data.
 
     Node numbering:
@@ -32,6 +36,12 @@ def write_mct(frame: dict, section_name: str = 'Section',
       Connect: 201 (top_slab→webL_top, vertical)
                202 (top_slab→webR_top, vertical)
     """
+    # ── PT auto-detect ──
+    if include_pt is None:
+        include_pt = bool(pt_cables) and pt_props is not None
+    if include_pt and (not pt_cables or pt_props is None):
+        include_pt = False
+
     # ── Material ──
     if excel_path and os.path.exists(excel_path):
         mat = read_material(excel_path)
@@ -162,10 +172,17 @@ def write_mct(frame: dict, section_name: str = 'Section',
     blocks.append('; iMAT, TYPE, MNAME, SPHEAT, HEATCO, PLAST, TUNIT, bMASS, DAMPRATIO, [DATA1]           ; STEEL, CONC, USER')
     blocks.append(f'    1, CONC , BoxGirder         , 0, 0, , C, NO, 0.05, 2, '
                   f' {mat["Ec_kpa"]:.4e},   {mat["nu"]},  {mat["alpha"]:.4e},  {mat["density"]},     0')
+    if include_pt and pt_props is not None:
+        # Tendon material (MATL=2): USER type, E from Excel Ep, density 78.5 (steel)
+        Ep_kpa = pt_props.Ep * 1000  # MPa → kPa
+        blocks.append(f'    2, USER , Tendon            , 0, 0, , C, NO, 0, 2, '
+                      f' {Ep_kpa:.4e},     0,  0.0000e+00,  78.5,     0')
     blocks.append('')
     blocks.append('*MATL-COLOR')
     blocks.append('; iMAT, W_R, W_G, W_B, HF_R, HF_G, HF_B, HE_R, HE_G, HE_B, bBLEND, FACT')
     blocks.append('    1, 255,   0,   0,    0, 255,   0,    0,   0, 255,  NO, 0.5')
+    if include_pt and pt_props is not None:
+        blocks.append('    2, 255,   0,   0,    0, 255,   0,    0,   0, 255,  NO, 0.5')
     blocks.append('')
     # ── TDM (Time Dependent Material) ──
     blocks.append('*TDM-TYPE    ; Time Dependent Material')
@@ -361,9 +378,27 @@ def write_mct(frame: dict, section_name: str = 'Section',
     blocks.append(f'   {bot_ids[0]}, 101000, Boundary')
     blocks.append('')
 
+    # ── PT TENDONS (auto from DXF layers PT-<LOC>-<N>) ──
+    tendons = []
+    if include_pt:
+        tendons = _build_tendons(
+            pt_cables, frame,
+            top_nodes, top_ids, bot_nodes, bot_ids,
+            wL_nodes, wL_ids, wR_nodes, wR_ids,
+            eid_top_start, eid_top_end,
+            eid_wL_start, eid_wL_end,
+            eid_wR_start, eid_wR_end,
+            e_bot_first=1, e_bot_last=N_bot - 1,
+        )
+        if tendons:
+            _write_tendon_property_block(blocks, pt_props)
+            _write_tendon_profile_blocks(blocks, tendons, pt_props)
+
     # ── STLDCASE ──
     blocks.append('*STLDCASE    ; Static Load Cases')
     blocks.append('; LCNAME, LCTYPE, DESC')
+    if tendons:
+        blocks.append('   Prestress, PS, ')
     blocks.append('   Self Weight, DC, ')
     blocks.append('   TpG(+), TPG, ')
     blocks.append('   System Temperature, T , ')
@@ -380,6 +415,9 @@ def write_mct(frame: dict, section_name: str = 'Section',
         ld = read_loads(excel_path)
     else:
         ld = None
+
+    if tendons:
+        _write_tendon_prestress_block(blocks, tendons, pt_props)
 
     if ld:
         _write_load_data(blocks, ld, elements, top_ids, top_nodes,
@@ -422,6 +460,14 @@ def write_mct(frame: dict, section_name: str = 'Section',
         'e_bot_last': N_bot - 1,
         'wL_insert_idx': wL_insert_idx,
         'wR_insert_idx': wR_insert_idx,
+        'tendons': [
+            {
+                'name': t.name, 'location': t.location, 'index': t.index,
+                'elem_list': t.elem_list, 'first_elem': t.first_elem,
+                'profile_points': t.profile_points,
+            }
+            for t in tendons
+        ],
     }
 
     return '\n'.join(blocks), topology
@@ -779,4 +825,276 @@ def _write_load_combinations(blocks):
     blocks.append('        ST, System Temperature, 1, CB, TG, 0.5')
     blocks.append('   NAME=z_crack, GEN, ACTIVE, 0, 1, service all for crack, 0, 0, 0')
     blocks.append('        CB, LCB14, 1, CB, LCB15, 1')
+    blocks.append('')
+
+
+# ─────────────────────────────────────────────────────
+# PT Tendon helpers
+# ─────────────────────────────────────────────────────
+
+def _pt_property_name(prop):
+    """Tên TDN-PROPERTY auto-derived: vd 5 strands × 15.2mm → "5S15.2"."""
+    return f'{prop.n_strands}S{prop.Dp:.1f}'
+
+
+def _build_tendons(pt_cables, frame,
+                   top_nodes, top_ids, bot_nodes, bot_ids,
+                   wL_nodes, wL_ids, wR_nodes, wR_ids,
+                   eid_top_start, eid_top_end,
+                   eid_wL_start, eid_wL_end,
+                   eid_wR_start, eid_wR_end,
+                   e_bot_first, e_bot_last):
+    """Map raw (layer, dxf_pts) pairs vào Tendon objects với element-local coords.
+
+    Convention:
+      TOP/BOT (horizontal element direction): Y_along = X_mct - X_origin, Z_offset = Z_mct - Z_axis(x)
+      WEB-L/WEB-R (vertical element, top→bottom): Y_along = Z_top_of_web - Z_mct, Z_offset = X_mct - X_centerline(z)
+    Profile vertices include radius (from DXF bulge of edge i→i+1):
+      profile_points = [(Y_along, Z_offset, radius), ...]
+    """
+    import math
+    import re
+    PT_RE = re.compile(r'^PT-(TOP|BOT|WEB-L|WEB-R)-(\d+)$', re.IGNORECASE)
+
+    H = frame['H']
+    x_center = frame['x_center']
+    # DXF y_bot — needed for vertical mapping when DXF top is not at Y=0.
+    y_bot_dxf = frame.get('y_bot_dxf', -H)
+
+    # Build piecewise z_top from full top_nodes chain — handles cantilever knees + slope.
+    top_chain = sorted([(n['x'], n['z']) for n in top_nodes], key=lambda p: p[0])
+
+    def z_top_at(x):
+        if x <= top_chain[0][0]:
+            return top_chain[0][1]
+        if x >= top_chain[-1][0]:
+            return top_chain[-1][1]
+        for i in range(len(top_chain) - 1):
+            x0, z0 = top_chain[i]
+            x1, z1 = top_chain[i + 1]
+            if x0 <= x <= x1:
+                if abs(x1 - x0) < 1e-9:
+                    return z0
+                return z0 + (x - x0) / (x1 - x0) * (z1 - z0)
+        return top_chain[-1][1]
+
+    # Bottom uses surface_line (single segment, slab is straight between web bottoms).
+    bot = frame['bottom_slab']
+    bL = bot['surface_line'][0]
+    bR = bot['surface_line'][1]
+
+    def z_bot_at(x):
+        if abs(bR[0] - bL[0]) < 1e-9:
+            return bL[1]
+        t = (x - bL[0]) / (bR[0] - bL[0])
+        return bL[1] + t * (bR[1] - bL[1])
+
+    def web_x_at(z, web_nodes):
+        if not web_nodes:
+            return 0.0
+        if z >= web_nodes[0]['z']:
+            return web_nodes[0]['x']
+        if z <= web_nodes[-1]['z']:
+            return web_nodes[-1]['x']
+        for i in range(len(web_nodes) - 1):
+            z0, x0 = web_nodes[i]['z'], web_nodes[i]['x']
+            z1, x1 = web_nodes[i + 1]['z'], web_nodes[i + 1]['x']
+            if z1 <= z <= z0:
+                if abs(z1 - z0) < 1e-9:
+                    return x0
+                t = (z - z0) / (z1 - z0)
+                return x0 + t * (x1 - x0)
+        return web_nodes[-1]['x']
+
+    def _bulge_to_radius(bulge, p_curr, p_next):
+        """Convert DXF bulge to arc radius. p = (x, y) in DXF coords."""
+        if abs(bulge) < 1e-4:
+            return 0.0
+        chord = math.hypot(p_next[0] - p_curr[0], p_next[1] - p_curr[1])
+        if chord < 1e-9:
+            return 0.0
+        # bulge = tan(θ/4); θ = 4 * atan(bulge); R = chord / (2 sin(θ/2))
+        theta = 4.0 * math.atan(abs(bulge))
+        sin_half = math.sin(theta / 2.0)
+        if sin_half < 1e-9:
+            return 0.0
+        return chord / (2.0 * sin_half)
+
+    tendons = []
+    for layer, dxf_pts in pt_cables:
+        m = PT_RE.match(layer)
+        if not m:
+            continue
+        loc = m.group(1).upper()
+        idx = int(m.group(2))
+
+        # Each entry: (x_dxf, y_dxf, bulge). Bulge may be missing (older callers).
+        orig = []
+        for p in dxf_pts:
+            if len(p) == 3:
+                orig.append((p[0], p[1], p[2]))
+            else:
+                orig.append((p[0], p[1], 0.0))
+
+        # Compute per-edge radius IN DXF NATURAL ORDER. radii_orig[i] = R of edge i→i+1.
+        # Bulge magnitude is direction-invariant → same R after reversal.
+        radii_orig = []
+        for i in range(len(orig) - 1):
+            r = _bulge_to_radius(
+                orig[i][2],
+                (orig[i][0], orig[i][1]),
+                (orig[i + 1][0], orig[i + 1][1]),
+            )
+            radii_orig.append(round(r, 4) if r > 0 else 0)
+
+        # Decide whether to reverse so cable direction matches element I→J:
+        #   TOP/BOT: I→J = increasing X (left → right)
+        #   WEB-L/WEB-R: I→J = top → bottom (decreasing Z, here decreasing Y_dxf)
+        if loc in ('TOP', 'BOT'):
+            need_reverse = orig[0][0] > orig[-1][0]
+        elif loc in ('WEB-L', 'WEB-R'):
+            need_reverse = orig[0][1] < orig[-1][1]
+        else:
+            continue
+
+        if need_reverse:
+            ordered = list(reversed(orig))
+            radii_per_edge = list(reversed(radii_orig))
+        else:
+            ordered = list(orig)
+            radii_per_edge = list(radii_orig)
+
+        # RADIUS at vertex i (in MCT *TDN-PROFILE) = radius of LEAVING edge (i, i+1).
+        # Last vertex has no leaving edge → R=0. Match refer convention.
+        vertex_radii = list(radii_per_edge) + [0]
+
+        # Transform DXF → MCT element-local.
+        if loc == 'TOP':
+            elem_list = f'{eid_top_start}to{eid_top_end}'
+            first_elem = eid_top_start
+            x_origin = top_nodes[0]['x']
+            profile = []
+            for (x_dxf, y_dxf, _b), r in zip(ordered, vertex_radii):
+                x_mct = x_dxf - x_center
+                z_mct = y_dxf - y_bot_dxf
+                profile.append((
+                    round(x_mct - x_origin, 4),
+                    round(z_mct - z_top_at(x_mct), 4),
+                    r,
+                ))
+        elif loc == 'BOT':
+            elem_list = f'{e_bot_first}to{e_bot_last}'
+            first_elem = e_bot_first
+            x_origin = bot_nodes[0]['x']
+            profile = []
+            for (x_dxf, y_dxf, _b), r in zip(ordered, vertex_radii):
+                x_mct = x_dxf - x_center
+                z_mct = y_dxf - y_bot_dxf
+                profile.append((
+                    round(x_mct - x_origin, 4),
+                    round(z_mct - z_bot_at(x_mct), 4),
+                    r,
+                ))
+        elif loc == 'WEB-L':
+            elem_list = f'{eid_wL_start}to{eid_wL_end}'
+            first_elem = eid_wL_start
+            z_origin = wL_nodes[0]['z']
+            profile = []
+            for (x_dxf, y_dxf, _b), r in zip(ordered, vertex_radii):
+                x_mct = x_dxf - x_center
+                z_mct = y_dxf - y_bot_dxf
+                profile.append((
+                    round(z_origin - z_mct, 4),
+                    round(x_mct - web_x_at(z_mct, wL_nodes), 4),
+                    r,
+                ))
+        elif loc == 'WEB-R':
+            elem_list = f'{eid_wR_start}to{eid_wR_end}'
+            first_elem = eid_wR_start
+            z_origin = wR_nodes[0]['z']
+            profile = []
+            for (x_dxf, y_dxf, _b), r in zip(ordered, vertex_radii):
+                x_mct = x_dxf - x_center
+                z_mct = y_dxf - y_bot_dxf
+                profile.append((
+                    round(z_origin - z_mct, 4),
+                    round(x_mct - web_x_at(z_mct, wR_nodes), 4),
+                    r,
+                ))
+
+        tendons.append(Tendon(
+            name=layer,
+            location=loc,
+            index=idx,
+            profile_points=profile,
+            elem_list=elem_list,
+            first_elem=first_elem,
+        ))
+
+    return tendons
+
+
+def _write_tendon_property_block(blocks, prop):
+    """Write *TDN-PROPERTY (1 entry, name = NS<DP>, vd 5S15.2)."""
+    name = _pt_property_name(prop)
+    AREA = prop.Ap * 1e-6        # mm² → m²
+    DIA = prop.duct_dia * 1e-3   # mm → m
+    FF = prop.mu                 # 1/rad
+    WF = prop.K * 1000           # 1/mm → 1/m
+    US = prop.fpu * 1000         # MPa → kPa
+    YS = prop.fpy * 1000         # MPa → kPa
+    ASB = ASE = prop.anchor_set  # m
+
+    blocks.append('*TDN-PROPERTY    ; Tendon Property')
+    blocks.append('; NAME, TYPE, MATL, AREA, DIA, RM, RC, FF, WF, US, YS, LT, ASB, ASE, bBONDED, ALPHA, \\ ')
+    blocks.append(';       bOSRF, FT, LR, FPK, ACHANGE, bRELAX, TDMFNAME(User Defined) or TDMFK , WobbleType, AngleDisp')
+    blocks.append(f'   {name}, INTERNAL, 2, {AREA:g}, {DIA:g}, 0, 45, {FF}, {WF:g}, {US:g}, {YS:g}, '
+                  f'POST, {ASB}, {ASE}, YES, 0, , , ,, 0, YES, 0, 0, 0')
+    blocks.append('')
+
+
+def _write_tendon_profile_blocks(blocks, tendons, prop):
+    """Write *TDN-PROFILE block (1 group of lines per cable)."""
+    if not tendons:
+        return
+    prop_name = _pt_property_name(prop)
+
+    blocks.append('*TDN-PROFILE   ; Tendon Profile')
+    blocks.append('; NAME=NAME, TDN-PROPERTY, ELEM_LIST, BEGIN, END, CURVE, INPUT          ; line 1')
+    blocks.append(';      GROUP, LENGOPT, BLEN, ELEN, bTP, rNUM, DeBondBLEN, DeBondELEN    ; line 2')
+    blocks.append(';      SHAPE, INS_PT, REF_ELEM, AXIS                                    ; line 3(Element)')
+    blocks.append(';      XAR_ANGLE, bPROJECTION, OFFSET_Y, OFFSET_Z                       ; line 4(Element)')
+    blocks.append(';      Y=X, Y, bFIX, RZ, RADIUS, OPT, ANGLE, HGT, R                     ; from line 5(2D)')
+    blocks.append(';      Z=X, Z, bFIX, RZ, RADIUS, OPT, ANGLE, HGT, R')
+
+    for t in tendons:
+        if t.profile_points:
+            y_start = t.profile_points[0][0]
+            y_end = t.profile_points[-1][0]
+        else:
+            y_start = y_end = 0
+
+        blocks.append(f'   NAME={t.name}, {prop_name}, {t.elem_list}, 0, 0, ROUND, 2D')
+        blocks.append('        , USER, 0, 0, NO, , 0, 0')
+        blocks.append(f'        ELEMENT, END-I, {t.first_elem}, I-J')
+        blocks.append('        0, YES, 0, 0')
+        blocks.append(f'        Y={y_start}, 0, NO, 0, 0, NONE, , , , NO')
+        blocks.append(f'        Y={y_end}, 0, NO, 0, 0, NONE, , , , NO')
+        for entry in t.profile_points:
+            y, z = entry[0], entry[1]
+            r = entry[2] if len(entry) > 2 else 0
+            r_str = f'{r:g}' if r > 0 else '0'
+            blocks.append(f'        Z={y}, {z}, NO, 0, {r_str}, NONE, , , , NO')
+    blocks.append('')
+
+
+def _write_tendon_prestress_block(blocks, tendons, prop):
+    """Write *USE-STLD, Prestress + *TDN-PRESTRESS block."""
+    stress_kpa = prop.fpj * 1000  # MPa → kPa
+    blocks.append('*USE-STLD, Prestress')
+    blocks.append('')
+    blocks.append('*TDN-PRESTRESS    ; Tendon Prestress Loads')
+    blocks.append('; TDN-NAME, FORCE/STRESS, JACKING, BEGIN, END, iGROUTING, GROUP')
+    for t in tendons:
+        blocks.append(f' {t.name}, STRESS, BEGIN, {stress_kpa:g}, 0, 0, Load')
     blocks.append('')

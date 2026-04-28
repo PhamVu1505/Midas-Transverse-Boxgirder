@@ -43,6 +43,42 @@ class CrossSectionGeometry:
     # --- INPOLY vertices (10 đỉnh) ---
     inpoly: List[Tuple[float, float]] = field(default_factory=list)
 
+    # --- PT cables (auto-detected từ layer DXF dạng PT-<LOC>-<N>) ---
+    # Mỗi entry: (layer_name, [(x_dxf, y_dxf), ...])
+    pt_cables: List[Tuple[str, List[Tuple[float, float]]]] = field(default_factory=list)
+
+
+@dataclass
+class Tendon:
+    """Cáp DƯL ngang (đã transform sang hệ MCT element-local).
+
+    profile_points lưu (X_along_elem, Z_offset) cho mỗi vertex DXF.
+    """
+    name: str                                      # "PT-TOP-1" (= layer name)
+    location: str                                  # "TOP" | "BOT" | "WEB-L" | "WEB-R"
+    index: int                                     # 1, 2, 3...
+    profile_points: List[Tuple[float, float]] = field(default_factory=list)
+    elem_list: str = ''                            # "101to124"
+    first_elem: int = 0                            # ELEMENT routing line ref
+
+
+@dataclass
+class TendonProperty:
+    """Thông số chung của hệ cáp DƯL (đọc từ Excel sheet General A82:K96)."""
+    fpu: float          # Tensile strength (MPa)
+    fpy: float          # Yield strength (MPa)
+    Ep: float           # Modulus (MPa)
+    mu: float           # Friction coef (1/rad)
+    K: float            # Wobble factor (1/mm)
+    Dp: float           # Strand diameter (mm)
+    Aps: float          # Strand area (mm²)
+    n_strands: int      # # strands per cable
+    Ap: float           # Tendon area = Aps * n_strands (mm²)
+    fpj: float          # Jacking stress (MPa)
+    Pj: float           # Jacking force (kN)
+    anchor_set: float   # Δ (m)
+    duct_dia: float     # Dduct (mm)
+
 
 @dataclass
 class LoadParameters:

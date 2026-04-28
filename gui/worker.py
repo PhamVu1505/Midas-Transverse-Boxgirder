@@ -6,9 +6,10 @@ import os
 import ezdxf
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from src.dxf_reader import _get_polyline_vertices
+from src.dxf_reader import _get_polyline_vertices, read_pt_cables
 from src.frame_builder import build_frame
 from src.mct_frame_writer import write_mct
+from src.pt_property_reader import read_pt_properties
 from src.svg_export import export_frame_svg
 from src.result_reader import (parse_beam_force, _build_element_thickness,
                                _classify_check_elements, extract_check_points)
@@ -20,11 +21,13 @@ class GenerateWorker(QThread):
     section_done = pyqtSignal(str, str)  # name, svg_path
     finished_all = pyqtSignal(int)       # count
 
-    def __init__(self, dxf_paths: list, output_dir: str, excel_path: str = None):
+    def __init__(self, dxf_paths: list, output_dir: str, excel_path: str = None,
+                 include_pt: bool = None):
         super().__init__()
         self.dxf_paths = dxf_paths
         self.output_dir = output_dir
         self.excel_path = excel_path
+        self.include_pt = include_pt    # True/False/None (None = auto)
 
     def run(self):
         count = 0
@@ -41,12 +44,20 @@ class GenerateWorker(QThread):
                 msp = doc.modelspace()
                 outpoly = _get_polyline_vertices(msp, 'OUTPOLY')
                 inpoly = _get_polyline_vertices(msp, 'INPOLY')
+                pt_cables = read_pt_cables(msp) if self.include_pt is not False else []
+                if pt_cables:
+                    layer_names = ', '.join(n for n, _ in pt_cables)
+                    self.log.emit(f'[{name}] PT cables: {layer_names}')
 
                 self.log.emit(f'[{name}] Building frame...')
                 frame = build_frame(outpoly, inpoly)
 
+                pt_props = read_pt_properties(excel) if (excel and pt_cables) else None
+
                 self.log.emit(f'[{name}] Writing MCT...')
-                mct_text, topo = write_mct(frame, name, excel)
+                mct_text, topo = write_mct(frame, name, excel,
+                                           pt_cables=pt_cables, pt_props=pt_props,
+                                           include_pt=self.include_pt)
                 mct_path = os.path.join(section_dir, f'{name}_frame.mct')
                 with open(mct_path, 'w', encoding='utf-8') as f:
                     f.write(mct_text)
