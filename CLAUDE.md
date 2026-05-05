@@ -117,12 +117,19 @@ Midas-Transverse-Boxgirder/
 ### Backlog (v2.0)
 | Task | Ưu tiên | Mô tả |
 |------|---------|--------|
-| **T23** | 🔴 **CAO** | **Tự nhận diện cáp DƯL ngang từ DXF** — đọc layer cáp (vd: `TENDON`/`PT`), trích vị trí + hình dạng profile cáp; thông số cáp (đường kính, số tao, lực căng, loss, anchor set...) lấy từ Excel template; xuất block tendon + tendon load vào MCT |
 | T13 | TB | Mặt cắt 2 hộp (1 OUTPOLY + 2 INPOLY) — nhánh riêng |
-| T19 | TB | Tùy biến khoảng cách node lan can (hiện fix 0.4m) |
-| T20 | TB | Cảnh báo/thông báo lỗi khi import DXF |
+| T20 | TB | Cảnh báo/thông báo lỗi khi import DXF (không hợp lệ, thiếu layer, sai số đỉnh) |
 | T21 | TB | Tùy biến load combinations |
 | T22 | TB | Tối ưu GUI xuất kết quả theo folder (batch scan) |
+| T24 | TB | Cleanup legacy modules: `load_calculator.py`, `mct_writer.py`, `assembler.py`, `node/element/section_builder.py` (đã thay bằng `frame_builder` + `mct_frame_writer`) |
+
+### Done v1.2 (sprint 2026-05-05)
+- **T23**: Tự nhận diện PT tendon từ DXF + sinh TDN-* + Construction Stage Analysis
+- **T19**: ✅ Bỏ hardcode `barrier_len = 0.4 m` — đọc `d_L`/`d_R` riêng từ Excel `I11`/`I13`
+- **TCVN 11823 live-load edge**: thêm 2 node cách barrier 0.3 m, cắt cantilever lane đúng chuẩn (bánh xe không đặt trong vùng 0.3 m sát lan can)
+- **Material refactor**: `f'c` (H70), `RH` (H82) đọc từ Excel, drive TDM-TYPE block parametric
+- **Barrier load split L/R**: 2 giá trị riêng (`barrier_left` I10, `barrier_right` I12) — half-section box girder
+- **Excel-missing warning**: in/emit cảnh báo rõ ràng khi không có Excel
 
 ## Quy ước quan trọng
 
@@ -140,8 +147,9 @@ Midas-Transverse-Boxgirder/
 ### Mô hình phần tử hữu hạn (adaptive)
 - Số nodes/elements **KHÔNG cố định** — phụ thuộc hình dạng DXF
 - **Keypoints** = mỗi điểm thay đổi chiều dày (từ đỉnh OUTPOLY/INPOLY) → tự động tạo node
-- **Intermediate nodes** = chia đều giữa keypoints theo `target_len` (mặc định 0.5m)
-- **Barrier nodes** = 2 node cách mép 0.4m (cho tải lan can)
+- **Intermediate nodes** = chia đều giữa keypoints theo `target_len = 0.5 m` — **mặc định phù hợp** với bài toán cầu Lạch Tray (mesh đủ mịn cho khung ngang dầm hộp 7-8m, không cần CLI option)
+- **Barrier inner-edge nodes** = 2 node cách mép cánh hẫng `d_L`/`d_R` (đọc từ Excel `I11`/`I13` sheet "Load") — bề rộng đoạn lan can có thể khác nhau 2 bên (half-section)
+- **Live-load edge nodes** = 2 node cách barrier inner-edge **0.3 m** vào trong (TCVN 11823 — bánh xe phải cách mép trong lan can ≥ 0.3 m); cantilever lane chỉ tính từ liveload edge → web junction
 - **Connectors** = 2 elements nối web junction → top slab
 - Cấu trúc: Top slab → Web left → Bottom slab → Web right (khung kín)
 
@@ -153,9 +161,15 @@ Midas-Transverse-Boxgirder/
 | Web + connectors | **CC** | Nodes tại centroid |
 
 ### Tải trọng
-- 9 static load cases: Self Weight, TpG+/-, System Temp, WS, WL, Barrier, Pavement, Median Strip
+- Static load cases: Self Weight, TpG+/-, System Temp, WS, WL, Barrier (L+R riêng), Pavement
+- **Barrier** áp lên element 1 và element cuối top slab với 2 giá trị riêng `barrier_left` (I10), `barrier_right` (I12) — đơn vị kN/m²
+- **Pavement** áp interior top slab elements (gồm cả 2 đoạn 0.3 m sát lan can)
 - Moving loads: AASHTO HL93 (truck + tandem + lane), adaptive vehicle, n_lanes = INT(width/3.5)
 - 16 AASHTO LRFD load combinations
+
+### Vật liệu (đọc từ Excel sheet "General")
+- `f'c` (H70), `Ec` (H72), `α` (H73), `RH` (H82) — drive TDM-TYPE block (`Cxx, CEB, fc_kpa, RH, h, NR, ts, 0`)
+- Defaults: `nu = 0.2`, `density = 24.5 kN/m³`, notional size `h = 1 m`, age at shrinkage `ts = 3 day`, tendon density `78.5 kN/m³`
 
 ### Check Points (Result Reader)
 - 8 điểm A-H: Mu, Vu, Mser, depth h
@@ -192,6 +206,32 @@ pip install ezdxf PyQt6 xlrd openpyxl
 4. File Excel data **KHÔNG** bundle — user tự cung cấp
 
 ## Tham chiếu
-- `input/reference/S16_reference.mct` - File MCT gốc cho S16
-- `input/reference/S12_reference.mct` - File MCT gốc cho S12
-- `data/Midas-Transverse-Boxgirder-analysis.xls` - Dữ liệu tải trọng + vật liệu
+- `input/reference/S16_reference.mct` - File MCT gốc cho S16 (KHÔNG có PT)
+- `input/reference/S12_reference.mct` - File MCT gốc cho S12 (KHÔNG có PT)
+- `docs/refer/refer_PT/midas/LT-MB-S01.mct` - **File MCT mẫu có PT + Construction Stage Analysis** (template chuẩn để tái tạo TDN-* + STAGE + TDM + LOADCOMB CS)
+- `docs/refer/refer_PT/midas/LT-MB-S01.OUT` - Kết quả Midas đã chạy với PT, dùng để validate
+- `data/Midas-Transverse-Boxgirder-analysis.xls` - Dữ liệu tải trọng + vật liệu (CLI hardcode, không override)
+
+## Current Sprint
+**Goal:** Bỏ hardcode + áp dụng TCVN 11823 cho live load trên cánh hẫng (kế thừa T23 PT/CSA).
+
+**Done trong session 2026-05-05:**
+- **Live-load edge nodes (TCVN 11823)**: thêm 2 keypoint cách barrier inner-edge 0.3 m vào trong; cantilever lane (`cantilever1`/`cantilever2`) cắt từ liveload edge → web junction (loại đoạn 0.3 m sát lan can khỏi vùng đặt bánh xe) — `src/frame_builder.py`, `src/mct_frame_writer.py`
+- **Barrier per side từ Excel**: bỏ hardcode `barrier_len = 0.4 m`, đọc `d_L` (I11) + `d_R` (I13); barrier load tách `barrier_left` (I10) + `barrier_right` (I12) — half-section box girder
+- **Excel cell shift +2 rows** trong sheet "Load" (do thêm 4 cell d_L/d_R/barrier_L/barrier_R) — cập nhật cell map cho 16 keys khác (pavement, wind, temp, vehicle, impact)
+- **Material refactor**: thêm `f'c` (H70) + `RH` (H82, vừa chèn row mới) drive TDM-TYPE block parametric `Cxx, CEB, fc_kpa, RH, h, NR, ts, 0`
+- **PT property cells shift +1 row** (do row 82 mới): cập nhật `pt_property_reader.py` rows 84-96
+- **Excel-missing warning**: in/emit cảnh báo rõ ràng + fallback `d_L=d_R=0.4 m`
+- **CLAUDE.md**: cập nhật quy ước mesh (target_len=0.5 phù hợp), barrier convention, vật liệu
+
+**Next Action (cần user quyết hoặc validate):**
+1. **Validate Midas**: regenerate S16 + S1/S10 PT trong Midas/Civil → confirm nội lực + lane đúng + CSA chạy không lỗi
+2. **Commit**: gom 2 logical chunks (T19 + TCVN, vs material refactor) hoặc 1 commit lớn
+3. **Cleanup legacy** (T24): xóa `mct_writer.py`, `assembler.py`, `load_calculator.py`, `node/element/section_builder.py` nếu xác nhận không còn import nào
+4. **Rebuild installer** sau khi validate xong
+
+**Blocker:** Validate trong Midas vì format MCT đã đổi (top slab có +4 node mỗi mặt cắt — 2 barrier + 2 liveload edge).
+
+## Session Log
+- 2026-05-05: TCVN 11823 live-load edge + barrier L/R từ Excel + fc/RH refactor + PT cell shift + Excel warning
+- 2026-04-29: Construction Stage Analysis (TDM/ELEM-DEPMATL/STAGE/ANAL-CTRL/LOADCOMB CS) + sửa inverse-fillet cho TDN-PROFILE RADIUS
