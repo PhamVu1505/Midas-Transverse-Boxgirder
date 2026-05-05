@@ -208,25 +208,26 @@ pip install ezdxf PyQt6 xlrd openpyxl
 - `data/Midas-Transverse-Boxgirder-analysis.xls` - Dữ liệu tải trọng + vật liệu (CLI hardcode, không override)
 
 ## Current Sprint
-**Goal:** Bỏ hardcode + áp dụng TCVN 11823 cho live load trên cánh hẫng (kế thừa T23 PT/CSA).
+**Goal:** Đã release v1.2.0. Sprint kế tiếp chưa bắt đầu — chọn 1 mục từ backlog v2.0 trước khi tiếp tục.
 
-**Done trong session 2026-05-05:**
-- **Live-load edge nodes (TCVN 11823)**: thêm 2 keypoint cách barrier inner-edge 0.3 m vào trong; cantilever lane (`cantilever1`/`cantilever2`) cắt từ liveload edge → web junction (loại đoạn 0.3 m sát lan can khỏi vùng đặt bánh xe) — `src/frame_builder.py`, `src/mct_frame_writer.py`
-- **Barrier per side từ Excel**: bỏ hardcode `barrier_len = 0.4 m`, đọc `d_L` (I11) + `d_R` (I13); barrier load tách `barrier_left` (I10) + `barrier_right` (I12) — half-section box girder
-- **Excel cell shift +2 rows** trong sheet "Load" (do thêm 4 cell d_L/d_R/barrier_L/barrier_R) — cập nhật cell map cho 16 keys khác (pavement, wind, temp, vehicle, impact)
-- **Material refactor**: thêm `f'c` (H70) + `RH` (H82, vừa chèn row mới) drive TDM-TYPE block parametric `Cxx, CEB, fc_kpa, RH, h, NR, ts, 0`
-- **PT property cells shift +1 row** (do row 82 mới): cập nhật `pt_property_reader.py` rows 84-96
-- **Excel-missing warning**: in/emit cảnh báo rõ ràng + fallback `d_L=d_R=0.4 m`
-- **CLAUDE.md**: cập nhật quy ước mesh (target_len=0.5 phù hợp), barrier convention, vật liệu
+**Done trong session 2026-05-05 (release v1.2.0):**
+- Commit `chore(gitignore)` (`5d003c2`): ignore `*.CA6` + untrack `docs/refer/refer_PT/midas/LT-MB-S01.CA6` (~11 MB binary)
+- Commit `docs+data` (`f722eb5`): README CLI 2 subcommand (generate/results) + PT/CSA docs, add `data/LT/` (4 DXF S1/S7/S12/S16), sync `docs/refer/refer_PT/dxf/` 4 file
+- Merge `feature/t23-pt-tendon` → `master` (fast-forward, 7 commits)
+- Bump v1.0.0 → v1.2.0 (`ad8107e`): `installer/setup.iss` + `CLAUDE.md` + `README.md` + `docs/USER-GUIDE.txt`
+- Build installer: `dist/installer/MidasTransverseBoxgirder_Setup_v1.2.0.exe` (37.5 MB) — PyInstaller + Inno Setup compile thành công
+- Push `origin/master` (8 commits từ `6c7c6b7..ad8107e`)
+- Xóa local + remote `feature/t23-pt-tendon` (đã merge sạch)
 
-**Next Action (cần user quyết hoặc validate):**
-1. **Validate Midas**: regenerate S16 + S1/S10 PT trong Midas/Civil → confirm nội lực + lane đúng + CSA chạy không lỗi
-2. **Commit**: gom 2 logical chunks (T19 + TCVN, vs material refactor) hoặc 1 commit lớn
-3. **Cleanup legacy** (T24): xóa `mct_writer.py`, `assembler.py`, `load_calculator.py`, `node/element/section_builder.py` nếu xác nhận không còn import nào
-4. **Rebuild installer** sau khi validate xong
+**Next Action (chờ user chọn 1 từ backlog):**
+1. **T13** — mặt cắt 2 hộp (1 OUTPOLY + 2 INPOLY): tạo nhánh `feature/t13-twin-box`, mở rộng `src/dxf_reader.py` để chấp nhận nhiều INPOLY, mở rộng `src/frame_builder.py` để tạo 2 bộ web
+2. **T20** — DXF validation warnings: cảnh báo khi DXF thiếu layer OUTPOLY/INPOLY hoặc sai số đỉnh (chỉnh `src/dxf_reader.py` + `gui/generate_tab.py`)
+3. **T21** — custom load combinations từ Excel (đọc thêm sheet "Combinations", drive `*LOADCOMB` block trong `src/mct_frame_writer.py`)
+4. **T22** — batch folder scan trong `gui/results_tab.py`: chọn folder thay vì 1 file BF + tự khớp với topo.json tương ứng
+5. **T24 phần còn lại** — quét xác nhận đã xóa hết import legacy (`node_generator`, `element_builder`, `section_builder`, `assembler`, `load_calculator`, `mct_writer`)
 
-**Blocker:** Validate trong Midas vì format MCT đã đổi (top slab có +4 node mỗi mặt cắt — 2 barrier + 2 liveload edge).
+**Blocker:** Không có.
 
 ## Session Log
-- 2026-05-05: TCVN 11823 live-load edge + barrier L/R từ Excel + fc/RH refactor + PT cell shift + Excel warning
+- 2026-05-05: TCVN 11823 live-load edge + barrier L/R + fc/RH refactor + PT cell shift → release v1.2.0 (merge master, build installer, push origin, xóa feature branch)
 - 2026-04-29: Construction Stage Analysis (TDM/ELEM-DEPMATL/STAGE/ANAL-CTRL/LOADCOMB CS) + sửa inverse-fillet cho TDN-PROFILE RADIUS
