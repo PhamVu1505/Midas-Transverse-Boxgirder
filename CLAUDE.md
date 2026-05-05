@@ -88,7 +88,7 @@ Midas-Transverse-Boxgirder/
 └── tests/                           # Validation scripts
 ```
 
-## Trạng thái hiện tại (v1.1-dev)
+## Trạng thái hiện tại (v1.2.0)
 
 | Module | Trạng thái |
 |--------|-----------|
@@ -196,7 +196,7 @@ pip install ezdxf PyQt6 xlrd openpyxl
 
 ## Build & Packaging
 1. **PyInstaller**: `run_gui.py` → `dist/MidasTransverseBoxgirder/` (standalone EXE)
-2. **Inno Setup 6**: `dist/` → `MidasTransverseBoxgirder_Setup_v1.0.0.exe` (28 MB)
+2. **Inno Setup 6**: `dist/` → `MidasTransverseBoxgirder_Setup_v1.2.0.exe` (~28 MB)
 3. Source code `.py` **KHÔNG** được bundle vào installer (chỉ có `.pyc` bytecode)
 4. File Excel data **KHÔNG** bundle — user tự cung cấp
 

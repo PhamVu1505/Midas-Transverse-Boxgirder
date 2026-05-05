@@ -1,7 +1,7 @@
 ================================================================================
   MIDAS TRANSVERSE BOXGIRDER - HUONG DAN SU DUNG
   Phan tich khung ngang dam hop BTCT DUL
-  Phien ban: 1.0.0
+  Phien ban: 1.2.0
 ================================================================================
 
 MUC LUC
@@ -26,7 +26,7 @@ Pipeline:
 2. CAI DAT
 ================================================================================
 
-Chay file: MidasTransverseBoxgirder_Setup_v1.0.0.exe
+Chay file: MidasTransverseBoxgirder_Setup_v1.2.0.exe
   - Khong can cai Python
   - Chi ho tro Windows 64-bit
   - Sau khi cai, mo tu Start Menu hoac Desktop shortcut
