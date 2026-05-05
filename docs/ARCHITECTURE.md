@@ -96,17 +96,6 @@
 | Load Reader | `load_reader.py` | Excel (sheet Load) | Load values |
 | Result Reader | `result_reader.py` | Beam Force XLS | Check points A-H |
 
-### Legacy (kept for reference)
-
-| Module | File | Note |
-|--------|------|------|
-| Node Generator | `node_generator.py` | Replaced by frame_builder |
-| Element Builder | `element_builder.py` | Replaced by frame_builder |
-| Section Builder | `section_builder.py` | Replaced by mct_frame_writer |
-| MCT Writer (old) | `mct_writer.py` | Replaced by mct_frame_writer |
-| Load Calculator | `load_calculator.py` | Replaced by load_reader |
-| Assembler | `assembler.py` | Replaced by mct_frame_writer |
-
 ## Section Offset Convention
 
 ```

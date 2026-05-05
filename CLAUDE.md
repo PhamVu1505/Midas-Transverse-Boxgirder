@@ -64,12 +64,7 @@ Midas-Transverse-Boxgirder/
 │   ├── material_reader.py          # Excel → material properties
 │   ├── load_reader.py              # Excel → load values
 │   ├── result_reader.py            # Beam Force XLS → check points
-│   ├── node_generator.py           # (legacy) Geometry → nodes
-│   ├── element_builder.py          # (legacy) Fixed topology
-│   ├── section_builder.py          # (legacy) PSC/TAPERED sections
-│   ├── mct_writer.py               # (legacy) MCT text blocks
-│   ├── load_calculator.py          # (legacy) Loads by H
-│   └── assembler.py                # (legacy) Pipeline DXF → MCT
+│   └── pt_property_reader.py       # Excel → tendon properties (PT cables)
 ├── gui/                             # GUI components
 │   ├── __init__.py
 │   ├── main_window.py              # Main window with tabs
