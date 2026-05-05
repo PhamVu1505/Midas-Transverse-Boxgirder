@@ -24,6 +24,7 @@ dist/
 *.CA1
 *.CA3
 *.CA3B1
+*.CA6
 *.spa
 
 # Generated output
