@@ -1,22 +1,24 @@
 """
-PT Property Reader - Đọc thông số cáp DƯL ngang từ Excel sheet 'General' A82:K96.
+PT Property Reader - Đọc thông số cáp DƯL ngang từ Excel sheet 'General' A83:K97.
 
-Layout (xls 0-indexed: row 81 = Excel row 82):
-    Row 84 (idx 83): Tensile strength    fpu  1860 MPa
-    Row 85 (idx 84): Yield strength      fpy  1674 MPa
-    Row 86 (idx 85): Modulus             Ep   197000 MPa
-    Row 87 (idx 86): Friction coef       mu   0.25 1/rad
-    Row 88 (idx 87): Wobble factor       K    6.6e-7 1/mm
-    Row 89 (idx 88): Strand diameter     Dp   15.2 mm
-    Row 90 (idx 89): Strand area         Aps  140 mm2
-    Row 91 (idx 90): # strands           np   5
-    Row 92 (idx 91): Tendon area         Ap   700 mm2
-    Row 93 (idx 92): Jacking stress      fpj  1395 MPa
-    Row 94 (idx 93): Jacking force       Pj   976.5 kN
-    Row 95 (idx 94): Anchor set          Δ    0.006 m
-    Row 96 (idx 95): Duct DIA            Dduct 66 mm
+Layout (xls 0-indexed: row 82 = Excel row 83):
+    Row  82: RH inserted at H82 (read by material_reader)
+    Row  83: Prestressing steel header
+    Row  85 (idx 84): Tensile strength    fpu   1860 MPa
+    Row  86 (idx 85): Yield strength      fpy   1674 MPa
+    Row  87 (idx 86): Modulus             Ep    197000 MPa
+    Row  88 (idx 87): Friction coef       mu    0.25 1/rad
+    Row  89 (idx 88): Wobble factor       K     6.6e-7 1/mm
+    Row  90 (idx 89): Strand diameter     Dp    15.2 mm
+    Row  91 (idx 90): Strand area         Aps   140 mm2
+    Row  92 (idx 91): # strands           np    5
+    Row  93 (idx 92): Tendon area         Ap    700 mm2
+    Row  94 (idx 93): Jacking stress      fpj   1395 MPa
+    Row  95 (idx 94): Jacking force       Pj    976.5 kN
+    Row  96 (idx 95): Anchor set          Δ     0.006 m
+    Row  97 (idx 96): Duct DIA            Dduct 66 mm
 
-Cột giá trị: H (idx 7) — kiểm chứng từ refer.
+Cột giá trị: H (idx 7).
 """
 
 import xlrd
@@ -32,19 +34,19 @@ def read_pt_properties(excel_path: str) -> TendonProperty:
     def _v(row_idx, col_idx=7):
         return float(ws.cell(row_idx, col_idx).value)
 
-    fpu       = _v(83)
-    fpy       = _v(84)
-    Ep        = _v(85)
-    mu        = _v(86)
-    K         = _v(87)
-    Dp        = _v(88)
-    Aps       = _v(89)
-    n_strands = int(_v(90))
-    Ap        = _v(91)
-    fpj       = _v(92)
-    Pj        = _v(93)
-    anchor    = _v(94)
-    duct      = _v(95)
+    fpu       = _v(84)
+    fpy       = _v(85)
+    Ep        = _v(86)
+    mu        = _v(87)
+    K         = _v(88)
+    Dp        = _v(89)
+    Aps       = _v(90)
+    n_strands = int(_v(91))
+    Ap        = _v(92)
+    fpj       = _v(93)
+    Pj        = _v(94)
+    anchor    = _v(95)
+    duct      = _v(96)
 
     return TendonProperty(
         fpu=fpu, fpy=fpy, Ep=Ep,

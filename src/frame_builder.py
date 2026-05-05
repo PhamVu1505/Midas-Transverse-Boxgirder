@@ -22,14 +22,18 @@ _TOL = 0.01  # 10mm
 
 def build_frame(outpoly_dxf: list, inpoly_dxf: list,
                 target_len: float = 0.5,
-                barrier_len: float = 0.4) -> dict:
+                d_L: float = 0.4,
+                d_R: float = 0.4,
+                liveload_offset: float = 0.3) -> dict:
     """Xây dựng khung kết cấu từ DXF polylines.
 
     Args:
         outpoly_dxf: OUTPOLY vertices [(x,y), ...] in DXF coords
         inpoly_dxf:  INPOLY vertices [(x,y), ...] in DXF coords
         target_len: chiều dài phần tử mục tiêu (m), dùng để chia đều
-        barrier_len: chiều dài phần tử đầu/cuối top_slab cho tải lan can (m)
+        d_L: bề rộng đoạn lan can trái (m) — phần tử đầu top slab chịu barrier_left
+        d_R: bề rộng đoạn lan can phải (m) — phần tử cuối top slab chịu barrier_right
+        liveload_offset: khoảng cách từ mép trong lan can đến mép hoạt tải (m, TCVN 11823 = 0.3)
 
     Returns:
         dict chứa frame geometry (MCT coords)
@@ -54,7 +58,7 @@ def build_frame(outpoly_dxf: list, inpoly_dxf: list,
 
     # ── Build frame paths ──
     # Build webs first: their bottom positions define bottom slab endpoints
-    top_slab = _build_top_slab(of, inf, H, target_len, barrier_len)
+    top_slab = _build_top_slab(of, inf, H, target_len, d_L, d_R, liveload_offset)
     web_left = _build_web(of, inf, 'left', H, target_len)
     web_right = _build_web(of, inf, 'right', H, target_len)
     # Bottom slab spans between web centerline bottoms
@@ -224,8 +228,15 @@ def _lerp_z(z, pts):
 # Top slab
 # ─────────────────────────────────────────────────────
 
-def _build_top_slab(of, inf, H, target_len, barrier_len=0.4):
-    """Build top slab path, keypoints, nodes."""
+def _build_top_slab(of, inf, H, target_len, d_L=0.4, d_R=0.4, liveload_offset=0.3):
+    """Build top slab path, keypoints, nodes.
+
+    Adds 4 keypoints at the cantilever tips:
+      - barrier inner edge L (tip_L + d_L)
+      - liveload edge L     (barrier_L + liveload_offset)
+      - liveload edge R     (barrier_R - liveload_offset)
+      - barrier inner edge R (tip_R - d_R)
+    """
     ttL = of['tip_top_L']
     ttR = of['tip_top_R']
 
@@ -280,16 +291,27 @@ def _build_top_slab(of, inf, H, target_len, barrier_len=0.4):
     # From INPOLY upper boundary
     for p in inn_upper:
         kp_xs.add(p[0])
-    # Barrier nodes: 0.4m from each tip
+    # Barrier inner-edge nodes (L: tip+d_L, R: tip-d_R)
     barrier_xs = set()
-    x_barrier_L = round(ttL[0] + barrier_len, 6)
-    x_barrier_R = round(ttR[0] - barrier_len, 6)
+    x_barrier_L = round(ttL[0] + d_L, 6)
+    x_barrier_R = round(ttR[0] - d_R, 6)
     if x_barrier_L not in kp_xs:
         kp_xs.add(x_barrier_L)
         barrier_xs.add(x_barrier_L)
     if x_barrier_R not in kp_xs:
         kp_xs.add(x_barrier_R)
         barrier_xs.add(x_barrier_R)
+
+    # Live-load edge nodes (TCVN 11823: 0.3m inboard from barrier inner edge)
+    liveload_xs = set()
+    x_liveload_L = round(x_barrier_L + liveload_offset, 6)
+    x_liveload_R = round(x_barrier_R - liveload_offset, 6)
+    if x_liveload_L not in kp_xs:
+        kp_xs.add(x_liveload_L)
+        liveload_xs.add(x_liveload_L)
+    if x_liveload_R not in kp_xs:
+        kp_xs.add(x_liveload_R)
+        liveload_xs.add(x_liveload_R)
 
     kp_xs = sorted(kp_xs)
 
@@ -304,6 +326,7 @@ def _build_top_slab(of, inf, H, target_len, barrier_len=0.4):
             'thickness': thickness,
             'is_keypoint': True,
             'is_barrier': x in barrier_xs,
+            'is_liveload_edge': x in liveload_xs,
         })
 
     # ── Add intermediate nodes (adaptive spacing) ──
@@ -327,6 +350,7 @@ def _build_top_slab(of, inf, H, target_len, barrier_len=0.4):
                     'thickness': thickness,
                     'is_keypoint': False,
                     'is_barrier': False,
+                    'is_liveload_edge': False,
                 })
 
     return {
@@ -338,6 +362,8 @@ def _build_top_slab(of, inf, H, target_len, barrier_len=0.4):
         'nodes': all_nodes,
         'barrier_node_L_x': x_barrier_L,
         'barrier_node_R_x': x_barrier_R,
+        'liveload_edge_L_x': x_liveload_L,
+        'liveload_edge_R_x': x_liveload_R,
     }
 
 

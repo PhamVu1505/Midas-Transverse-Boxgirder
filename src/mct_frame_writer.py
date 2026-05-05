@@ -47,8 +47,8 @@ def write_mct(frame: dict, section_name: str = 'Section',
         mat = read_material(excel_path)
     else:
         mat = {
-            'Ec_kpa': 3.8007e+07, 'nu': 0.2,
-            'alpha': 1.08e-05, 'density': 24.5,
+            'fc_mpa': 50.0, 'Ec_kpa': 3.8007e+07, 'nu': 0.2,
+            'alpha': 1.08e-05, 'density': 24.5, 'RH': 85.0,
         }
 
     top = frame['top_slab']
@@ -142,6 +142,12 @@ def write_mct(frame: dict, section_name: str = 'Section',
     top_at_wL = top_ids[wL_insert_idx]
     top_at_wR = top_ids[wR_insert_idx]
 
+    # Live-load edge node indices in top_nodes (TCVN 11823 — 0.3m from barrier)
+    ll_L_x = top['liveload_edge_L_x']
+    ll_R_x = top['liveload_edge_R_x']
+    ll_L_idx = next(i for i, n in enumerate(top_nodes) if abs(n['x'] - ll_L_x) < 1e-3)
+    ll_R_idx = next(i for i, n in enumerate(top_nodes) if abs(n['x'] - ll_R_x) < 1e-3)
+
     blocks = []
 
     # ── Header ──
@@ -185,12 +191,16 @@ def write_mct(frame: dict, section_name: str = 'Section',
         blocks.append('    2, 255,   0,   0,    0, 255,   0,    0,   0, 255,  NO, 0.5')
     blocks.append('')
     # ── TDM (Time Dependent Material) ──
+    fc_int = int(round(mat['fc_mpa']))
+    fc_kpa = int(round(mat['fc_mpa'] * 1000))
+    rh = int(round(mat['RH']))
     blocks.append('*TDM-TYPE    ; Time Dependent Material')
-    blocks.append('   NAME=C50, CEB, 50000, 85, 1, NR, 3, 0')
+    # CEB-FIP params: fc(kPa), RH(%), notional size h=1m, cement NR, ts=3 day, reserved 0
+    blocks.append(f'   NAME=C{fc_int}, CEB, {fc_kpa}, {rh}, 1, NR, 3, 0')
     blocks.append('')
     blocks.append('*TDM-LINK    ; Time Dependent Material Link')
     blocks.append('; iMAT, TDM-TYPE1(CREEP/SHRINKAGE), TDM-TYPE2(ELASTICITY)')
-    blocks.append('    1, C50, ')
+    blocks.append(f'    1, C{fc_int}, ')
     blocks.append('')
 
     # ── NODE ──
@@ -339,6 +349,9 @@ def write_mct(frame: dict, section_name: str = 'Section',
         blocks.append(f'    {s_id}, 255,   0,   0,    0, 255,   0,    0,   0, 255,  NO, 0.5')
     blocks.append('')
 
+    # Lưu vị trí để chèn *ELEM-DEPMATL sau khi `tendons` được xác định
+    elem_depmatl_insert_idx = len(blocks)
+
     # ── GROUP ──
     bot_range = f'{bot_ids[0]}to{bot_ids[-1]}'
     wL_range = f'{wL_ids[0]}to{wL_ids[-1]}' if wL_ids else ''
@@ -394,6 +407,12 @@ def write_mct(frame: dict, section_name: str = 'Section',
             _write_tendon_property_block(blocks, pt_props)
             _write_tendon_profile_blocks(blocks, tendons, pt_props)
 
+    # ── ELEM-DEPMATL (chèn sau SECT-COLOR khi có cáp DƯL, cho creep/shrinkage) ──
+    if tendons:
+        depmatl_lines = []
+        _write_elem_depmatl_block(depmatl_lines, elements, sections)
+        blocks[elem_depmatl_insert_idx:elem_depmatl_insert_idx] = depmatl_lines
+
     # ── STLDCASE ──
     blocks.append('*STLDCASE    ; Static Load Cases')
     blocks.append('; LCNAME, LCTYPE, DESC')
@@ -426,14 +445,23 @@ def write_mct(frame: dict, section_name: str = 'Section',
                          eid_wR_start, eid_wR_end,
                          e_bot_first=1, e_bot_last=N_bot - 1)
 
+    # ── Construction Stage (giữa load data và moving load, theo file mẫu) ──
+    if tendons:
+        _write_stage_block(blocks)
+
     # ── Moving load ──
     if ld:
         _write_moving_load(blocks, ld, top_nodes, top_ids,
                            eid_top_start, eid_top_end,
-                           wL_insert_idx, wR_insert_idx)
+                           wL_insert_idx, wR_insert_idx,
+                           ll_L_idx, ll_R_idx)
 
     # ── Load combinations ──
-    _write_load_combinations(blocks)
+    _write_load_combinations(blocks, has_pt=bool(tendons))
+
+    # ── Analysis control (P-delta, time-dependent) khi có CSA ──
+    if tendons:
+        _write_anal_ctrl_block(blocks)
 
     # ── ENDDATA ──
     blocks.append('*ENDDATA')
@@ -484,8 +512,6 @@ def _write_load_data(blocks, ld, elements, top_ids, top_nodes,
     all_eids = sorted(set(e[0] for e in elements))
     # Top slab element range
     top_eids = list(range(eid_top_start, eid_top_end + 1))
-    # First & last top slab elements (barrier)
-    barrier_eids = [top_eids[0], top_eids[-1]]
     # Interior top slab elements (pavement)
     pavement_eids = top_eids[1:-1]
     # Last top slab node (for WS/WL nodal loads)
@@ -536,7 +562,7 @@ def _write_load_data(blocks, ld, elements, top_ids, top_nodes,
                       f'0, -{ld["ws_pd"]:.4f}, 1, -{ld["ws_pd"]:.4f}, 0, 0, 0, 0, , NO, 0, 0, NO, ')
     blocks.append('')
 
-    # ── 5. Barrier ──
+    # ── 5. Barrier (split L/R) ──
     blocks.append('*USE-STLD, Barrier')
     blocks.append('')
     blocks.append('*BEAMLOAD    ; Element Beam Loads')
@@ -544,9 +570,10 @@ def _write_load_data(blocks, ld, elements, top_ids, top_nodes,
     blocks.append('; [VALUE]       : D1, P1, D2, P2, D3, P3, D4, P4')
     blocks.append('; [ECCEN]       : bECCEN, ECCDIR, I-END, J-END, bJ-END')
     blocks.append('; [ADDITIONAL]  : bADDITIONAL, ADDITIONAL_I-END, ADDITIONAL_J-END, bADDITIONAL_J-END')
-    for eid in barrier_eids:
-        blocks.append(f'   {eid}, BEAM   , UNILOAD, GZ, NO , NO, aDir[1], , , , '
-                      f'0, -{ld["barrier"]}, 1, -{ld["barrier"]}, 0, 0, 0, 0, Load, NO, 0, 0, NO, ')
+    blocks.append(f'   {top_eids[0]}, BEAM   , UNILOAD, GZ, NO , NO, aDir[1], , , , '
+                  f'0, -{ld["barrier_left"]}, 1, -{ld["barrier_left"]}, 0, 0, 0, 0, Load, NO, 0, 0, NO, ')
+    blocks.append(f'   {top_eids[-1]}, BEAM   , UNILOAD, GZ, NO , NO, aDir[1], , , , '
+                  f'0, -{ld["barrier_right"]}, 1, -{ld["barrier_right"]}, 0, 0, 0, 0, Load, NO, 0, 0, NO, ')
     blocks.append('')
 
     # ── 6. Pavement ──
@@ -628,36 +655,36 @@ def _make_vehicle_loads(point_load, n_pairs):
 
 def _write_moving_load(blocks, ld, top_nodes, top_ids,
                        eid_top_start, eid_top_end,
-                       wL_insert_idx, wR_insert_idx):
-    """Ghi moving load blocks: MVLDCODE, LINELANE, VEHICLE, VCLASS, MVLDCASE."""
+                       wL_insert_idx, wR_insert_idx,
+                       ll_L_idx, ll_R_idx):
+    """Ghi moving load blocks: MVLDCODE, LINELANE, VEHICLE, VCLASS, MVLDCASE.
 
+    Lane phân chia (TCVN 11823 — bánh xe cách mép trong lan can ≥ 0.3m):
+      cantilever1:  từ liveload_edge_L → web_junc_L  (loại đoạn lan can + 0.3m)
+      tr_lane(mid): giữa 2 web junction
+      cantilever2:  từ web_junc_R → liveload_edge_R
+    """
     top_eids = list(range(eid_top_start, eid_top_end + 1))
 
-    # ── Phân chia lane elements ──
-    # cantilever1: top slab từ đầu → trước connector 201 (wL_insert_idx)
-    # tr_lane(mid): giữa connector 201 và 202
-    # cantilever2: sau connector 202 → cuối
-    # Element index i connects top_ids[i] → top_ids[i+1], so element at eid_top_start+i
-    # wL_insert_idx, wR_insert_idx are node indices in top_nodes
-
-    cant1_eids = list(range(eid_top_start, eid_top_start + wL_insert_idx))
+    # Element index i connects top_ids[i] → top_ids[i+1]
+    cant1_eids = list(range(eid_top_start + ll_L_idx, eid_top_start + wL_insert_idx))
     mid_eids = list(range(eid_top_start + wL_insert_idx, eid_top_start + wR_insert_idx))
-    cant2_eids = list(range(eid_top_start + wR_insert_idx, eid_top_end + 1))
+    cant2_eids = list(range(eid_top_start + wR_insert_idx, eid_top_start + ll_R_idx))
 
     # ── Bề rộng và số pairs ──
-    x_left = top_nodes[0]['x']
-    x_right = top_nodes[-1]['x']
     x_wL = top_nodes[wL_insert_idx]['x']
     x_wR = top_nodes[wR_insert_idx]['x']
+    x_ll_L = top_nodes[ll_L_idx]['x']
+    x_ll_R = top_nodes[ll_R_idx]['x']
 
-    total_width = x_right - x_left
-    cant_L_width = abs(x_wL - x_left)
-    cant_R_width = abs(x_right - x_wR)
+    total_width = top_nodes[-1]['x'] - top_nodes[0]['x']
+    cant_L_eff = abs(x_wL - x_ll_L)
+    cant_R_eff = abs(x_ll_R - x_wR)
     interior_width = abs(x_wR - x_wL)
 
     n_total = int(total_width / 3.5)  # AASHTO: INT(W/3.5)
-    n_cant = _count_wheel_pairs(max(cant_L_width, cant_R_width) - 0.3)  # barrier offset
-    n_int = _count_wheel_pairs(interior_width)  # no offset
+    n_cant = _count_wheel_pairs(max(cant_L_eff, cant_R_eff))
+    n_int = _count_wheel_pairs(interior_width)
 
     # Lane factors: {n_lanes: factor}
     def lane_factor(n):
@@ -768,8 +795,13 @@ def _write_moving_load(blocks, ld, top_nodes, top_ids,
     blocks.append('')
 
 
-def _write_load_combinations(blocks):
-    """Ghi load combinations (AASHTO LRFD) — cố định cho mọi mặt cắt."""
+def _write_load_combinations(blocks, has_pt=False):
+    """Ghi load combinations (AASHTO LRFD).
+
+    Khi has_pt=True, các tổ hợp Service/Strength/Crack bổ sung nội lực do
+    cáp DƯL và biến dạng dài hạn (Tendon Primary/Secondary, Creep Secondary,
+    Shrinkage Secondary) — theo cấu trúc file mẫu LT-MB-S01.mct (dòng 1120-1166).
+    """
 
     blocks.append('*LOADCOMB    ; Combinations')
     blocks.append('; NAME=NAME, KIND, ACTIVE, bES, iTYPE, DESC, iSERV-TYPE, nLCOMTYPE, nSEISTYPE   ; line 1')
@@ -784,31 +816,71 @@ def _write_load_combinations(blocks):
     blocks.append('        MV, mv1, 1, MV, mv2, 1')
 
     # Service combinations
-    blocks.append('   NAME=LCB1, GEN, ACTIVE, 0, 0, service 1 for stress, 0, 0, 0')
-    blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
-    blocks.append('        CB, TG, 0.5, ST, System Temperature, 1')
-    blocks.append('   NAME=LCB2, GEN, ACTIVE, 0, 0, service 2 for stress, 0, 0, 0')
-    blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1.3')
-    blocks.append('        ST, System Temperature, 1')
-    blocks.append('   NAME=LCB3, GEN, ACTIVE, 0, 0, service 3 for stress, 0, 0, 0')
-    blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8')
-    blocks.append('        ST, System Temperature, 1, CB, TG, 0.5')
+    if has_pt:
+        # Service: Primary + Secondary của Tendon, chỉ Secondary của Creep/Shrinkage
+        blocks.append('   NAME=LCB1, GEN, ACTIVE, 0, 0, service 1 for stress, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
+        blocks.append('        CS, Creep Secondary, 1, CS, Shrinkage Secondary, 1, CB, TG, 0.5')
+        blocks.append('        CS, Tendon Primary, 1, CS, Tendon Secondary, 1')
+        blocks.append('        ST, System Temperature, 1')
+        blocks.append('   NAME=LCB2, GEN, ACTIVE, 0, 0, service 2 for stress, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1.3, CS, Creep Secondary, 1')
+        blocks.append('        CS, Shrinkage Secondary, 1, ST, System Temperature, 1')
+        blocks.append('        CS, Tendon Primary, 1, CS, Tendon Secondary, 1')
+        blocks.append('   NAME=LCB3, GEN, ACTIVE, 0, 0, service 3 for stress, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8, CS, Creep Secondary, 1')
+        blocks.append('        CS, Shrinkage Secondary, 1, ST, System Temperature, 1')
+        blocks.append('        CS, Tendon Primary, 1, CS, Tendon Secondary, 1, CB, TG, 0.5')
+    else:
+        blocks.append('   NAME=LCB1, GEN, ACTIVE, 0, 0, service 1 for stress, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
+        blocks.append('        CB, TG, 0.5, ST, System Temperature, 1')
+        blocks.append('   NAME=LCB2, GEN, ACTIVE, 0, 0, service 2 for stress, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1.3')
+        blocks.append('        ST, System Temperature, 1')
+        blocks.append('   NAME=LCB3, GEN, ACTIVE, 0, 0, service 3 for stress, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8')
+        blocks.append('        ST, System Temperature, 1, CB, TG, 0.5')
 
     # Strength combinations
-    blocks.append('   NAME=LCB4, GEN, ACTIVE, 0, 0, strength 1, 0, 0, 0')
-    blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.75')
-    blocks.append('        ST, System Temperature, 0.5')
-    blocks.append('   NAME=LCB5, GEN, ACTIVE, 0, 0, strength 2, 0, 0, 0')
-    blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35')
-    blocks.append('        ST, System Temperature, 0.5')
-    blocks.append('   NAME=LCB6, GEN, ACTIVE, 0, 0, strength 3, 0, 0, 0')
-    blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, ST, WS, 1.4')
-    blocks.append('        ST, System Temperature, 0.5')
-    blocks.append('   NAME=LCB7, GEN, ACTIVE, 0, 0, strength 4, 0, 0, 0')
-    blocks.append('        ST, Self Weight, 1.5, CB, DW, 1.5, ST, System Temperature, 0.5')
-    blocks.append('   NAME=LCB8, GEN, ACTIVE, 0, 0, strength 5, 0, 0, 0')
-    blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35, ST, WS, 0.4')
-    blocks.append('        ST, WL, 1, ST, System Temperature, 1')
+    if has_pt:
+        # Strength: chỉ Tendon Secondary (primary đã tính trong cáp resistance)
+        # Creep/Shrinkage Secondary giảm xuống factor 0.5 (LCB4-7) hoặc 1 (LCB8)
+        blocks.append('   NAME=LCB4, GEN, ACTIVE, 0, 0, strength 1, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.75')
+        blocks.append('        CS, Creep Secondary, 0.5, CS, Shrinkage Secondary, 0.5')
+        blocks.append('        ST, System Temperature, 0.5, CS, Tendon Secondary, 1')
+        blocks.append('   NAME=LCB5, GEN, ACTIVE, 0, 0, strength 2, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35')
+        blocks.append('        CS, Creep Secondary, 0.5, CS, Shrinkage Secondary, 0.5')
+        blocks.append('        ST, System Temperature, 0.5, CS, Tendon Secondary, 1')
+        blocks.append('   NAME=LCB6, GEN, ACTIVE, 0, 0, strength 3, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, ST, WS, 1.4')
+        blocks.append('        CS, Creep Secondary, 0.5, CS, Shrinkage Secondary, 0.5')
+        blocks.append('        ST, System Temperature, 0.5, CS, Tendon Secondary, 1')
+        blocks.append('   NAME=LCB7, GEN, ACTIVE, 0, 0, strength 4, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1.5, CB, DW, 1.5, CS, Creep Secondary, 0.5')
+        blocks.append('        CS, Shrinkage Secondary, 0.5, ST, System Temperature, 0.5')
+        blocks.append('        CS, Tendon Secondary, 1')
+        blocks.append('   NAME=LCB8, GEN, ACTIVE, 0, 0, strength 5, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35, ST, WS, 0.4')
+        blocks.append('        ST, WL, 1, CS, Creep Secondary, 1, CS, Shrinkage Secondary, 1')
+        blocks.append('        CS, Tendon Secondary, 1, ST, System Temperature, 1')
+    else:
+        blocks.append('   NAME=LCB4, GEN, ACTIVE, 0, 0, strength 1, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.75')
+        blocks.append('        ST, System Temperature, 0.5')
+        blocks.append('   NAME=LCB5, GEN, ACTIVE, 0, 0, strength 2, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35')
+        blocks.append('        ST, System Temperature, 0.5')
+        blocks.append('   NAME=LCB6, GEN, ACTIVE, 0, 0, strength 3, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, ST, WS, 1.4')
+        blocks.append('        ST, System Temperature, 0.5')
+        blocks.append('   NAME=LCB7, GEN, ACTIVE, 0, 0, strength 4, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1.5, CB, DW, 1.5, ST, System Temperature, 0.5')
+        blocks.append('   NAME=LCB8, GEN, ACTIVE, 0, 0, strength 5, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35, ST, WS, 0.4')
+        blocks.append('        ST, WL, 1, ST, System Temperature, 1')
 
     # Envelope combinations
     blocks.append('   NAME=ser_all, GEN, ACTIVE, 0, 1, service all for stress, 0, 0, 0')
@@ -817,12 +889,23 @@ def _write_load_combinations(blocks):
     blocks.append('        CB, LCB4, 1, CB, LCB5, 1, CB, LCB6, 1, CB, LCB7, 1, CB, LCB8, 1')
 
     # Crack service combinations
-    blocks.append('   NAME=LCB14, GEN, ACTIVE, 0, 0, service 1 for crack, 0, 0, 0')
-    blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
-    blocks.append('        CB, TG, 0.5, ST, System Temperature, 1')
-    blocks.append('   NAME=LCB15, GEN, ACTIVE, 0, 0, service 3 for crack, 0, 0, 0')
-    blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8')
-    blocks.append('        ST, System Temperature, 1, CB, TG, 0.5')
+    if has_pt:
+        # Crack: chỉ Tendon Secondary (theo file mẫu LCB14/LCB15)
+        blocks.append('   NAME=LCB14, GEN, ACTIVE, 0, 0, service 1 for crack, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
+        blocks.append('        CS, Creep Secondary, 1, CS, Shrinkage Secondary, 1, CB, TG, 0.5')
+        blocks.append('        CS, Tendon Secondary, 1, ST, System Temperature, 1')
+        blocks.append('   NAME=LCB15, GEN, ACTIVE, 0, 0, service 3 for crack, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8, CS, Creep Secondary, 1')
+        blocks.append('        CS, Shrinkage Secondary, 1, ST, System Temperature, 1')
+        blocks.append('        CS, Tendon Secondary, 1, CB, TG, 0.5')
+    else:
+        blocks.append('   NAME=LCB14, GEN, ACTIVE, 0, 0, service 1 for crack, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
+        blocks.append('        CB, TG, 0.5, ST, System Temperature, 1')
+        blocks.append('   NAME=LCB15, GEN, ACTIVE, 0, 0, service 3 for crack, 0, 0, 0')
+        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8')
+        blocks.append('        ST, System Temperature, 1, CB, TG, 0.5')
     blocks.append('   NAME=z_crack, GEN, ACTIVE, 0, 1, service all for crack, 0, 0, 0')
     blocks.append('        CB, LCB14, 1, CB, LCB15, 1')
     blocks.append('')
@@ -920,6 +1003,65 @@ def _build_tendons(pt_cables, frame,
             return 0.0
         return chord / (2.0 * sin_half)
 
+    def _line_intersection(p1, p2, p3, p4):
+        """Giao điểm 2 đường thẳng (p1,p2) và (p3,p4). Trả về (x, y) hoặc None nếu song song."""
+        x1, y1 = p1
+        x2, y2 = p2
+        x3, y3 = p3
+        x4, y4 = p4
+        denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+        if abs(denom) < 1e-9:
+            return None
+        t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
+        return (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+
+    def _polyline_to_fillet_vertices(pts_xyb):
+        """Inverse-fillet: convert LWPOLYLINE (x, y, bulge) → fillet-vertex list.
+
+        Mỗi cặp (V_i, V_{i+1}) có bulge≠0 là 2 endpoint cung tiếp xúc với 2 đoạn
+        thẳng kế cận. Gộp 2 endpoint thành 1 corner vertex tại giao điểm 2 đường
+        thẳng (V_{i-1},V_i) ∩ (V_{i+1},V_{i+2}) với RADIUS = bán kính cung.
+        Vertex thẳng giữ nguyên với R=0. Hai đầu cuối luôn R=0.
+
+        Theo Midas manual: "RADIUS: radius of the circle in tangent with the
+        straight line of tendon".
+        """
+        n = len(pts_xyb)
+        if n < 2:
+            return [(p[0], p[1], 0.0) for p in pts_xyb]
+
+        BULGE_EPS = 1e-4
+        # Mark arc edges
+        is_arc = [abs(pts_xyb[i][2]) > BULGE_EPS for i in range(n - 1)]
+
+        result = []
+        i = 0
+        while i < n:
+            x_i, y_i, b_i = pts_xyb[i]
+            # Edge i→i+1 cong + có vertex trước (i≥1) và sau (i+2≤n-1) → fillet pattern
+            if i + 1 < n and i >= 1 and i + 2 <= n - 1 and is_arc[i] \
+                    and not is_arc[i - 1] and not is_arc[i + 1]:
+                p_prev = (pts_xyb[i - 1][0], pts_xyb[i - 1][1])
+                p_arc_start = (x_i, y_i)
+                p_arc_end = (pts_xyb[i + 1][0], pts_xyb[i + 1][1])
+                p_next = (pts_xyb[i + 2][0], pts_xyb[i + 2][1])
+                corner = _line_intersection(p_prev, p_arc_start, p_arc_end, p_next)
+                R = _bulge_to_radius(b_i, p_arc_start, p_arc_end)
+                if corner is not None and R > 0:
+                    result.append((round(corner[0], 6), round(corner[1], 6), round(R, 4)))
+                    i += 2  # Skip both arc endpoints
+                    continue
+                # Fallback: 2 đường song song hoặc R không hợp lệ → giữ midpoint cung
+                mid = (0.5 * (p_arc_start[0] + p_arc_end[0]),
+                       0.5 * (p_arc_start[1] + p_arc_end[1]))
+                result.append((round(mid[0], 6), round(mid[1], 6), round(R, 4) if R > 0 else 0))
+                i += 2
+                continue
+            # Vertex thẳng → giữ nguyên với R=0
+            result.append((x_i, y_i, 0.0))
+            i += 1
+        return result
+
     tendons = []
     for layer, dxf_pts in pt_cables:
         m = PT_RE.match(layer)
@@ -936,37 +1078,22 @@ def _build_tendons(pt_cables, frame,
             else:
                 orig.append((p[0], p[1], 0.0))
 
-        # Compute per-edge radius IN DXF NATURAL ORDER. radii_orig[i] = R of edge i→i+1.
-        # Bulge magnitude is direction-invariant → same R after reversal.
-        radii_orig = []
-        for i in range(len(orig) - 1):
-            r = _bulge_to_radius(
-                orig[i][2],
-                (orig[i][0], orig[i][1]),
-                (orig[i + 1][0], orig[i + 1][1]),
-            )
-            radii_orig.append(round(r, 4) if r > 0 else 0)
+        # Inverse-fillet: gộp các cặp endpoint cung thành 1 corner vertex với
+        # R = fillet radius. Hai đầu cuối luôn R=0. Output: list (x_dxf, y_dxf, R).
+        fillet_pts = _polyline_to_fillet_vertices(orig)
 
         # Decide whether to reverse so cable direction matches element I→J:
         #   TOP/BOT: I→J = increasing X (left → right)
         #   WEB-L/WEB-R: I→J = top → bottom (decreasing Z, here decreasing Y_dxf)
         if loc in ('TOP', 'BOT'):
-            need_reverse = orig[0][0] > orig[-1][0]
+            need_reverse = fillet_pts[0][0] > fillet_pts[-1][0]
         elif loc in ('WEB-L', 'WEB-R'):
-            need_reverse = orig[0][1] < orig[-1][1]
+            need_reverse = fillet_pts[0][1] < fillet_pts[-1][1]
         else:
             continue
 
         if need_reverse:
-            ordered = list(reversed(orig))
-            radii_per_edge = list(reversed(radii_orig))
-        else:
-            ordered = list(orig)
-            radii_per_edge = list(radii_orig)
-
-        # RADIUS at vertex i (in MCT *TDN-PROFILE) = radius of LEAVING edge (i, i+1).
-        # Last vertex has no leaving edge → R=0. Match refer convention.
-        vertex_radii = list(radii_per_edge) + [0]
+            fillet_pts = list(reversed(fillet_pts))
 
         # Transform DXF → MCT element-local.
         if loc == 'TOP':
@@ -974,7 +1101,7 @@ def _build_tendons(pt_cables, frame,
             first_elem = eid_top_start
             x_origin = top_nodes[0]['x']
             profile = []
-            for (x_dxf, y_dxf, _b), r in zip(ordered, vertex_radii):
+            for x_dxf, y_dxf, r in fillet_pts:
                 x_mct = x_dxf - x_center
                 z_mct = y_dxf - y_bot_dxf
                 profile.append((
@@ -987,7 +1114,7 @@ def _build_tendons(pt_cables, frame,
             first_elem = e_bot_first
             x_origin = bot_nodes[0]['x']
             profile = []
-            for (x_dxf, y_dxf, _b), r in zip(ordered, vertex_radii):
+            for x_dxf, y_dxf, r in fillet_pts:
                 x_mct = x_dxf - x_center
                 z_mct = y_dxf - y_bot_dxf
                 profile.append((
@@ -1000,7 +1127,7 @@ def _build_tendons(pt_cables, frame,
             first_elem = eid_wL_start
             z_origin = wL_nodes[0]['z']
             profile = []
-            for (x_dxf, y_dxf, _b), r in zip(ordered, vertex_radii):
+            for x_dxf, y_dxf, r in fillet_pts:
                 x_mct = x_dxf - x_center
                 z_mct = y_dxf - y_bot_dxf
                 profile.append((
@@ -1013,7 +1140,7 @@ def _build_tendons(pt_cables, frame,
             first_elem = eid_wR_start
             z_origin = wR_nodes[0]['z']
             profile = []
-            for (x_dxf, y_dxf, _b), r in zip(ordered, vertex_radii):
+            for x_dxf, y_dxf, r in fillet_pts:
                 x_mct = x_dxf - x_center
                 z_mct = y_dxf - y_bot_dxf
                 profile.append((
@@ -1097,4 +1224,87 @@ def _write_tendon_prestress_block(blocks, tendons, prop):
     blocks.append('; TDN-NAME, FORCE/STRESS, JACKING, BEGIN, END, iGROUTING, GROUP')
     for t in tendons:
         blocks.append(f' {t.name}, STRESS, BEGIN, {stress_kpa:g}, 0, 0, Load')
+    blocks.append('')
+
+
+def _compress_eid_list(eids):
+    """Gộp eid liên tiếp thành dạng 'a to b', cách nhau bằng space.
+    Ví dụ: [1,2,3,5,7,8] → '1to3 5 7 8'."""
+    if not eids:
+        return ''
+    eids = sorted(set(eids))
+    runs = []
+    start = prev = eids[0]
+    for x in eids[1:]:
+        if x == prev + 1:
+            prev = x
+        else:
+            runs.append((start, prev))
+            start = prev = x
+    runs.append((start, prev))
+    parts = []
+    for a, b in runs:
+        if a == b:
+            parts.append(str(a))
+        elif b == a + 1:
+            parts.append(f'{a} {b}')
+        else:
+            parts.append(f'{a}to{b}')
+    return ' '.join(parts)
+
+
+def _write_elem_depmatl_block(blocks, elements, sections):
+    """Ghi *ELEM-DEPMATL: notional size H = d_avg cho từng element.
+
+    Element được gộp theo cùng giá trị H (làm tròn 6 chữ số) để khớp với
+    cấu trúc file mẫu (LT-MB-S01.mct dòng 197-217).
+    """
+    h_groups = {}  # H_value (rounded) → list of eid
+    for eid, _, _, sid in elements:
+        sec = sections[sid - 1]  # sid is 1-based
+        d_i, d_j = sec[3], sec[4]
+        d_avg = 0.5 * (d_i + d_j)
+        H_key = round(d_avg, 6)
+        h_groups.setdefault(H_key, []).append(eid)
+
+    blocks.append('*ELEM-DEPMATL    ; Change Element Dependent Material Property')
+    blocks.append('; ELEM_LIST, TYPE, H(VS)')
+    # Sort by smallest eid in each group for readability
+    for H_val, eids in sorted(h_groups.items(), key=lambda kv: min(kv[1])):
+        elem_list = _compress_eid_list(eids)
+        blocks.append(f'   {elem_list}, NSM, {H_val:g}')
+    blocks.append('')
+
+
+def _write_stage_block(blocks):
+    """Ghi *STAGE block — 1 giai đoạn CS 1 kéo dài 10000 ngày.
+
+    Theo file mẫu LT-MB-S01.mct (dòng 871-883): kích hoạt toàn model tại
+    tuổi 7 ngày, biên ORIGINAL, tải FIRST, 5 incremental steps.
+    """
+    blocks.append('*STAGE    ; Define Construction Stage')
+    blocks.append('; NAME=NAME, DURATION, bSAVESTAGE, bSAVESTEP, bINCRESTEP, INCRESTEP  ; line 1')
+    blocks.append('; STEP=DAY1, DAY2, ...                                               ; line 2')
+    blocks.append('; AELEM=GROUP1, AGE1, GROUP2, AGE2, ...                              ; line 3')
+    blocks.append('; DELEM=GROUP1, REDIST1, GROUP2, REDIST2, ...                        ; line 4')
+    blocks.append('; ABNDR=BGROUP1, POS1, BGROUP2, POS2, ...                            ; line 5')
+    blocks.append('; DBNDR=BGROUP1, BGROUP2, ...                                        ; line 6')
+    blocks.append('; ALOAD=LGROUP1, DAY1, LGROUP2, DAY2, ...                            ; line 7')
+    blocks.append('; DLOAD=LGROUP1, DAY1, LGROUP2, DAY2, ...                            ; line 8')
+    blocks.append('  NAME=CS 1, 10000, YES, YES, NO, 5')
+    blocks.append('  AELEM=Model, 7')
+    blocks.append('  ABNDR=Boundary, ORIGINAL')
+    blocks.append('  ALOAD=Load, FIRST')
+    blocks.append('')
+
+
+def _write_anal_ctrl_block(blocks):
+    """Ghi *ANAL-CTRL — bật P-delta, Newton-Raphson, time-dependent (creep/shrinkage).
+
+    Theo file mẫu LT-MB-S01.mct (dòng 1215-1217).
+    bTRS=YES kích hoạt time-dependent analysis cho construction stage.
+    """
+    blocks.append('*ANAL-CTRL')
+    blocks.append('; bARDC, bANRC, iITER, TOL, bCSECF, bTRS, bCRBAR, bTPF, bCSO, bSCS, bCLATS')
+    blocks.append('   YES, YES, 20, 0.001, YES, YES, NO, NO, NO, NO, NO, NO')
     blocks.append('')

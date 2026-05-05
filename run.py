@@ -17,6 +17,7 @@ import ezdxf
 
 from src.dxf_reader import _get_polyline_vertices, read_pt_cables
 from src.frame_builder import build_frame
+from src.load_reader import read_loads
 from src.mct_frame_writer import write_mct
 from src.pt_property_reader import read_pt_properties
 from src.result_reader import (parse_beam_force, _build_element_thickness,
@@ -48,10 +49,17 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
     inpoly = _get_polyline_vertices(msp, 'INPOLY')
     pt_cables = read_pt_cables(msp) if include_pt is not False else []
 
-    print(f'[{name}] Building frame...')
-    frame = build_frame(outpoly, inpoly)
-
     excel = EXCEL_PATH if os.path.exists(EXCEL_PATH) else None
+    if not excel:
+        print(f'[{name}] WARNING: Excel not found at {EXCEL_PATH}')
+        print(f'[{name}] WARNING: using fallback d_L=d_R=0.4 m and skipping all load blocks')
+    ld = read_loads(excel) if excel else None
+    d_L = ld['d_L'] if ld else 0.4
+    d_R = ld['d_R'] if ld else 0.4
+
+    print(f'[{name}] Building frame (d_L={d_L:.3f}, d_R={d_R:.3f})...')
+    frame = build_frame(outpoly, inpoly, d_L=d_L, d_R=d_R)
+
     pt_props = read_pt_properties(excel) if (excel and pt_cables) else None
     if pt_cables:
         print(f'[{name}] PT cables detected: {[n for n, _ in pt_cables]}')
@@ -154,10 +162,16 @@ def _process_results(section_dir: str):
     # Build topology
     doc = ezdxf.readfile(dxf_path)
     msp = doc.modelspace()
+    excel = EXCEL_PATH if os.path.exists(EXCEL_PATH) else None
+    if not excel:
+        print(f'[{name}] WARNING: Excel not found, using fallback d_L=d_R=0.4 m')
+    ld = read_loads(excel) if excel else None
+    d_L = ld['d_L'] if ld else 0.4
+    d_R = ld['d_R'] if ld else 0.4
     frame = build_frame(
         _get_polyline_vertices(msp, 'OUTPOLY'),
-        _get_polyline_vertices(msp, 'INPOLY'))
-    excel = EXCEL_PATH if os.path.exists(EXCEL_PATH) else None
+        _get_polyline_vertices(msp, 'INPOLY'),
+        d_L=d_L, d_R=d_R)
     _, topo = write_mct(frame, name, excel)
 
     # Parse beam force
