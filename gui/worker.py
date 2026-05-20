@@ -6,7 +6,7 @@ import os
 import ezdxf
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from src.dxf_reader import _get_polyline_vertices, read_pt_cables
+from src.dxf_reader import _get_polyline_vertices, read_inpolys, read_pt_cables, section_type_from_inpolys
 from src.frame_builder import build_frame
 from src.load_reader import read_loads
 from src.mct_frame_writer import write_mct
@@ -49,13 +49,15 @@ class GenerateWorker(QThread):
                 doc = ezdxf.readfile(dxf_path)
                 msp = doc.modelspace()
                 outpoly = _get_polyline_vertices(msp, 'OUTPOLY')
-                inpoly = _get_polyline_vertices(msp, 'INPOLY')
+                inpolys = read_inpolys(msp)
+                stype = section_type_from_inpolys(inpolys)
+                inpoly = inpolys if stype == 'twin_box' else inpolys[0]
                 pt_cables = read_pt_cables(msp) if self.include_pt is not False else []
                 if pt_cables:
                     layer_names = ', '.join(n for n, _ in pt_cables)
                     self.log.emit(f'[{name}] PT cables: {layer_names}')
 
-                self.log.emit(f'[{name}] Building frame (d_L={d_L:.3f}, d_R={d_R:.3f})...')
+                self.log.emit(f'[{name}] Building frame ({stype}, d_L={d_L:.3f}, d_R={d_R:.3f})...')
                 frame = build_frame(outpoly, inpoly, d_L=d_L, d_R=d_R)
 
                 pt_props = read_pt_properties(excel) if (excel and pt_cables) else None
@@ -75,7 +77,7 @@ class GenerateWorker(QThread):
 
                 svg_path = os.path.join(section_dir, f'{name}_frame.svg')
                 try:
-                    export_frame_svg(outpoly, inpoly, svg_path, name)
+                    export_frame_svg(outpoly, inpoly, svg_path, name, section_type=stype)
                 except Exception:
                     svg_path = ''
 

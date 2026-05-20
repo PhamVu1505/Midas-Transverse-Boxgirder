@@ -208,26 +208,28 @@ pip install ezdxf PyQt6 xlrd openpyxl
 - `data/Midas-Transverse-Boxgirder-analysis.xls` - Dữ liệu tải trọng + vật liệu (CLI hardcode, không override)
 
 ## Current Sprint
-**Goal:** Đã release v1.2.0. Sprint kế tiếp chưa bắt đầu — chọn 1 mục từ backlog v2.0 trước khi tiếp tục.
+**Goal:** T13 — mặt cắt 2 hộp (twin box, 1 OUTPOLY + 2 INPOLY). Sửa frame builder cho twin box, test với `data/TP_BL/S1.dxf`.
 
-**Done trong session 2026-05-05 (release v1.2.0):**
-- Commit `chore(gitignore)` (`5d003c2`): ignore `*.CA6` + untrack `docs/refer/refer_PT/midas/LT-MB-S01.CA6` (~11 MB binary)
-- Commit `docs+data` (`f722eb5`): README CLI 2 subcommand (generate/results) + PT/CSA docs, add `data/LT/` (4 DXF S1/S7/S12/S16), sync `docs/refer/refer_PT/dxf/` 4 file
-- Merge `feature/t23-pt-tendon` → `master` (fast-forward, 7 commits)
-- Bump v1.0.0 → v1.2.0 (`ad8107e`): `installer/setup.iss` + `CLAUDE.md` + `README.md` + `docs/USER-GUIDE.txt`
-- Build installer: `dist/installer/MidasTransverseBoxgirder_Setup_v1.2.0.exe` (37.5 MB) — PyInstaller + Inno Setup compile thành công
-- Push `origin/master` (8 commits từ `6c7c6b7..ad8107e`)
-- Xóa local + remote `feature/t23-pt-tendon` (đã merge sạch)
+**Done trong session 2026-05-20 (T13 twin-box fixes):**
+- **Mặt trên crown:** `_twin_top_outer_chain` viết lại — đi dọc polyline OUTPOLY, loại nhánh chạm đáy → hết chữ V lõm (trước lấy nhầm web_junc vào mặt trên)
+- **Bụng ngoài L/R:** `_build_twin_outer_web` đặt mọi keypoint trên tim bụng; `_build_twin_bottom_slab` + `build_twin_frame` cho bản đáy nối đáy tim bụng → connector 201/203 hết dài 0
+- **Vách giữa:** `_build_center_web` đỉnh tại `deck − gap_width` → connector 202 hết dài 0
+- **Inner boundary từng hộp:** thêm `_void_top_bot_chains` (đi dọc polygon mỗi void, tách mép trên+dưới đầy đủ); `_inn_upper_twin` viết lại, bỏ heuristic `_twin_junc_inner_z` → hết spike t=1.45 tại web, bắt được góc void sát vách giữa
+- **Liên tục chiều dày:** `_inn_upper_twin` thêm điểm `web_junc` đầu chuỗi → chiều dày bản top vuốt liên tục cánh hẫng→vút→ô hộp (0.25→0.60→0.80), hết bậc nhảy
+- **Bản đáy:** mép dưới lấy theo `_void_top_bot_chains` → gồm góc vút sát bụng `±5.004`
+- **Boundary support:** thêm gối loại 2 (`001000`, chỉ Dz) tại node 13 = `bot_ids[bot_center_idx]` (đáy bản giao vách giữa) trong `*CONSTRAINT` của `_write_mct_twin`
+- **SVG:** vẽ mặt trên theo crown thật (`svg_export`)
+- File sửa: `src/frame_builder.py`, `src/mct_frame_writer.py`, `src/svg_export.py`
+- Kết quả: `output/TP_BL_test/S1/S1_frame.mct` — 109 node / 110 phần tử, không phần tử suy biến, không node trùng; S16 single-box không hồi quy (66/66)
 
-**Next Action (chờ user chọn 1 từ backlog):**
-1. **T13** — mặt cắt 2 hộp (1 OUTPOLY + 2 INPOLY): tạo nhánh `feature/t13-twin-box`, mở rộng `src/dxf_reader.py` để chấp nhận nhiều INPOLY, mở rộng `src/frame_builder.py` để tạo 2 bộ web
-2. **T20** — DXF validation warnings: cảnh báo khi DXF thiếu layer OUTPOLY/INPOLY hoặc sai số đỉnh (chỉnh `src/dxf_reader.py` + `gui/generate_tab.py`)
-3. **T21** — custom load combinations từ Excel (đọc thêm sheet "Combinations", drive `*LOADCOMB` block trong `src/mct_frame_writer.py`)
-4. **T22** — batch folder scan trong `gui/results_tab.py`: chọn folder thay vì 1 file BF + tự khớp với topo.json tương ứng
-5. **T24 phần còn lại** — quét xác nhận đã xóa hết import legacy (`node_generator`, `element_builder`, `section_builder`, `assembler`, `load_calculator`, `mct_writer`)
+**Next Action:**
+1. Mở `output/TP_BL_test/S1/S1_frame.mct` trong Midas/Civil để nghiệm thu trực quan twin box
+2. Chưa tạo nhánh `feature/t13-twin-box` — đang làm trên `master`, working tree còn thay đổi chưa commit
+3. Test thêm DXF twin box khác (nếu có) ngoài `data/TP_BL/S1.dxf`
 
-**Blocker:** Không có.
+**Blocker:** Không có — chờ user nghiệm thu twin box trong Midas/Civil.
 
 ## Session Log
+- 2026-05-20: T13 twin-box — mặt trên crown, bụng + connector 201-203, inner boundary từng hộp (`_void_top_bot_chains`), chiều dày liên tục, gối loại 2 tại node 13
 - 2026-05-05: TCVN 11823 live-load edge + barrier L/R + fc/RH refactor + PT cell shift → release v1.2.0 (merge master, build installer, push origin, xóa feature branch)
 - 2026-04-29: Construction Stage Analysis (TDM/ELEM-DEPMATL/STAGE/ANAL-CTRL/LOADCOMB CS) + sửa inverse-fillet cho TDN-PROFILE RADIUS

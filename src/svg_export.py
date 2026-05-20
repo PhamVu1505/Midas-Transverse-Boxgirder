@@ -9,29 +9,35 @@ Layer 3: Keypoints + intermediate nodes với thickness annotations
 from .frame_builder import build_frame
 
 
-def export_frame_svg(outpoly_dxf: list, inpoly_dxf: list,
+def export_frame_svg(outpoly_dxf: list, inpoly_dxf,
                      output_path: str, section_name: str = '',
-                     scale: float = 80.0, target_len: float = 0.5):
+                     scale: float = 80.0, target_len: float = 0.5,
+                     section_type: str = None):
     """Xuất SVG trực quan frame extraction.
 
     Args:
         outpoly_dxf: OUTPOLY vertices (DXF coords)
-        inpoly_dxf:  INPOLY vertices (DXF coords)
+        inpoly_dxf:  INPOLY vertices, hoặc [in_left, in_right] cho twin box
         output_path: đường dẫn file SVG
         section_name: tên mặt cắt (hiển thị tiêu đề)
         scale: pixel/meter
         target_len: chiều dài phần tử mục tiêu (m)
+        section_type: 'single' | 'twin_box' (None = auto)
     """
     frame = build_frame(outpoly_dxf, inpoly_dxf, target_len=target_len)
+    stype = section_type or frame.get('section_type', 'single')
 
     out = frame['outpoly_mct']
-    inn = frame['inpoly_mct']
+    inn_list = [frame['inpoly_mct']]
+    if stype == 'twin_box':
+        inn_list.append(frame['inpoly_right_mct'])
     H = frame['H']
+    B = frame.get('B_total', max(p[0] for p in out) - min(p[0] for p in out))
 
     # ── Canvas ──
     margin = 100
-    all_x = [p[0] for p in out] + [p[0] for p in inn]
-    all_z = [p[1] for p in out] + [p[1] for p in inn]
+    all_x = [p[0] for p in out] + [p[0] for poly in inn_list for p in poly]
+    all_z = [p[1] for p in out] + [p[1] for poly in inn_list for p in poly]
     x_lo, x_hi = min(all_x) - 0.8, max(all_x) + 0.8
     z_lo, z_hi = -0.5, max(all_z) + 0.8
     svg_w = (x_hi - x_lo) * scale + 2 * margin
@@ -69,8 +75,9 @@ def export_frame_svg(outpoly_dxf: list, inpoly_dxf: list,
     svg.append('</style></defs>')
 
     # ── Title ──
+    label = 'twin box' if stype == 'twin_box' else 'frame'
     svg.append(f'<text x="{svg_w/2:.0f}" y="22" text-anchor="middle" class="title">'
-               f'{section_name} — H={H:.3f}m, B={max(all_x)-min(all_x):.2f}m — Frame Extraction</text>')
+               f'{section_name} — H={H:.3f}m, B={B:.2f}m — {label}</text>')
 
     # ════════════════════════════════════════════
     # LAYER 1: Cross-section shape
@@ -82,8 +89,9 @@ def export_frame_svg(outpoly_dxf: list, inpoly_dxf: list,
     svg.append(f'<polygon points="{pts}" class="out-fill"/>')
 
     # INPOLY filled (white = void)
-    pts = ' '.join(f'{tx(x):.1f},{tz(z):.1f}' for x, z in inn)
-    svg.append(f'<polygon points="{pts}" class="inn-fill"/>')
+    for inn in inn_list:
+        pts = ' '.join(f'{tx(x):.1f},{tz(z):.1f}' for x, z in inn)
+        svg.append(f'<polygon points="{pts}" class="inn-fill"/>')
 
     # OUTPOLY vertex markers
     for i, (x, z) in enumerate(out):
@@ -94,12 +102,14 @@ def export_frame_svg(outpoly_dxf: list, inpoly_dxf: list,
                    f'class="lbl" fill="#92400e">O{i+1}</text>')
 
     # INPOLY vertex markers
-    for i, (x, z) in enumerate(inn):
-        svg.append(f'<circle cx="{tx(x):.1f}" cy="{tz(z):.1f}" r="3" class="inn-vert"/>')
-        dx = 8 if x >= 0 else -8
-        anc = 'start' if x >= 0 else 'end'
-        svg.append(f'<text x="{tx(x)+dx:.1f}" y="{tz(z)+12:.1f}" text-anchor="{anc}" '
-                   f'class="lbl" fill="#5b21b6">I{i+1}</text>')
+    for pi, inn in enumerate(inn_list):
+        prefix = 'L' if stype == 'twin_box' and pi == 0 else ('R' if stype == 'twin_box' else '')
+        for i, (x, z) in enumerate(inn):
+            svg.append(f'<circle cx="{tx(x):.1f}" cy="{tz(z):.1f}" r="3" class="inn-vert"/>')
+            dx = 8 if x >= 0 else -8
+            anc = 'start' if x >= 0 else 'end'
+            svg.append(f'<text x="{tx(x)+dx:.1f}" y="{tz(z)+12:.1f}" text-anchor="{anc}" '
+                       f'class="lbl" fill="#5b21b6">{prefix}I{i+1}</text>')
 
     # ════════════════════════════════════════════
     # LAYER 2: Frame paths + inner boundaries
@@ -109,24 +119,35 @@ def export_frame_svg(outpoly_dxf: list, inpoly_dxf: list,
     bot = frame['bottom_slab']
     wL = frame['web_left']
     wR = frame['web_right']
+    wC = frame.get('web_center')
 
-    # Top surface line
-    sl = top['surface_line']
-    svg.append(f'<line x1="{tx(sl[0][0]):.1f}" y1="{tz(sl[0][1]):.1f}" '
-               f'x2="{tx(sl[1][0]):.1f}" y2="{tz(sl[1][1]):.1f}" class="path-top"/>')
+    # Top surface line — dùng top_outer_chain (twin box: crown) nếu có
+    top_chain = top.get('top_outer_chain')
+    if top_chain and len(top_chain) >= 2:
+        pts = ' '.join(f'{tx(x):.1f},{tz(z):.1f}' for x, z in top_chain)
+        svg.append(f'<polyline points="{pts}" class="path-top"/>')
+    else:
+        sl = top['surface_line']
+        svg.append(f'<line x1="{tx(sl[0][0]):.1f}" y1="{tz(sl[0][1]):.1f}" '
+                   f'x2="{tx(sl[1][0]):.1f}" y2="{tz(sl[1][1]):.1f}" class="path-top"/>')
 
     # Inner boundaries (orange dashed) — cantilever regions from OUTPOLY
     for bnd in [top['inner_boundary_L'], top['inner_boundary_R']]:
-        if len(bnd) >= 2:
+        if bnd and len(bnd) >= 2:
             pts = ' '.join(f'{tx(x):.1f},{tz(z):.1f}' for x, z in bnd)
             svg.append(f'<polyline points="{pts}" class="inner-bnd"/>')
 
-    # Complete INPOLY inner boundary (orange dashed)
-    # Reconstruct: web_inner_L(top→bot) → inner_bot(L→R) → web_inner_R(bot→top) → inn_upper(R→L)
+    if stype == 'twin_box':
+        for bnd in [top.get('inner_boundary_box_L'), top.get('inner_boundary_box_R')]:
+            if bnd and len(bnd) >= 2:
+                pts = ' '.join(f'{tx(x):.1f},{tz(z):.1f}' for x, z in bnd)
+                svg.append(f'<polyline points="{pts}" class="inner-bnd"/>')
+
+    # Complete INPOLY inner boundary (orange dashed) — single box only
     inf = frame['inner_features']
     inpoly_bnd = []
-    # Top slab inner boundary (box region)
-    inpoly_bnd.extend(top['inner_boundary_box'])
+    if stype != 'twin_box':
+        inpoly_bnd.extend(top.get('inner_boundary_box', []))
     # Right web inner edge (top→bottom)
     for p in sorted(wR['inner_edge'], key=lambda p: -p[1]):
         if not any(abs(p[0]-q[0]) < 0.001 and abs(p[1]-q[1]) < 0.001 for q in inpoly_bnd):
@@ -146,7 +167,10 @@ def export_frame_svg(outpoly_dxf: list, inpoly_dxf: list,
         svg.append(f'<polyline points="{pts}" class="inner-bnd"/>')
 
     # Web centerlines
-    for web, cls in [(wL, 'path-web'), (wR, 'path-web')]:
+    webs = [(wL, 'path-web'), (wR, 'path-web')]
+    if wC:
+        webs.insert(1, (wC, 'path-web'))
+    for web, cls in webs:
         nodes = web['nodes']
         if len(nodes) >= 2:
             pts = ' '.join(f'{tx(n["x"]):.1f},{tz(n["z"]):.1f}' for n in nodes)

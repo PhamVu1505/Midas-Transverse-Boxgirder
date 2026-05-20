@@ -42,6 +42,8 @@ class CrossSectionGeometry:
 
     # --- INPOLY vertices (10 đỉnh) ---
     inpoly: List[Tuple[float, float]] = field(default_factory=list)
+    inpoly_right: List[Tuple[float, float]] = field(default_factory=list)  # twin_box only
+    section_type: str = 'single'  # 'single' | 'twin_box'
 
     # --- PT cables (auto-detected từ layer DXF dạng PT-<LOC>-<N>) ---
     # Mỗi entry: (layer_name, [(x_dxf, y_dxf), ...])

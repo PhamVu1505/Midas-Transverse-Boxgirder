@@ -20,6 +20,34 @@ _TOL = 0.01  # Tolerance 10mm
 PT_LAYER_RE = re.compile(r'^PT-(TOP|BOT|WEB-L|WEB-R)-(\d+)$', re.IGNORECASE)
 
 
+def read_inpolys(msp) -> list:
+    """Đọc tất cả LWPOLYLINE trên layer INPOLY, sắp xếp trái → phải theo tâm X.
+
+    Returns:
+        list of vertex lists; len==1 single box, len==2 twin box.
+    """
+    polys = []
+    for e in msp.query('LWPOLYLINE'):
+        if e.dxf.layer.upper() == 'INPOLY':
+            pts = [(round(x, 6), round(y, 6)) for x, y in e.get_points(format='xy')]
+            if len(pts) < 6:
+                raise ValueError(f"INPOLY cần ít nhất 6 đỉnh, chỉ tìm thấy {len(pts)}")
+            polys.append(pts)
+    if not polys:
+        raise ValueError("Không tìm thấy LWPOLYLINE trên layer 'INPOLY'")
+    polys.sort(key=lambda p: sum(v[0] for v in p) / len(p))
+    return polys
+
+
+def section_type_from_inpolys(inpolys: list) -> str:
+    """'single' hoặc 'twin_box'."""
+    if len(inpolys) == 1:
+        return 'single'
+    if len(inpolys) == 2:
+        return 'twin_box'
+    raise ValueError(f"Mặt cắt cần 1 hoặc 2 INPOLY, tìm thấy {len(inpolys)}")
+
+
 def read_dxf(dxf_path: str) -> CrossSectionGeometry:
     """Đọc file DXF và trích xuất thông số hình học mặt cắt ngang.
 
@@ -34,14 +62,15 @@ def read_dxf(dxf_path: str) -> CrossSectionGeometry:
 
     section_name = _extract_section_name(msp, dxf_path)
     outpoly_verts = _get_polyline_vertices(msp, 'OUTPOLY')
-    inpoly_verts = _get_polyline_vertices(msp, 'INPOLY')
+    inpolys = read_inpolys(msp)
 
     if len(outpoly_verts) < 6:
         raise ValueError(f"OUTPOLY cần ít nhất 6 đỉnh, chỉ tìm thấy {len(outpoly_verts)}")
-    if len(inpoly_verts) < 6:
-        raise ValueError(f"INPOLY cần ít nhất 6 đỉnh, chỉ tìm thấy {len(inpoly_verts)}")
 
-    geo = _extract_geometry(section_name, outpoly_verts, inpoly_verts)
+    if section_type_from_inpolys(inpolys) == 'twin_box':
+        geo = _extract_geometry_twin(section_name, outpoly_verts, inpolys[0], inpolys[1])
+    else:
+        geo = _extract_geometry(section_name, outpoly_verts, inpolys[0])
     geo.pt_cables = read_pt_cables(msp)
     return geo
 
@@ -99,7 +128,7 @@ def _extract_section_name(msp, dxf_path: str) -> str:
 
 
 def _get_polyline_vertices(msp, layer_name: str) -> list:
-    """Lấy vertices từ LWPOLYLINE trên layer chỉ định."""
+    """Lấy vertices từ LWPOLYLINE đầu tiên trên layer chỉ định (single-box compat)."""
     for e in msp.query('LWPOLYLINE'):
         if e.dxf.layer.upper() == layer_name.upper():
             return [(round(x, 6), round(y, 6)) for x, y in e.get_points(format='xy')]
@@ -336,6 +365,7 @@ def _extract_geometry(name: str, outpoly: list, inpoly: list) -> CrossSectionGeo
 
     return CrossSectionGeometry(
         name=name,
+        section_type='single',
         H=H,
         B_total=B_total,
         B_box_top=B_box_top,
@@ -351,4 +381,58 @@ def _extract_geometry(name: str, outpoly: list, inpoly: list) -> CrossSectionGeo
         cant_right=cant_right,
         outpoly=outpoly_mct,
         inpoly=inpoly_mct,
+    )
+
+
+def _extract_geometry_twin(name: str, outpoly: list,
+                           in_left: list, in_right: list) -> CrossSectionGeometry:
+    """Trích xuất thông số tổng hợp cho mặt cắt 2 hộp (dùng cho read_dxf)."""
+    out_feat = _classify_outpoly(outpoly)
+    in_l = _classify_inpoly(in_left, out_feat)
+    in_r = _classify_inpoly(in_right, out_feat)
+
+    def _avg(a, b):
+        return round((a + b) / 2, 4)
+
+    H = out_feat['H']
+    x_center = out_feat['x_center']
+    B_total = out_feat['B_total']
+    t_top_tip = _avg(out_feat['t_tip_left'], out_feat['t_tip_right'])
+    t_top_at_web = _avg(out_feat['t_at_web_left'], out_feat['t_at_web_right'])
+    t_top_center = _avg(in_l['t_top_center'], in_r['t_top_center'])
+    t_bot_center = _avg(in_l['t_bot_center'], in_r['t_bot_center'])
+    t_bot_at_web = _avg(in_l['t_bot_at_web'], in_r['t_bot_at_web'])
+    t_web_top = _avg(in_l['t_web_top'], in_r['t_web_top'])
+    t_web_bot = _avg(in_l['t_web_bot'], in_r['t_web_bot'])
+
+    gap = round(max(p[0] for p in in_right) - min(p[0] for p in in_left), 4)
+    B_box_top = round(gap + in_l['t_web_top'] + in_r['t_web_top'], 4)
+    B_box_bot = out_feat['B_box_bot_outer']
+    half_B = B_total / 2
+    cant_left = round(half_B - abs(out_feat['web_junc_left'][0] - x_center), 4)
+    cant_right = round(half_B - abs(out_feat['web_junc_right'][0] - x_center), 4)
+
+    outpoly_mct = [(round(x - x_center, 6), round(H + y, 6)) for x, y in outpoly]
+    in_l_mct = [(round(x - x_center, 6), round(H + y, 6)) for x, y in in_left]
+    in_r_mct = [(round(x - x_center, 6), round(H + y, 6)) for x, y in in_right]
+
+    return CrossSectionGeometry(
+        name=name,
+        section_type='twin_box',
+        H=H,
+        B_total=B_total,
+        B_box_top=B_box_top,
+        B_box_bot=B_box_bot,
+        t_top_tip=t_top_tip,
+        t_top_at_web=t_top_at_web,
+        t_top_center=t_top_center,
+        t_bot_center=t_bot_center,
+        t_bot_at_web=t_bot_at_web,
+        t_web_top=t_web_top,
+        t_web_bot=t_web_bot,
+        cant_left=cant_left,
+        cant_right=cant_right,
+        outpoly=outpoly_mct,
+        inpoly=in_l_mct,
+        inpoly_right=in_r_mct,
     )

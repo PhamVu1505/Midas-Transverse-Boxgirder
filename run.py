@@ -15,7 +15,7 @@ import glob
 
 import ezdxf
 
-from src.dxf_reader import _get_polyline_vertices, read_pt_cables
+from src.dxf_reader import _get_polyline_vertices, read_inpolys, read_pt_cables, section_type_from_inpolys
 from src.frame_builder import build_frame
 from src.load_reader import read_loads
 from src.mct_frame_writer import write_mct
@@ -46,7 +46,9 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
     doc = ezdxf.readfile(dxf_path)
     msp = doc.modelspace()
     outpoly = _get_polyline_vertices(msp, 'OUTPOLY')
-    inpoly = _get_polyline_vertices(msp, 'INPOLY')
+    inpolys = read_inpolys(msp)
+    stype = section_type_from_inpolys(inpolys)
+    inpoly = inpolys if stype == 'twin_box' else inpolys[0]
     pt_cables = read_pt_cables(msp) if include_pt is not False else []
 
     excel = EXCEL_PATH if os.path.exists(EXCEL_PATH) else None
@@ -57,7 +59,7 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
     d_L = ld['d_L'] if ld else 0.4
     d_R = ld['d_R'] if ld else 0.4
 
-    print(f'[{name}] Building frame (d_L={d_L:.3f}, d_R={d_R:.3f})...')
+    print(f'[{name}] Building frame ({stype}, d_L={d_L:.3f}, d_R={d_R:.3f})...')
     frame = build_frame(outpoly, inpoly, d_L=d_L, d_R=d_R)
 
     pt_props = read_pt_properties(excel) if (excel and pt_cables) else None
@@ -77,7 +79,7 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
     from src.svg_export import export_frame_svg
     svg_path = os.path.join(section_dir, f'{name}_frame.svg')
     try:
-        export_frame_svg(outpoly, inpoly, svg_path, name)
+        export_frame_svg(outpoly, inpoly, svg_path, name, section_type=stype)
     except Exception:
         pass
 
@@ -168,10 +170,10 @@ def _process_results(section_dir: str):
     ld = read_loads(excel) if excel else None
     d_L = ld['d_L'] if ld else 0.4
     d_R = ld['d_R'] if ld else 0.4
-    frame = build_frame(
-        _get_polyline_vertices(msp, 'OUTPOLY'),
-        _get_polyline_vertices(msp, 'INPOLY'),
-        d_L=d_L, d_R=d_R)
+    inpolys = read_inpolys(msp)
+    stype = section_type_from_inpolys(inpolys)
+    inpoly = inpolys if stype == 'twin_box' else inpolys[0]
+    frame = build_frame(_get_polyline_vertices(msp, 'OUTPOLY'), inpoly, d_L=d_L, d_R=d_R)
     _, topo = write_mct(frame, name, excel)
 
     # Parse beam force
