@@ -9,6 +9,16 @@ import os
 import xlrd
 
 
+def _to_float(val, default=0.0):
+    """Safely convert Excel value to float."""
+    if val is None or val == '':
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def read_material(excel_path: str) -> dict:
     """Đọc thông số vật liệu từ sheet 'General'.
 
@@ -18,10 +28,10 @@ def read_material(excel_path: str) -> dict:
     wb = xlrd.open_workbook(excel_path)
     ws = wb.sheet_by_name('General')
 
-    fc_mpa = ws.cell(69, 7).value    # H70: f'c (MPa) — concrete compressive strength
-    ec_mpa = ws.cell(71, 7).value    # H72: Ec (MPa)
-    alpha = ws.cell(72, 7).value     # H73: alpha (/°C)
-    RH = ws.cell(81, 7).value        # H82: relative humidity (%)
+    fc_mpa = _to_float(ws.cell(69, 7).value, 50.0)    # H70: f'c (MPa)
+    ec_mpa = _to_float(ws.cell(71, 7).value, 32500.0) # H72: Ec (MPa)
+    alpha = _to_float(ws.cell(72, 7).value, 1.08e-5)  # H73: alpha (/°C)
+    RH = _to_float(ws.cell(81, 7).value, 80.0)        # H82: relative humidity (%)
 
     return {
         'fc_mpa': round(fc_mpa, 1),

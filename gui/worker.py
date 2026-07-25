@@ -2,6 +2,7 @@
 
 import json
 import os
+import traceback
 
 import ezdxf
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -87,7 +88,8 @@ class GenerateWorker(QThread):
                 count += 1
 
             except Exception as e:
-                self.log.emit(f'[{name}] ERROR: {e}')
+                err_msg = f'[{name}] ERROR: {str(e)}\n{traceback.format_exc()}'
+                self.log.emit(err_msg)
 
         self.finished_all.emit(count)
 
@@ -181,7 +183,8 @@ class ResultsWorker(QThread):
             return True
 
         except Exception as e:
-            self.log.emit(f'[{name}] ERROR: {e}')
+            err_msg = f'[{name}] ERROR: {str(e)}\n{traceback.format_exc()}'
+            self.log.emit(err_msg)
             return False
 
     def retry_section(self, name, new_bf_path):

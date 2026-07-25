@@ -32,7 +32,13 @@ def read_pt_properties(excel_path: str) -> TendonProperty:
     ws = wb.sheet_by_name('General')
 
     def _v(row_idx, col_idx=7):
-        return float(ws.cell(row_idx, col_idx).value)
+        val = ws.cell(row_idx, col_idx).value
+        if val is None or val == '':
+            return 0.0
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return 0.0
 
     fpu       = _v(84)
     fpy       = _v(85)

@@ -386,12 +386,14 @@ def write_mct(frame: dict, section_name: str = 'Section',
 
     # ── CONSTRAINT ──
     # Supports at web-bottom junction nodes (= bottom slab corners)
-    # bot_ids[0] = web L bottom = hinge (Dx+Dz)
-    # bot_ids[-1] = web R bottom = roller (Dz)
+    # bot_ids[0] = web L bottom = hinge (Dx+Dy+Dz = 111000)
+    # bot_ids[-1] = web R bottom = roller (Dy+Dz = 011000)
+    # Dy luôn bị khóa: khung ngang là bài toán phẳng XZ, không khóa Dy thì
+    # Midas báo singular trong không gian 3D.
     blocks.append('*CONSTRAINT    ; Supports')
     blocks.append('; NODE_LIST, CONST(Dx,Dy,Dz,Rx,Ry,Rz), GROUP')
-    blocks.append(f'   {bot_ids[-1]}, 001000, Boundary')
-    blocks.append(f'   {bot_ids[0]}, 101000, Boundary')
+    blocks.append(f'   {bot_ids[-1]}, 011000, Boundary')
+    blocks.append(f'   {bot_ids[0]}, 111000, Boundary')
     blocks.append('')
 
     # ── PT TENDONS (auto from DXF layers PT-<LOC>-<N>) ──
@@ -611,8 +613,10 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
     ll_L_idx = next(i for i, n in enumerate(top_nodes) if abs(n['x'] - ll_L_x) < 1e-3)
     ll_R_idx = next(i for i, n in enumerate(top_nodes) if abs(n['x'] - ll_R_x) < 1e-3)
 
-    bC = bot['bot_center']
-    bot_center_idx = min(range(N_bot), key=lambda i: abs(bot_nodes[i]['x'] - bC[0]))
+    bot_center_idx = bot.get('bot_center_node_idx')
+    if bot_center_idx is None:
+        bC = bot['bot_center']
+        bot_center_idx = min(range(N_bot), key=lambda i: abs(bot_nodes[i]['x'] - bC[0]))
 
     blocks = []
     blocks.append(f'; MCT Frame Model — {section_name} (twin box)')
@@ -812,9 +816,9 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
     blocks.append('')
     blocks.append('*CONSTRAINT    ; Supports')
     blocks.append('; NODE_LIST, CONST(Dx,Dy,Dz,Rx,Ry,Rz), GROUP')
-    blocks.append(f'   {bot_ids[-1]}, 001000, Boundary')
-    blocks.append(f'   {bot_ids[bot_center_idx]}, 001000, Boundary')
-    blocks.append(f'   {bot_ids[0]}, 101000, Boundary')
+    blocks.append(f'   {bot_ids[-1]}, 011000, Boundary')
+    blocks.append(f'   {bot_ids[bot_center_idx]}, 011000, Boundary')
+    blocks.append(f'   {bot_ids[0]}, 111000, Boundary')
     blocks.append('')
 
     tendons = []
@@ -1582,9 +1586,17 @@ def _build_tendons(pt_cables, frame,
 
 def _write_tendon_property_block(blocks, prop):
     """Write *TDN-PROPERTY (1 entry, name = NS<DP>, vd 5S15.2)."""
+    import math
     name = _pt_property_name(prop)
     AREA = prop.Ap * 1e-6        # mm² → m²
     DIA = prop.duct_dia * 1e-3   # mm → m
+
+    # Safety: ensure DIA is at least large enough for AREA (Midas import warning/error)
+    # Area_duct = pi * (DIA/2)^2 => DIA = 2 * sqrt(Area_duct / pi)
+    min_dia = 2.0 * math.sqrt(AREA / math.pi) * 1.05  # 5% buffer
+    if DIA < min_dia:
+        DIA = min_dia
+
     FF = prop.mu                 # 1/rad
     WF = prop.K * 1000           # 1/mm → 1/m
     US = prop.fpu * 1000         # MPa → kPa
@@ -1594,7 +1606,7 @@ def _write_tendon_property_block(blocks, prop):
     blocks.append('*TDN-PROPERTY    ; Tendon Property')
     blocks.append('; NAME, TYPE, MATL, AREA, DIA, RM, RC, FF, WF, US, YS, LT, ASB, ASE, bBONDED, ALPHA, \\ ')
     blocks.append(';       bOSRF, FT, LR, FPK, ACHANGE, bRELAX, TDMFNAME(User Defined) or TDMFK , WobbleType, AngleDisp')
-    blocks.append(f'   {name}, INTERNAL, 2, {AREA:g}, {DIA:g}, 0, 45, {FF}, {WF:g}, {US:g}, {YS:g}, '
+    blocks.append(f'   {name}, INTERNAL, 2, {AREA:.8f}, {DIA:.6f}, 0, 45, {FF}, {WF:g}, {US:g}, {YS:g}, '
                   f'POST, {ASB}, {ASE}, YES, 0, , , ,, 0, YES, 0, 0, 0')
     blocks.append('')
 

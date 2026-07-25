@@ -651,12 +651,22 @@ def _classify_twin_outer(out, H):
     tip_top_R = right_tips[0]
     tip_bot_R = right_tips[-1]
 
-    bot_pts = sorted([p for p in out if p[1] < _TOL], key=lambda p: p[0])
-    if len(bot_pts) < 3:
-        bot_pts = sorted([p for p in out if abs(p[1]) < _TOL * 2], key=lambda p: p[0])
+    # Điểm đáy: lấy các điểm ở cao độ thấp nhất
+    z_min = min(p[1] for p in out)
+    bot_pts = sorted([p for p in out if abs(p[1] - z_min) < _TOL], key=lambda p: p[0])
+    if len(bot_pts) < 2:
+        bot_pts = sorted([p for p in out if abs(p[1] - z_min) < _TOL * 5], key=lambda p: p[0])
+
     bot_L = bot_pts[0]
-    bot_center = bot_pts[len(bot_pts) // 2]
     bot_R = bot_pts[-1]
+
+    # bot_center: Ưu tiên điểm có X=0 (tim dầm), hoặc nội suy nếu chỉ có 2 điểm L/R
+    if len(bot_pts) >= 3:
+        bot_center = min(bot_pts, key=lambda p: abs(p[0]))
+    else:
+        # Trường hợp bản đáy phẳng nối 2 điểm, nội suy tại X=0
+        z_c = _lerp(0.0, [bot_L, bot_R])
+        bot_center = (0.0, round(z_c, 6))
 
     center_top = min(out, key=lambda p: (abs(p[0]), -p[1]))
     for p in out:
@@ -1112,15 +1122,15 @@ def _build_twin_top_slab(of, inf_l, inf_r, H, target_len, d_L, d_R,
 
 
 def _build_twin_bottom_slab(of, inf_l, inf_r, H, target_len,
-                            web_bot_L=None, web_bot_R=None):
+                            web_bot_L=None, web_bot_R=None, web_bot_C=None):
     """Bản đáy liên tục: web_bot_L → bot_center → web_bot_R.
 
-    web_bot_L/R = đáy tim bụng ngoài (giống bản đáy mặt cắt 1 hộp — nút đáy bụng
-    dùng chung với nút đầu/cuối bản đáy, không có phần tử nối chéo). Nếu None thì
+    web_bot_L/R/C = đáy tim bụng (giống bản đáy mặt cắt 1 hộp — nút đáy bụng
+    dùng chung với nút bản đáy, không có phần tử nối chéo). Nếu None thì
     quay về góc đáy OUTPOLY.
     """
     bL = web_bot_L if web_bot_L else of['bot_L']
-    bC = of['bot_center']
+    bC = web_bot_C if web_bot_C else of['bot_center']
     bR = web_bot_R if web_bot_R else of['bot_R']
 
     def z_bot(x):
@@ -1165,7 +1175,10 @@ def _build_twin_bottom_slab(of, inf_l, inf_r, H, target_len,
         })
 
     all_nodes = []
+    bot_center_node_idx = None
     for i in range(len(keypoints)):
+        if abs(keypoints[i]['x'] - bC[0]) < 1e-6:
+            bot_center_node_idx = len(all_nodes)
         all_nodes.append(keypoints[i])
         if i < len(keypoints) - 1:
             x0, x1 = keypoints[i]['x'], keypoints[i + 1]['x']
@@ -1185,6 +1198,7 @@ def _build_twin_bottom_slab(of, inf_l, inf_r, H, target_len,
         'surface_line': [bL, bR],
         'inner_boundary': inn_lower,
         'bot_center': bC,
+        'bot_center_node_idx': bot_center_node_idx,
         'keypoints': keypoints,
         'nodes': all_nodes,
     }

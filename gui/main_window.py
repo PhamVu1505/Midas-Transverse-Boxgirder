@@ -7,10 +7,12 @@ from .generate_tab import GenerateTab
 from .results_tab import ResultsTab
 
 
+VERSION = 'v1.2.1'
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Midas Transverse Boxgirder - Frame Analysis')
+        self.setWindowTitle(f'Midas Transverse Boxgirder {VERSION} - Frame Analysis')
         self.resize(1100, 750)
 
         # Status bar

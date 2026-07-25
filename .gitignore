@@ -33,6 +33,9 @@ output/
 # Test folders
 testptn/
 
+# Scratch / throwaway analysis scripts
+scratch/
+
 # Claude Code settings (personal)
 .claude/
 
