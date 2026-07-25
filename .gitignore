@@ -27,6 +27,14 @@ dist/
 *.CA6
 *.spa
 
+# Ngoại lệ: file model .mcb trong docs/refer/ là tài liệu tham khảo, giữ lại
+!docs/refer/**/*.mcb
+
+# Video/media tham khảo (dung lượng lớn, không đưa vào history)
+*.mp4
+*.avi
+*.mkv
+
 # Generated output
 output/
 
