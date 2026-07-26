@@ -48,6 +48,7 @@ class FrameView(QWidget):
 
     node_hovered = pyqtSignal(int, dict)   # id, thông tin (id=-1 khi rời chuột)
     node_clicked = pyqtSignal(int)
+    supports_changed = pyqtSignal(list)    # [{'x','kind'}] sau khi người dùng sửa
 
     def __init__(self, theme: dict = None, parent=None):
         super().__init__(parent)
@@ -60,7 +61,11 @@ class FrameView(QWidget):
         self.m = None                     # mô hình đang vẽ
         self.mode = MODEL
         self.layers = dict(DEFAULT_LAYERS)
-        self.supports = []                # [{'id':int,'kind':'pin'|'roller'|'fixed'}]
+        # Gối lưu theo TOẠ ĐỘ X (khớp với src/project.py), lúc vẽ mới quy về
+        # node đáy gần nhất — đổi lưới thì gối vẫn nằm đúng chỗ.
+        self.supports = []                # [{'x': float, 'kind': str}]
+        self.edit_supports = False
+        self._drag_sup = -1
         self._zoom = 1.0
         self._pan = QPointF(0, 0)
         self._base = 1.0
@@ -130,8 +135,30 @@ class FrameView(QWidget):
         self.update()
 
     def set_supports(self, supports):
-        self.supports = list(supports or [])
+        self.supports = [{'x': float(s['x']), 'kind': s.get('kind', 'roller')}
+                         for s in (supports or [])]
         self.update()
+
+    def set_edit_supports(self, on: bool):
+        self.edit_supports = bool(on)
+        self._drag_sup = -1
+        self.setCursor(Qt.CursorShape.PointingHandCursor if on
+                       else Qt.CursorShape.CrossCursor)
+        self.update()
+
+    def _bot_by_x(self, x):
+        """Node đáy gần nhất theo X."""
+        if not self.m or not self.m['bot_ids']:
+            return None
+        return min(self.m['bot_ids'],
+                   key=lambda i: abs(self.m['nodes'][i]['x'] - x))
+
+    def _sup_node(self, sp):
+        return self._bot_by_x(sp['x'])
+
+    def _emit_supports(self):
+        self.supports.sort(key=lambda s: s['x'])
+        self.supports_changed.emit([dict(s) for s in self.supports])
 
     def set_mode(self, mode):
         self.mode = mode
@@ -237,8 +264,22 @@ class FrameView(QWidget):
             self._draw_elem_ids(p)
         if L['supports']:
             self._draw_supports(p)
+        if self.edit_supports:
+            self._draw_bot_hints(p)
         self._draw_marks(p)
         p.end()
+
+    def _draw_bot_hints(self, p):
+        pen = QPen(QColor(self.t['accent']), 1)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setOpacity(0.55)
+        for i in self.m['bot_ids']:
+            n = self.m['nodes'].get(i)
+            if n:
+                p.drawEllipse(QPointF(self.TX(n['x']), self.TZ(n['z'])), 6, 6)
+        p.setOpacity(1.0)
 
     def _draw_grid(self, p):
         s = self._s
@@ -466,23 +507,36 @@ class FrameView(QWidget):
 
     def _draw_supports(self, p):
         m = self.m
-        for s in self.supports:
-            n = m['nodes'].get(s.get('id'))
+        for idx, s in enumerate(self.supports):
+            n = m['nodes'].get(self._sup_node(s))
             if not n:
                 continue
             X, Y = self.TX(n['x']), self.TZ(n['z'])
             kind = s.get('kind', 'roller')
-            col = QColor(self.t['ink'])
+            col = QColor(self.t['accent'] if (self.edit_supports
+                                              and idx == self._drag_sup)
+                         else self.t['ink'])
             p.setPen(QPen(col, 1.4))
             tri = QPolygonF([QPointF(X, Y), QPointF(X - 8, Y + 12),
                              QPointF(X + 8, Y + 12)])
             if kind == 'roller':
+                # con lăn: tam giác rỗng trên hai bánh lăn
                 p.setBrush(Qt.BrushStyle.NoBrush)
                 p.drawPolygon(tri)
                 p.drawEllipse(QPointF(X - 3.8, Y + 15), 2.8, 2.8)
                 p.drawEllipse(QPointF(X + 3.8, Y + 15), 2.8, 2.8)
                 p.drawLine(QPointF(X - 10, Y + 18.6), QPointF(X + 10, Y + 18.6))
+            elif kind == 'fixed':
+                # ngàm: khối đặc kề nền gạch chéo — phải khác hẳn gối cố định
+                p.setBrush(QBrush(col))
+                p.drawRect(QRectF(X - 9, Y, 18, 7))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawLine(QPointF(X - 12, Y + 7), QPointF(X + 12, Y + 7))
+                for i in range(-3, 4):
+                    p.drawLine(QPointF(X + i * 3.8, Y + 7),
+                               QPointF(X + i * 3.8 - 3.4, Y + 11.6))
             else:
+                # gối cố định: tam giác đặc trên nền gạch chéo
                 p.setBrush(QBrush(col))
                 p.drawPolygon(tri)
                 p.setBrush(Qt.BrushStyle.NoBrush)
@@ -524,8 +578,43 @@ class FrameView(QWidget):
     def wheelEvent(self, e):
         self.zoom_by(1.14 if e.angleDelta().y() > 0 else 1 / 1.14)
 
+    def _sup_at(self, pos):
+        """Chỉ số gối mà con trỏ đang chạm (tam giác vẽ PHÍA DƯỚI node)."""
+        best, bd = -1, 1e9
+        for i, sp in enumerate(self.supports):
+            n = self.m['nodes'].get(self._sup_node(sp))
+            if not n:
+                continue
+            X, Y = self.TX(n['x']), self.TZ(n['z'])
+            if X - 13 < pos.x() < X + 13 and Y - 4 < pos.y() < Y + 24:
+                d = abs(pos.x() - X)
+                if d < bd:
+                    bd, best = d, i
+        return best
+
     def mousePressEvent(self, e):
         if not self.m:
+            return
+        if self.edit_supports:
+            hit = self._sup_at(e.position())
+            if hit >= 0:
+                if e.button() == Qt.MouseButton.RightButton:
+                    self.supports.pop(hit)
+                    self._emit_supports()
+                    self.update()
+                else:
+                    self._drag_sup = hit
+                    self.update()
+                return
+            nid = self._near(e.position(), self.m['bot_ids'])
+            if nid is not None and e.button() == Qt.MouseButton.LeftButton:
+                x = self.m['nodes'][nid]['x']
+                if not any(self._sup_node(sp) == nid for sp in self.supports):
+                    self.supports.append({'x': x, 'kind': 'roller'})
+                    self._emit_supports()
+                    self.update()
+                return
+            self._drag = (e.position(), QPointF(self._pan))
             return
         hit = self._near(e.position())
         if hit is not None:
@@ -538,10 +627,26 @@ class FrameView(QWidget):
 
     def mouseReleaseEvent(self, _):
         self._drag = None
-        self.setCursor(Qt.CursorShape.CrossCursor)
+        if self._drag_sup >= 0:
+            self._drag_sup = -1
+            self._emit_supports()
+            self.update()
+        self.setCursor(Qt.CursorShape.PointingHandCursor if self.edit_supports
+                       else Qt.CursorShape.CrossCursor)
 
     def mouseMoveEvent(self, e):
         if not self.m:
+            return
+        if self._drag_sup >= 0:
+            nid = self._bot_by_x(self.invX(e.position().x()))
+            if nid is not None:
+                x = self.m['nodes'][nid]['x']
+                taken = any(self._sup_node(sp) == nid
+                            for k, sp in enumerate(self.supports)
+                            if k != self._drag_sup)
+                if not taken:
+                    self.supports[self._drag_sup]['x'] = x
+            self.update()
             return
         if self._drag:
             start, pan0 = self._drag

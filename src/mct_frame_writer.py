@@ -15,11 +15,50 @@ from .material_reader import read_material, write_material_mct
 from .load_reader import read_loads
 
 
+
+SUPPORT_CODE = {'pin': '111000', 'roller': '011000', 'fixed': '111111'}
+SUPPORT_LABEL = {'pin': 'gối cố định', 'roller': 'gối di động', 'fixed': 'ngàm'}
+
+
+def _write_constraint_block(blocks, bot_ids, bot_nodes, supports, defaults):
+    """Ghi khối *CONSTRAINT.
+
+    `supports` là danh sách {'x', 'kind'} do người dùng đặt — lưu theo TOẠ ĐỘ nên
+    ở đây mới quy về node đáy gần nhất. Để None/rỗng thì dùng `defaults` là bộ
+    gối mặc định [(node_id, code), ...].
+
+    Dy luôn bị khóa: khung ngang là bài toán phẳng XZ, thiếu Dy thì Midas báo
+    singular trong không gian 3D.
+    """
+    blocks.append('*CONSTRAINT    ; Supports')
+    blocks.append('; NODE_LIST, CONST(Dx,Dy,Dz,Rx,Ry,Rz), GROUP')
+    if supports:
+        used = set()
+        for sp in sorted(supports, key=lambda d: float(d.get('x', 0))):
+            x = float(sp.get('x', 0))
+            i = min(range(len(bot_nodes)),
+                    key=lambda k: abs(bot_nodes[k]['x'] - x))
+            nid = bot_ids[i]
+            if nid in used:
+                continue
+            used.add(nid)
+            kind = sp.get('kind', 'roller')
+            code = SUPPORT_CODE.get(kind, SUPPORT_CODE['roller'])
+            blocks.append(f'   {nid}, {code}, Boundary'
+                          f'    ; {SUPPORT_LABEL.get(kind, kind)}'
+                          f' @ X={bot_nodes[i]["x"]:.3f}')
+    else:
+        for nid, code in defaults:
+            blocks.append(f'   {nid}, {code}, Boundary')
+    blocks.append('')
+
+
 def write_mct(frame: dict, section_name: str = 'Section',
               excel_path: str = None,
               pt_cables: list = None,
               pt_props: TendonProperty = None,
-              include_pt: bool = None) -> str:
+              include_pt: bool = None,
+              supports: list = None) -> str:
     """Tạo file MCT từ frame data.
 
     Node numbering:
@@ -43,7 +82,8 @@ def write_mct(frame: dict, section_name: str = 'Section',
         include_pt = False
 
     if frame.get('section_type') == 'twin_box':
-        return _write_mct_twin(frame, section_name, excel_path, pt_cables, pt_props, include_pt)
+        return _write_mct_twin(frame, section_name, excel_path, pt_cables,
+                               pt_props, include_pt, supports)
 
     # ── Material ──
     if excel_path and os.path.exists(excel_path):
@@ -390,11 +430,9 @@ def write_mct(frame: dict, section_name: str = 'Section',
     # bot_ids[-1] = web R bottom = roller (Dy+Dz = 011000)
     # Dy luôn bị khóa: khung ngang là bài toán phẳng XZ, không khóa Dy thì
     # Midas báo singular trong không gian 3D.
-    blocks.append('*CONSTRAINT    ; Supports')
-    blocks.append('; NODE_LIST, CONST(Dx,Dy,Dz,Rx,Ry,Rz), GROUP')
-    blocks.append(f'   {bot_ids[-1]}, 011000, Boundary')
-    blocks.append(f'   {bot_ids[0]}, 111000, Boundary')
-    blocks.append('')
+    _write_constraint_block(
+        blocks, bot_ids, bot_nodes, supports,
+        defaults=[(bot_ids[-1], '011000'), (bot_ids[0], '111000')])
 
     # ── PT TENDONS (auto from DXF layers PT-<LOC>-<N>) ──
     tendons = []
@@ -525,7 +563,8 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                     excel_path: str = None,
                     pt_cables: list = None,
                     pt_props: TendonProperty = None,
-                    include_pt: bool = None) -> tuple:
+                    include_pt: bool = None,
+              supports: list = None) -> tuple:
     """MCT cho mặt cắt 2 hộp: 3 bụng (ngoài L/R + vách giữa), bản đáy liên tục."""
     if include_pt is None:
         include_pt = bool(pt_cables) and pt_props is not None
@@ -829,12 +868,11 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
     blocks.append('; NAME')
     blocks.append(' Load')
     blocks.append('')
-    blocks.append('*CONSTRAINT    ; Supports')
-    blocks.append('; NODE_LIST, CONST(Dx,Dy,Dz,Rx,Ry,Rz), GROUP')
-    blocks.append(f'   {bot_ids[-1]}, 011000, Boundary')
-    blocks.append(f'   {bot_ids[bot_center_idx]}, 011000, Boundary')
-    blocks.append(f'   {bot_ids[0]}, 111000, Boundary')
-    blocks.append('')
+    _write_constraint_block(
+        blocks, bot_ids, bot_nodes, supports,
+        defaults=[(bot_ids[-1], '011000'),
+                  (bot_ids[bot_center_idx], '011000'),
+                  (bot_ids[0], '111000')])
 
     tendons = []
     if include_pt:

@@ -8,7 +8,8 @@ import os
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLineEdit, QLabel, QFileDialog, QSplitter,
-                             QCheckBox, QFrame, QToolButton, QButtonGroup)
+                             QCheckBox, QFrame, QToolButton, QButtonGroup,
+                             QComboBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from src.project import Project
@@ -29,6 +30,7 @@ class GenerateTab(QWidget):
         self.t = theme or LIGHT
         self.worker = None
         self._total = self._done = 0
+        self._current = ''
         self._init_ui()
 
     # ─────────────────────────────────────────
@@ -136,6 +138,14 @@ class GenerateTab(QWidget):
             h.addWidget(c)
 
         h.addStretch()
+        self.btn_sup = QToolButton()
+        self.btn_sup.setText('Sửa gối')
+        self.btn_sup.setCheckable(True)
+        self.btn_sup.setToolTip('Bấm node đáy để đặt gối · kéo tam giác để dời · '
+                                'chuột phải để xóa')
+        self.btn_sup.toggled.connect(self._toggle_supports)
+        h.addWidget(self.btn_sup)
+        h.addSpacing(8)
         for label, tip, fn in (('−', 'Thu nhỏ', lambda: self.view.zoom_by(1 / 1.25)),
                                ('+', 'Phóng to', lambda: self.view.zoom_by(1.25)),
                                ('⤢', 'Vừa khung (F)', lambda: self.view.fit())):
@@ -149,7 +159,18 @@ class GenerateTab(QWidget):
 
         self.view = FrameView(theme=self.t)
         self.view.node_hovered.connect(self._on_hover)
+        self.view.supports_changed.connect(self._on_supports_changed)
         v.addWidget(self.view, 1)
+
+        self.sup_bar = QWidget()
+        self.sup_bar.setVisible(False)
+        self.sup_bar.setStyleSheet(
+            f'background: {self.t["accent_soft"]};'
+            f' border-top: 1px solid {self.t["accent_line"]};')
+        self.sup_lay = QHBoxLayout(self.sup_bar)
+        self.sup_lay.setContentsMargins(8, 5, 8, 5)
+        self.sup_lay.setSpacing(6)
+        v.addWidget(self.sup_bar)
 
         self.lb_query = QLabel('Rê chuột lên mặt cắt để tra node')
         self.lb_query.setStyleSheet(
@@ -158,6 +179,68 @@ class GenerateTab(QWidget):
             f' border-top: 1px solid {self.t["border"]};')
         v.addWidget(self.lb_query)
         return box
+
+    # ── sửa gối ──
+    def _toggle_supports(self, on):
+        self.view.set_edit_supports(on)
+        self.sup_bar.setVisible(on)
+        if on:
+            self._rebuild_sup_bar()
+            self.lb_query.setText(
+                'Bấm node đáy để đặt gối · kéo tam giác để dời · chuột phải để xóa')
+
+    def _on_supports_changed(self, supports):
+        name = self._current
+        if name:
+            self.project.set_supports(name, supports)
+            self.project_changed.emit()
+        self._rebuild_sup_bar()
+
+    def _rebuild_sup_bar(self):
+        while self.sup_lay.count():
+            it = self.sup_lay.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+        sups = self.view.supports
+        if not sups:
+            lb = QLabel('Chưa đặt gối — dùng bộ mặc định khi tạo MCT')
+            lb.setStyleSheet(f'color: {self.t["ink_2"]}; font-size: 8pt;')
+            self.sup_lay.addWidget(lb)
+            self.sup_lay.addStretch()
+            return
+        for i, sp in enumerate(sups):
+            nid = self.view._sup_node(sp)
+            lb = QLabel(f'n{nid}  X={sp["x"]:+.3f}')
+            lb.setStyleSheet(
+                f'font-family: {FONT_MONO}; font-size: 8pt; color: {self.t["ink"]};')
+            self.sup_lay.addWidget(lb)
+            cb = QComboBox()
+            cb.addItem('Gối cố định', 'pin')
+            cb.addItem('Gối di động', 'roller')
+            cb.addItem('Ngàm', 'fixed')
+            cb.setCurrentIndex(['pin', 'roller', 'fixed'].index(sp['kind']))
+            cb.setFixedWidth(112)
+            cb.currentIndexChanged.connect(
+                lambda k, idx=i: self._set_sup_kind(idx, k))
+            self.sup_lay.addWidget(cb)
+            if i < len(sups) - 1:
+                self.sup_lay.addSpacing(10)
+        self.sup_lay.addStretch()
+        b = QToolButton()
+        b.setText('Đặt lại mặc định')
+        b.clicked.connect(self._reset_supports)
+        self.sup_lay.addWidget(b)
+
+    def _set_sup_kind(self, idx, k):
+        kinds = ['pin', 'roller', 'fixed']
+        if 0 <= idx < len(self.view.supports):
+            self.view.supports[idx]['kind'] = kinds[k]
+            self.view.update()
+            self._on_supports_changed(self.view.supports)
+
+    def _reset_supports(self):
+        self.view.set_supports([])
+        self._on_supports_changed([])
 
     def _on_hover(self, nid, info):
         if nid < 0:
@@ -209,8 +292,10 @@ class GenerateTab(QWidget):
             return
         topo = sec.topo or os.path.join(
             self.project.output_dir, name, f'{name}_topo.json')
+        self._current = name
         if os.path.exists(topo) and self.view.load_topo(topo):
-            self.view.set_supports(getattr(sec, 'supports', None) or [])
+            self.view.set_supports(sec.supports)
+            self._rebuild_sup_bar()
             st = self.view.stats()
             self.status_bar.showMessage(
                 f'{name}: {st["type"]} · {st["nodes"]} node · {st["elems"]} phần tử'
@@ -255,7 +340,8 @@ class GenerateTab(QWidget):
         include_pt = self.chk_pt.isChecked()
         jobs = [{'name': s.name, 'dxf': s.dxf,
                  'excel': self.project.template_for(s),
-                 'include_pt': include_pt and s.include_pt}
+                 'include_pt': include_pt and s.include_pt,
+                 'supports': list(s.supports)}
                 for s in secs]
 
         self.btn_generate.setEnabled(False)

@@ -163,8 +163,55 @@ def test_pipeline(dxf_rel, stype, n_node, n_elem, n_const, tendon_names):
     assert len(hinges) == 1, f'phải có đúng 1 gối chốt, đang có {len(hinges)}'
 
 
+def test_custom_supports():
+    """Gối tuỳ đặt: lưu theo toạ độ X, ghi MCT thì quy về node đáy gần nhất."""
+    from src.mct_frame_writer import write_mct, SUPPORT_CODE
+
+    dxf = os.path.join(ROOT, 'data/TP_BL/S1_V2.dxf')
+    doc = ezdxf.readfile(dxf)
+    msp = doc.modelspace()
+    outpoly = _get_polyline_vertices(msp, 'OUTPOLY')
+    inpolys = read_inpolys(msp)
+    ld = read_loads(EXCEL)
+    frame = build_frame(outpoly, inpolys, d_L=ld['d_L'], d_R=ld['d_R'])
+
+    base, _ = write_mct(frame, 'S1_V2', EXCEL)
+    n_default = len(parse_constraints(base))
+    assert n_default == 3, f'twin box mặc định phải 3 gối, đang {n_default}'
+
+    sups = [{'x': -5.25, 'kind': 'pin'},
+            {'x': 0.0, 'kind': 'roller'},
+            {'x': 5.25, 'kind': 'fixed'}]
+    txt, topo = write_mct(frame, 'S1_V2', EXCEL, supports=sups)
+    got = parse_constraints(txt)
+    assert len(got) == 3, f'phải ghi đúng 3 gối, đang {len(got)}'
+
+    # đúng mã ràng buộc theo loại, và đúng thứ tự trái → phải
+    assert [c for _, c in got] == [SUPPORT_CODE[s['kind']] for s in sups], got
+
+    # mỗi gối phải rơi vào node đáy gần nhất với X đã đặt
+    nodes = {}
+    for pre in ('top', 'bot', 'wL', 'wC', 'wR'):
+        for i, n in zip(topo.get(pre + '_ids', []), topo.get(pre + '_nodes', [])):
+            nodes[int(i)] = n
+    bot = [int(i) for i in topo['bot_ids']]
+    for (nid, _), sp in zip(got, sups):
+        near = min(bot, key=lambda k: abs(nodes[k]['x'] - sp['x']))
+        assert nid == near, f"gối X={sp['x']}: ghi node {nid}, gần nhất là {near}"
+
+    # không đặt gối thì phải y hệt bản mặc định
+    same, _ = write_mct(frame, 'S1_V2', EXCEL, supports=[])
+    assert same == base, 'supports=[] phải cho kết quả y hệt mặc định'
+
+
 if __name__ == '__main__':
     failed = 0
+    try:
+        test_custom_supports()
+        print('PASS  gối tuỳ đặt')
+    except AssertionError as e:
+        failed += 1
+        print(f'FAIL  gối tuỳ đặt: {e}')
     for case in CASES:
         try:
             test_pipeline(*case)

@@ -58,8 +58,20 @@ class Section:
     n_elems: int = 0
     pt_cables: list = field(default_factory=list)
 
+    # Gối lưu theo TOẠ ĐỘ X, không theo ID node: đổi target_len hay sửa DXF là
+    # ID node đổi hết, còn vị trí gối trên bản đáy thì không. Lúc ghi MCT mới
+    # quy về node đáy gần nhất.  [{'x': float, 'kind': 'pin'|'roller'|'fixed'}]
+    supports: list = field(default_factory=list)
+
     status: str = NEW
     note: str = ''
+
+    def set_supports(self, supports):
+        """Đặt danh sách gối, sắp theo X cho danh sách hiển thị ổn định."""
+        self.supports = sorted(
+            ({'x': round(float(s['x']), 6),
+              'kind': s.get('kind', 'roller')} for s in supports or []),
+            key=lambda s: s['x'])
 
     def reset_outputs(self):
         """Xóa kết quả đã sinh — dùng khi DXF hoặc template đổi."""
@@ -173,6 +185,12 @@ class Project:
         if s:
             s.template = template
             s.reset_outputs()
+            self._dirty = True
+
+    def set_supports(self, name: str, supports):
+        s = self.find(name)
+        if s:
+            s.set_supports(supports)
             self._dirty = True
 
     def set_beam_force(self, name: str, path: str):

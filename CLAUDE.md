@@ -53,6 +53,14 @@ Toàn bộ 40 khóa đọc từ **một sheet `INPUT`** bố cục khóa–giá 
 - `crosscheck()` đối chiếu giá trị `INPUT` với ô gốc — bắt trường hợp công thức bị dán thành số cứng hoặc trỏ sang workbook khác.
 - `tools/make_input_sheet.py` sinh sheet `INPUT` từ file cũ, không sửa file gốc.
 
+### Sửa gối (v1.3.0 — Giai đoạn 3b)
+Gối **lưu theo toạ độ X**, không theo ID node: đổi `target_len` hay sửa DXF là ID node đổi hết, còn vị trí gối trên bản đáy thì không. `write_mct(..., supports=[{'x','kind'}])` mới quy về node đáy gần nhất lúc ghi.
+
+- `Section.supports` trong project; `supports=None`/`[]` → dùng bộ mặc định cũ (MCT giống hệt từng byte).
+- Trong khung xem: bật **Sửa gối** → bấm node đáy để đặt, kéo tam giác để dời, chuột phải để xóa. Dải dưới khung đổi loại từng gối.
+- Ký hiệu: gối cố định = tam giác đặc, gối di động = tam giác rỗng + 2 bánh lăn, ngàm = khối đặc kề nền gạch chéo (phải khác hẳn nhau).
+- `tests/test_regression.py::test_custom_supports` khoá hành vi này.
+
 ### Boundary Condition
 | Vị trí | Code (Dx,Dy,Dz,Rx,Ry,Rz) | Ghi chú |
 |--------|--------------------------|---------|
