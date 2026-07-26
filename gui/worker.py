@@ -113,6 +113,9 @@ class GenerateWorker(QThread):
                 except Exception:
                     svg_path = ''
 
+                for w in topo.get('pt_warnings', []):
+                    self.log.emit(f'[{name}] WARNING: {w}')
+
                 n_elem = len(topo['elements'])
                 n_node = sum(len(topo.get(k, []))
                              for k in ('top_ids', 'bot_ids', 'wL_ids',

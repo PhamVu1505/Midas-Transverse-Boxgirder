@@ -86,9 +86,13 @@ def write_mct(frame: dict, section_name: str = 'Section',
                202 (top_slab→webR_top, vertical)
     """
     # ── PT auto-detect ──
+    # Thiếu thuộc tính cáp thì VẪN dựng hình học cáp (để khung xem hiển thị và
+    # topo.json ghi lại), chỉ không ghi các khối *TDN-*. Trước đây tắt hẳn nên
+    # cáp biến mất không để lại dấu vết nào.
+    pt_warnings = []
     if include_pt is None:
-        include_pt = bool(pt_cables) and pt_props is not None
-    if include_pt and (not pt_cables or pt_props is None):
+        include_pt = bool(pt_cables)
+    if include_pt and not pt_cables:
         include_pt = False
 
     if frame.get('section_type') == 'twin_box':
@@ -446,6 +450,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
 
     # ── PT TENDONS (auto from DXF layers PT-<LOC>-<N>) ──
     tendons = []
+    pt_written = False          # đã ghi khối *TDN-* hay chưa
     if include_pt:
         tendons = _build_tendons(
             pt_cables, frame,
@@ -456,12 +461,24 @@ def write_mct(frame: dict, section_name: str = 'Section',
             eid_wR_start, eid_wR_end,
             e_bot_first=1, e_bot_last=N_bot - 1,
         )
-        if tendons:
+        if tendons and pt_props is not None:
+            pt_written = True
             _write_tendon_property_block(blocks, pt_props)
             _write_tendon_profile_blocks(blocks, tendons, pt_props)
+        elif tendons:
+            # Có cáp trong DXF nhưng chưa khai thông số cáp: bỏ khối *TDN-*,
+            # nói rõ ngay trong file và trả cảnh báo về cho người gọi.
+            _names = ', '.join(t.name for t in tendons)
+            blocks.append(f'; CANH BAO: DXF co {len(tendons)} cap DUL ({_names})')
+            blocks.append('; nhung chua khai thong so cap trong template so lieu,')
+            blocks.append('; nen MCT nay KHONG chua cap. Gan template roi tao lai.')
+            blocks.append('')
+            pt_warnings.append(
+                f'DXF có {len(tendons)} cáp DƯL ({_names}) nhưng chưa khai '
+                f'thông số cáp trong template — MCT tạo ra không có cáp')
 
     # ── ELEM-DEPMATL (chèn sau SECT-COLOR khi có cáp DƯL, cho creep/shrinkage) ──
-    if tendons:
+    if pt_written:
         depmatl_lines = []
         _write_elem_depmatl_block(depmatl_lines, elements, sections)
         blocks[elem_depmatl_insert_idx:elem_depmatl_insert_idx] = depmatl_lines
@@ -476,7 +493,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
     if ld:
         blocks.append('*STLDCASE    ; Static Load Cases')
         blocks.append('; LCNAME, LCTYPE, DESC')
-        if tendons:
+        if pt_written:
             blocks.append('   Prestress, PS, ')
         blocks.append('   Self Weight, DC, ')
         blocks.append('   TpG(+), TPG, ')
@@ -491,7 +508,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
     else:
         blocks.append('*STLDCASE    ; Static Load Cases')
         blocks.append('; LCNAME, LCTYPE, DESC')
-        if tendons:
+        if pt_written:
             blocks.append('   Prestress, PS, ')
         blocks.append('   Self Weight, DC, ')
         blocks.append('')
@@ -500,7 +517,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
         blocks.append('')
 
     # ── Load data ──
-    if tendons:
+    if pt_written:
         _write_tendon_prestress_block(blocks, tendons, pt_props)
 
     if ld:
@@ -511,7 +528,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
                          e_bot_first=1, e_bot_last=N_bot - 1)
 
     # ── Construction Stage (giữa load data và moving load, theo file mẫu) ──
-    if tendons:
+    if pt_written:
         _write_stage_block(blocks)
 
     # ── Moving load ──
@@ -523,10 +540,10 @@ def write_mct(frame: dict, section_name: str = 'Section',
 
     # ── Load combinations ──
     if ld:
-        _write_load_combinations(blocks, has_pt=bool(tendons))
+        _write_load_combinations(blocks, has_pt=pt_written)
 
     # ── Analysis control (P-delta, time-dependent) khi có CSA ──
-    if tendons:
+    if pt_written:
         _write_anal_ctrl_block(blocks)
 
     # ── ENDDATA ──
@@ -544,6 +561,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
             'inpolys': [[[round(a, 4), round(b, 4)] for a, b in frame['inpoly_mct']]],
         },
         'supports': eff_supports,
+        'pt_warnings': pt_warnings,
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,
@@ -590,9 +608,11 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                     include_pt: bool = None,
               supports: list = None) -> tuple:
     """MCT cho mặt cắt 2 hộp: 3 bụng (ngoài L/R + vách giữa), bản đáy liên tục."""
+    # Thiếu thuộc tính cáp vẫn dựng hình học — xem chú thích ở write_mct.
+    pt_warnings = []
     if include_pt is None:
-        include_pt = bool(pt_cables) and pt_props is not None
-    if include_pt and (not pt_cables or pt_props is None):
+        include_pt = bool(pt_cables)
+    if include_pt and not pt_cables:
         include_pt = False
 
     if excel_path and os.path.exists(excel_path):
@@ -899,6 +919,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                   (bot_ids[0], '111000')])
 
     tendons = []
+    pt_written = False          # đã ghi khối *TDN-* hay chưa
     if include_pt:
         tendons = _build_tendons(
             pt_cables, frame,
@@ -909,11 +930,23 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
             eid_wR_start, eid_wR_end,
             e_bot_first=1, e_bot_last=N_bot - 1,
         )
-        if tendons:
+        if tendons and pt_props is not None:
+            pt_written = True
             _write_tendon_property_block(blocks, pt_props)
             _write_tendon_profile_blocks(blocks, tendons, pt_props)
+        elif tendons:
+            # Có cáp trong DXF nhưng chưa khai thông số cáp: bỏ khối *TDN-*,
+            # nói rõ ngay trong file và trả cảnh báo về cho người gọi.
+            _names = ', '.join(t.name for t in tendons)
+            blocks.append(f'; CANH BAO: DXF co {len(tendons)} cap DUL ({_names})')
+            blocks.append('; nhung chua khai thong so cap trong template so lieu,')
+            blocks.append('; nen MCT nay KHONG chua cap. Gan template roi tao lai.')
+            blocks.append('')
+            pt_warnings.append(
+                f'DXF có {len(tendons)} cáp DƯL ({_names}) nhưng chưa khai '
+                f'thông số cáp trong template — MCT tạo ra không có cáp')
 
-    if tendons:
+    if pt_written:
         depmatl_lines = []
         _write_elem_depmatl_block(depmatl_lines, elements, sections)
         blocks[elem_depmatl_insert_idx:elem_depmatl_insert_idx] = depmatl_lines
@@ -927,7 +960,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
     if ld:
         blocks.append('*STLDCASE    ; Static Load Cases')
         blocks.append('; LCNAME, LCTYPE, DESC')
-        if tendons:
+        if pt_written:
             blocks.append('   Prestress, PS, ')
         blocks.append('   Self Weight, DC, ')
         blocks.append('   TpG(+), TPG, ')
@@ -942,7 +975,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
     else:
         blocks.append('*STLDCASE    ; Static Load Cases')
         blocks.append('; LCNAME, LCTYPE, DESC')
-        if tendons:
+        if pt_written:
             blocks.append('   Prestress, PS, ')
         blocks.append('   Self Weight, DC, ')
         blocks.append('')
@@ -950,7 +983,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
         blocks.append('; hoạt tải di động và tổ hợp. Chọn template rồi tạo lại.')
         blocks.append('')
 
-    if tendons:
+    if pt_written:
         _write_tendon_prestress_block(blocks, tendons, pt_props)
     if ld:
         _write_load_data(blocks, ld, elements, top_ids, top_nodes,
@@ -958,7 +991,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                          eid_wL_start, eid_wL_end,
                          eid_wR_start, eid_wR_end,
                          e_bot_first=1, e_bot_last=N_bot - 1)
-    if tendons:
+    if pt_written:
         _write_stage_block(blocks)
     if ld:
         b_total = frame.get('B_total')
@@ -969,8 +1002,8 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                            ll_L_idx, ll_R_idx,
                            n_int_floor=n_int_floor)
     if ld:
-        _write_load_combinations(blocks, has_pt=bool(tendons))
-    if tendons:
+        _write_load_combinations(blocks, has_pt=pt_written)
+    if pt_written:
         _write_anal_ctrl_block(blocks)
     blocks.append('*ENDDATA')
 
@@ -986,6 +1019,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                         [[round(a, 4), round(b, 4)] for a, b in frame['inpoly_right_mct']]],
         },
         'supports': eff_supports,
+        'pt_warnings': pt_warnings,
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,

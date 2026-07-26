@@ -177,10 +177,19 @@ class ProjectPanel(QWidget):
         ed.setPlaceholderText(label + '…')
         ed.setToolTip(label)
         ed.setStyleSheet(f'font-family: {FONT_MONO}; font-size: 8pt;')
+        # Ô phải co được, nếu không thì kích thước tối thiểu của nó đẩy nút
+        # "..." ra ngoài vùng cuộn và nút biến mất.
+        ed.setMinimumWidth(60)
+        ed.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         h.addWidget(ed, 1)
-        b = QToolButton()
-        b.setText('...')
-        b.setFixedSize(30, 24)
+        # QPushButton chứ không phải QToolButton: theme đặt QToolButton viền
+        # trong suốt cho thanh công cụ, nên ở đây nút sẽ tàng hình.
+        b = QPushButton('...')
+        # QSS chung đặt padding 14px cho QPushButton — trên nút hẹp thì Qt cắt
+        # chữ "..." còn "." nên phải gỡ padding riêng ở đây.
+        b.setStyleSheet('QPushButton { padding: 0 2px; font-weight: 600; }')
+        b.setFixedSize(34, 24)
+        b.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         b.setToolTip('Chọn ' + label.lower())
         b.clicked.connect(on_pick)
         h.addWidget(b)

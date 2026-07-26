@@ -59,6 +59,12 @@ Toàn bộ 40 khóa đọc từ **một sheet `INPUT`** bố cục khóa–giá 
 - `crosscheck()` đối chiếu giá trị `INPUT` với ô gốc — bắt trường hợp công thức bị dán thành số cứng hoặc trỏ sang workbook khác.
 - `tools/make_input_sheet.py` sinh sheet `INPUT` từ file cũ, không sửa file gốc.
 
+### Cáp DƯL: hình học tách khỏi vật liệu
+`include_pt` **không** phụ thuộc `pt_props` nữa. Thiếu template thì vẫn dựng hình học cáp để khung xem hiển thị và `topo['tendons'][].path_mct` ghi lại; chỉ các khối `*TDN-*` là bỏ.
+
+- Biến `pt_written` (chứ không phải `bool(tendons)`) quyết định ghi `*TDN-*`, `*STAGE`, `ELEM-DEPMATL`, `*ANAL-CTRL`, `Prestress` trong STLDCASE và `has_pt` của tổ hợp — tránh đúng kiểu lỗi tổ hợp mồ côi đã gặp.
+- Thiếu thuộc tính cáp thì ghi chú thích ngay trong file MCT và trả `topo['pt_warnings']` để CLI/GUI log cảnh báo.
+
 ### Bẫy đã gặp khi ghi MCT
 - **`*STLDCASE` và `*LOADCOMB` phải phụ thuộc `ld`.** Trước đây ghi vô điều kiện, còn khối tải trọng + hoạt tải di động chỉ ghi `if ld`. Không có template → tổ hợp `mv_all` trỏ tới `mv1`/`mv2` chưa hề định nghĩa → Midas báo *"The specified load name ((null)) does not exist"*. Đọc `ld` **trước** khối STLDCASE ở cả hai nhánh.
 - **Khung xem phải đọc section thật từ `topo['sections']`**, không suy offset từ bộ phận của node: phần tử nối (connector) mang offset `CC` và chiều dày của **bụng**, trong khi node đầu của nó thuộc bản mặt (`CT`).

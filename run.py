@@ -80,6 +80,9 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
                                pt_cables=pt_cables, pt_props=pt_props,
                                include_pt=include_pt)
 
+    for w in topo.get('pt_warnings', []):
+        print(f'[{name}] WARNING: {w}')
+
     mct_path = os.path.join(section_dir, f'{name}_frame.mct')
     with open(mct_path, 'w', encoding='utf-8') as f:
         f.write(mct_text)
