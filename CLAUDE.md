@@ -33,6 +33,12 @@ Toàn bộ pipeline đã hoàn thiện. **Tested**: S1, S7, S12, S16, S20, SLT, 
 - **INPOLY** (layer `INPOLY`): lỗ rỗng bên trong (1 cho single, 2 cho twin box)
 - **PT-XXX-N**: Cáp dự ứng lực (XXX: TOP, BOT, WEB-L, WEB-R)
 
+**Nhận diện cáp** (`parse_pt_layer` / `scan_pt_layers` trong `dxf_reader.py`):
+- Chuẩn hoá tên layer trước khi so: gạch dưới/khoảng trắng → gạch nối, gộp gạch lặp, không phân biệt hoa thường. `PT_TOP_1`, `pt top 1`, `PT--TOP--1` đều nhận.
+- Vị trí chấp nhận viết tắt và tiếng Việt không dấu: `T/TREN/BANMAT` → TOP, `B/DAY/BANDAY` → BOT, `WL/SUON-T/LEFT` → WEB-L, `WR/SUON-P/RIGHT` → WEB-R. Thiếu số thứ tự thì mặc định 1.
+- Đọc cả **POLYLINE kiểu cũ** và cáp **nằm trong block (INSERT)** — trước đây chỉ quét LWPOLYLINE ở modelspace nên bỏ sót.
+- `scan_pt_layers()` trả về layer "nghi ngờ" (giống cáp mà sai quy ước) để log cảnh báo — **không đoán bừa vị trí**, ví dụ layer tên trơn `PT` thì báo chứ không tự gán TOP.
+
 ### Hệ tọa độ
 - **DXF**: X ngang, Y đứng (Y=0 tại mặt trên, Y<0 xuống dưới)
 - **MCT**: X ngang (tâm=0), Y=0, Z đứng (Z=0 đáy, Z=H đỉnh)

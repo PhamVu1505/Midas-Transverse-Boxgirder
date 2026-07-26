@@ -15,7 +15,8 @@ import glob
 
 import ezdxf
 
-from src.dxf_reader import _get_polyline_vertices, read_inpolys, read_pt_cables, section_type_from_inpolys
+from src.dxf_reader import (_get_polyline_vertices, read_inpolys, read_pt_cables,
+                            scan_pt_layers, section_type_from_inpolys)
 from src.frame_builder import build_frame
 from src.load_reader import read_loads
 from src.input_reader import source_line
@@ -67,7 +68,12 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
 
     pt_props = read_pt_properties(excel) if (excel and pt_cables) else None
     if pt_cables:
-        print(f'[{name}] PT cables detected: {[n for n, _ in pt_cables]}')
+        print(f'[{name}] Cáp DƯL: {[n for n, _ in pt_cables]}')
+    elif include_pt is not False:
+        print(f'[{name}] Không tìm thấy cáp DƯL nào')
+    if include_pt is not False:
+        for lay, why in scan_pt_layers(msp)['suspect'].items():
+            print(f'[{name}] WARNING: bỏ qua layer {lay!r} — {why}')
 
     print(f'[{name}] Writing MCT...')
     mct_text, topo = write_mct(frame, name, excel,

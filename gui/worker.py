@@ -7,7 +7,8 @@ import traceback
 import ezdxf
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from src.dxf_reader import _get_polyline_vertices, read_inpolys, read_pt_cables, section_type_from_inpolys
+from src.dxf_reader import (_get_polyline_vertices, read_inpolys, read_pt_cables,
+                            scan_pt_layers, section_type_from_inpolys)
 from src.frame_builder import build_frame
 from src.load_reader import read_loads
 from src.input_reader import source_line
@@ -67,9 +68,20 @@ class GenerateWorker(QThread):
                 stype = section_type_from_inpolys(inpolys)
                 inpoly = inpolys if stype == 'twin_box' else inpolys[0]
                 pt_cables = read_pt_cables(msp) if include_pt is not False else []
-                if pt_cables:
-                    self.log.emit(f'[{name}] Cáp DƯL: '
-                                  + ', '.join(n for n, _ in pt_cables))
+                if include_pt is not False:
+                    diag = scan_pt_layers(msp)
+                    if pt_cables:
+                        self.log.emit(f'[{name}] Cáp DƯL: '
+                                      + ', '.join(n for n, _ in pt_cables))
+                    else:
+                        self.log.emit(f'[{name}] Không tìm thấy cáp DƯL nào '
+                                      f'(layer đúng quy ước: PT-TOP-1, PT-BOT-1, '
+                                      f'PT-WEB-L-1, PT-WEB-R-1)')
+                    # Layer trông giống cáp mà không dùng được — nói rõ lý do,
+                    # trước đây bỏ qua im lặng nên không ai biết vì sao thiếu cáp.
+                    for lay, why in diag['suspect'].items():
+                        self.log.emit(f'[{name}] WARNING: bỏ qua layer '
+                                      f'{lay!r} — {why}')
 
                 ld = read_loads(excel) if excel else None
                 d_L = ld['d_L'] if ld else 0.4

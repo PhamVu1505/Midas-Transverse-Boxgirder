@@ -17,7 +17,52 @@ from .geometry import CrossSectionGeometry
 
 _TOL = 0.01  # Tolerance 10mm
 
+# ── Nhận diện layer cáp dự ứng lực ──────────────────────────────────────
+# Mẫu chuẩn: PT-TOP-1, PT-BOT-2, PT-WEB-L-1, PT-WEB-R-1
+# Thực tế bản vẽ hay lệch chuẩn, nên chuẩn hoá trước khi so:
+#   gạch dưới / khoảng trắng → gạch nối, gộp gạch lặp, bỏ gạch thừa hai đầu.
+# Vị trí chấp nhận cả tên viết tắt và tiếng Việt không dấu; số thứ tự có thể
+# thiếu (mặc định 1) hoặc có số 0 đứng đầu.
 PT_LAYER_RE = re.compile(r'^PT-(TOP|BOT|WEB-L|WEB-R)-(\d+)$', re.IGNORECASE)
+
+_PT_ALIAS = {
+    'TOP': 'TOP', 'T': 'TOP', 'TREN': 'TOP', 'BANTREN': 'TOP',
+    'BANMAT': 'TOP', 'MAT': 'TOP', 'UP': 'TOP', 'U': 'TOP',
+    'BOT': 'BOT', 'B': 'BOT', 'DAY': 'BOT', 'BANDAY': 'BOT',
+    'DUOI': 'BOT', 'DOWN': 'BOT', 'D': 'BOT',
+    'WEB-L': 'WEB-L', 'WEBL': 'WEB-L', 'WL': 'WEB-L', 'W-L': 'WEB-L',
+    'SUONT': 'WEB-L', 'SUON-T': 'WEB-L', 'BUNGT': 'WEB-L', 'BUNG-T': 'WEB-L',
+    'LEFT': 'WEB-L', 'L': 'WEB-L',
+    'WEB-R': 'WEB-R', 'WEBR': 'WEB-R', 'WR': 'WEB-R', 'W-R': 'WEB-R',
+    'SUONP': 'WEB-R', 'SUON-P': 'WEB-R', 'BUNGP': 'WEB-R', 'BUNG-P': 'WEB-R',
+    'RIGHT': 'WEB-R', 'R': 'WEB-R',
+}
+_PT_NORM_RE = re.compile(r'^PT-(.+?)(?:-(\d+))?$')
+
+
+def _norm_layer(name: str) -> str:
+    """Chuẩn hoá tên layer: hoa, gạch dưới/khoảng trắng → gạch nối, gộp gạch."""
+    s = re.sub(r'[\s_]+', '-', str(name).strip().upper())
+    return re.sub(r'-{2,}', '-', s).strip('-')
+
+
+def parse_pt_layer(name: str):
+    """Tên layer → (vị_trí, chỉ_số) hoặc None nếu không phải layer cáp.
+
+    Chấp nhận cả biến thể lệch chuẩn thường gặp trong bản vẽ thực tế:
+    PT_TOP_1, pt top 1, PT-TOP (thiếu số → 1), PT-T-2, PT-BANDAY-1…
+    """
+    n = _norm_layer(name)
+    if not n.startswith('PT-') and n != 'PT':
+        return None
+    m = _PT_NORM_RE.match(n)
+    if not m:
+        return None
+    loc_raw, idx = m.group(1), m.group(2)
+    loc = _PT_ALIAS.get(loc_raw.replace('-', ''), _PT_ALIAS.get(loc_raw))
+    if loc is None:
+        return None
+    return loc, int(idx) if idx else 1
 
 
 def read_inpolys(msp) -> list:
@@ -75,34 +120,97 @@ def read_dxf(dxf_path: str) -> CrossSectionGeometry:
     return geo
 
 
-def read_pt_cables(msp) -> list:
-    """Quét tất cả LWPOLYLINE trên các layer khớp pattern ^PT-(TOP|BOT|WEB-L|WEB-R)-(\\d+)$.
+def _pt_points(e):
+    """Đỉnh + bulge của một thực thể đường. None nếu không phải kiểu đường."""
+    t = e.dxftype()
+    if t == 'LWPOLYLINE':
+        return [(round(x, 6), round(y, 6), round(b, 6))
+                for x, y, b in e.get_points(format='xyb')]
+    if t == 'POLYLINE' and not e.is_3d_polyline:
+        # POLYLINE kiểu cũ: bulge nằm ở từng vertex
+        return [(round(v.dxf.location.x, 6), round(v.dxf.location.y, 6),
+                 round(getattr(v.dxf, 'bulge', 0.0), 6)) for v in e.vertices]
+    return None
+
+
+def _iter_line_entities(msp, depth=0):
+    """Duyệt thực thể đường ở modelspace VÀ bên trong block (INSERT).
+
+    Cáp hay được vẽ trong block rồi chèn vào — `msp.query()` không thấy chúng,
+    nên trước đây im lặng bỏ sót.
+    """
+    for e in msp:
+        t = e.dxftype()
+        if t in ('LWPOLYLINE', 'POLYLINE'):
+            yield e
+        elif t == 'INSERT' and depth < 3:
+            try:
+                for sub in e.virtual_entities():
+                    if sub.dxftype() in ('LWPOLYLINE', 'POLYLINE'):
+                        yield sub
+                    elif sub.dxftype() == 'INSERT':
+                        yield from _iter_line_entities([sub], depth + 1)
+            except Exception:
+                continue
+
+
+def scan_pt_layers(msp) -> dict:
+    """Chẩn đoán: layer nào là cáp, layer nào giống cáp mà sai quy ước.
 
     Returns:
-        list of (layer_name, [(x_dxf, y_dxf, bulge), ...]) sorted by (location_priority, index).
-        bulge = DXF bulge field of vertex i = curvature of edge i→i+1 (tan(θ/4)).
-        location_priority: TOP=0, WEB-L=1, WEB-R=2, BOT=3.
+        {'ok': {layer: (loc, idx)}, 'suspect': {layer: lý_do}}
+    """
+    ok, suspect = {}, {}
+    seen = {}
+    for e in _iter_line_entities(msp):
+        seen.setdefault(e.dxf.layer, 0)
+        seen[e.dxf.layer] += 1
+    for e in msp:
+        seen.setdefault(e.dxf.layer, seen.get(e.dxf.layer, 0))
+    for layer, n_line in seen.items():
+        parsed = parse_pt_layer(layer)
+        if parsed:
+            if n_line:
+                ok[layer] = parsed
+            else:
+                suspect[layer] = 'tên đúng quy ước nhưng không có đường nào trên layer'
+        elif 'PT' in _norm_layer(layer).split('-') or _norm_layer(layer).startswith('PT'):
+            suspect[layer] = ('không khớp quy ước PT-<TOP|BOT|WEB-L|WEB-R>-<số>')
+    return {'ok': ok, 'suspect': suspect}
+
+
+def read_pt_cables(msp) -> list:
+    """Quét cáp dự ứng lực từ tên layer.
+
+    Nhận cả LWPOLYLINE lẫn POLYLINE kiểu cũ, kể cả khi nằm trong block, và
+    chấp nhận biến thể tên layer thường gặp (xem `parse_pt_layer`).
+
+    Returns:
+        list of (layer_name, [(x_dxf, y_dxf, bulge), ...]) sắp theo
+        (ưu tiên vị trí, chỉ số). bulge của đỉnh i = độ cong cạnh i→i+1.
+        Ưu tiên vị trí: TOP=0, WEB-L=1, WEB-R=2, BOT=3.
     """
     cables_by_layer = {}
-    for e in msp.query('LWPOLYLINE'):
+    meta = {}
+    for e in _iter_line_entities(msp):
         layer = e.dxf.layer
-        m = PT_LAYER_RE.match(layer)
-        if not m:
+        parsed = parse_pt_layer(layer)
+        if not parsed:
             continue
-        pts = [(round(x, 6), round(y, 6), round(b, 6))
-               for x, y, b in e.get_points(format='xyb')]
+        pts = _pt_points(e)
+        if not pts or len(pts) < 2:
+            continue
         if layer in cables_by_layer:
-            print(f'  [WARN] PT layer {layer!r} có nhiều hơn 1 LWPOLYLINE — chỉ giữ entity đầu tiên.')
+            print(f'  [WARN] PT layer {layer!r} có nhiều hơn 1 đường — '
+                  f'chỉ giữ đường đầu tiên.')
             continue
         cables_by_layer[layer] = pts
+        meta[layer] = parsed
 
     loc_priority = {'TOP': 0, 'WEB-L': 1, 'WEB-R': 2, 'BOT': 3}
 
     def _key(item):
-        layer = item[0]
-        m = PT_LAYER_RE.match(layer)
-        loc = m.group(1).upper()
-        idx = int(m.group(2))
+        loc, idx = meta[item[0]]
         return (loc_priority.get(loc, 99), idx)
 
     return sorted(cables_by_layer.items(), key=_key)
