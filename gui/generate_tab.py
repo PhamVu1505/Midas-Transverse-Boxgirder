@@ -1,99 +1,95 @@
-"""Generate tab - DXF to MCT + SVG."""
+"""Tab Tạo mô hình — DXF → MCT + SVG.
+
+Danh sách mặt cắt không còn nằm ở đây nữa mà do panel Project bên trái giữ
+(`gui/project_panel.py`), nên hai tab dùng chung một nguồn sự thật.
+"""
 
 import os
-import glob
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                              QLineEdit, QLabel, QListWidget, QPlainTextEdit,
-                              QFileDialog, QSplitter, QAbstractItemView, QCheckBox)
+                             QLineEdit, QLabel, QFileDialog, QSplitter,
+                             QCheckBox, QFrame)
 from PyQt6.QtCore import Qt, pyqtSignal
 
+from src.project import Project
 from .worker import GenerateWorker
 from .widgets import LogView
+from .theme import LIGHT, FONT_MONO
 
 
 class GenerateTab(QWidget):
     progress_changed = pyqtSignal(int, int)   # done, total
+    project_changed = pyqtSignal()
 
-    def __init__(self, status_bar):
+    def __init__(self, status_bar, project: Project = None, theme: dict = None):
         super().__init__()
         self.status_bar = status_bar
+        self.project = project if project is not None else Project()
+        self.t = theme or LIGHT
         self.worker = None
         self._svg_widget = None
+        self._total = self._done = 0
         self._init_ui()
 
+    # ─────────────────────────────────────────
     def _init_ui(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
 
-        # DXF input row
-        row1 = QHBoxLayout()
-        row1.addWidget(QLabel('File DXF:'))
-        self.dxf_edit = QLineEdit()
-        self.dxf_edit.setPlaceholderText('Chọn file DXF hoặc cả thư mục…')
-        self.dxf_edit.setReadOnly(True)
-        row1.addWidget(self.dxf_edit, 1)
-        btn_file = QPushButton('Chọn file…')
-        btn_file.clicked.connect(self._browse_files)
-        row1.addWidget(btn_file)
-        btn_folder = QPushButton('Chọn thư mục…')
-        btn_folder.clicked.connect(self._browse_folder)
-        row1.addWidget(btn_folder)
-        layout.addLayout(row1)
-
-        # Excel data row
-        row_excel = QHBoxLayout()
-        row_excel.addWidget(QLabel('Template số liệu:'))
+        # Template chung của project
+        row = QHBoxLayout()
+        row.addWidget(QLabel('Template số liệu (chung):'))
         self.excel_edit = QLineEdit()
-        self.excel_edit.setPlaceholderText('Chọn file Excel chứa sheet INPUT (vật liệu + tải trọng)…')
+        self.excel_edit.setPlaceholderText(
+            'Chọn file Excel có sheet INPUT — mặt cắt riêng có thể gán template khác…')
         self.excel_edit.setReadOnly(True)
-        row_excel.addWidget(self.excel_edit, 1)
-        btn_excel = QPushButton('Duyệt…')
-        btn_excel.clicked.connect(self._browse_excel)
-        row_excel.addWidget(btn_excel)
-        layout.addLayout(row_excel)
+        row.addWidget(self.excel_edit, 1)
+        b = QPushButton('Duyệt…')
+        b.clicked.connect(self._browse_excel)
+        row.addWidget(b)
+        layout.addLayout(row)
 
-        # Output dir row
-        row2 = QHBoxLayout()
-        row2.addWidget(QLabel('Thư mục kết quả:'))
-        self.out_edit = QLineEdit('.')
-        row2.addWidget(self.out_edit, 1)
-        btn_out = QPushButton('Duyệt…')
-        btn_out.clicked.connect(self._browse_output)
-        row2.addWidget(btn_out)
-        layout.addLayout(row2)
+        # Thư mục kết quả
+        row = QHBoxLayout()
+        row.addWidget(QLabel('Thư mục kết quả:'))
+        self.out_edit = QLineEdit(self.project.output_dir)
+        self.out_edit.textChanged.connect(self._on_out_changed)
+        row.addWidget(self.out_edit, 1)
+        b = QPushButton('Duyệt…')
+        b.clicked.connect(self._browse_output)
+        row.addWidget(b)
+        layout.addLayout(row)
 
-        # File list
-        self.file_list = QListWidget()
-        self.file_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.file_list.setMaximumHeight(148)
-        layout.addWidget(self.file_list)
-
-        # Buttons
-        btn_row = QHBoxLayout()
+        # Tuỳ chọn + nút chạy
+        row = QHBoxLayout()
         self.chk_pt = QCheckBox('Kèm cáp DƯL — tự nhận từ layer PT-<LOC>-<N>')
         self.chk_pt.setChecked(True)
         self.chk_pt.setToolTip(
-            'Khi tick: scan DXF layers PT-TOP-N / PT-BOT-N / PT-WEB-L-N / PT-WEB-R-N\n'
-            'và sinh block *TDN-PROPERTY / *TDN-PROFILE / *TDN-PRESTRESS.\n'
-            'Bỏ tick: bỏ qua PT, MCT chỉ chứa khung không cáp.')
-        btn_row.addWidget(self.chk_pt)
-        btn_row.addStretch()
-        self.btn_clear = QPushButton('Xóa danh sách')
-        self.btn_clear.clicked.connect(self._clear)
-        btn_row.addWidget(self.btn_clear)
+            'Khi tick: quét layer PT-TOP-N / PT-BOT-N / PT-WEB-L-N / PT-WEB-R-N\n'
+            'và sinh khối *TDN-PROPERTY / *TDN-PROFILE / *TDN-PRESTRESS.\n'
+            'Bỏ tick: bỏ qua PT, MCT chỉ có khung không cáp.')
+        row.addWidget(self.chk_pt)
+        row.addStretch()
+        self.lb_scope = QLabel('')
+        self.lb_scope.setStyleSheet(
+            f'color: {self.t["ink_3"]}; font-family: {FONT_MONO}; font-size: 8pt;')
+        row.addWidget(self.lb_scope)
         self.btn_generate = QPushButton('Tạo MCT')
         self.btn_generate.setProperty('primary', True)
         self.btn_generate.clicked.connect(self._generate)
-        btn_row.addWidget(self.btn_generate)
-        layout.addLayout(btn_row)
+        row.addWidget(self.btn_generate)
+        layout.addLayout(row)
 
-        # Log + SVG preview
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setStyleSheet(f'color: {self.t["border_soft"]};')
+        layout.addWidget(line)
+
+        # Log + xem hình
         splitter = QSplitter(Qt.Orientation.Horizontal)
-
-        self.log_area = LogView()
+        self.log_area = LogView(theme=self.t)
         splitter.addWidget(self.log_area)
-
-        # SVG preview - try QSvgWidget, fallback to QLabel
         try:
             from PyQt6.QtSvgWidgets import QSvgWidget
             self._svg_widget = QSvgWidget()
@@ -102,86 +98,116 @@ class GenerateTab(QWidget):
             lbl = QLabel('Chưa xem được hình mặt cắt\n(thiếu gói PyQt6-QSvgWidgets)')
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             splitter.addWidget(lbl)
-
-        splitter.setSizes([500, 400])
+        splitter.setSizes([560, 420])
         layout.addWidget(splitter, 1)
 
-    # API công khai cho menu/toolbar
-    def browse_files(self): self._browse_files()
-    def browse_excel(self): self._browse_excel()
-    def generate(self): self._generate()
-    def clear(self): self._clear()
+        self.refresh()
 
-    def _browse_files(self):
-        files, _ = QFileDialog.getOpenFileNames(
-            self, 'Chọn file DXF', '.', 'File DXF (*.dxf)')
-        if files:
-            for f in files:
-                if not self._in_list(f):
-                    self.file_list.addItem(f)
-            self.dxf_edit.setText(f'{self.file_list.count()} file đã chọn')
+    # ─────────────────────────────────────────
+    # API công khai cho menu/toolbar/panel
+    # ─────────────────────────────────────────
+    def set_project(self, project: Project):
+        self.project = project
+        self.excel_edit.setText(project.template)
+        self.out_edit.setText(project.output_dir)
+        self.refresh()
 
-    def _browse_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, 'Chọn thư mục chứa DXF', '.')
-        if folder:
-            dxf_files = sorted(glob.glob(os.path.join(folder, '*.dxf')))
-            for f in dxf_files:
-                if not self._in_list(f):
-                    self.file_list.addItem(f)
-            self.dxf_edit.setText(f'{self.file_list.count()} file đã chọn')
+    def browse_excel(self):
+        self._browse_excel()
 
+    def generate(self, names=None):
+        self._generate(names)
+
+    def clear(self):
+        self.log_area.clear()
+
+    def refresh(self):
+        """Cập nhật dòng tóm tắt phạm vi sẽ chạy."""
+        n = len(self.project)
+        if not n:
+            self.lb_scope.setText('chưa có mặt cắt nào')
+        else:
+            n_tpl = sum(1 for s in self.project if s.template)
+            txt = f'{n} mặt cắt'
+            if n_tpl:
+                txt += f' · {n_tpl} dùng template riêng'
+            self.lb_scope.setText(txt)
+        self.btn_generate.setEnabled(n > 0 and self.worker is None)
+
+    def show_section(self, name):
+        """Panel chọn mặt cắt nào thì xem hình mặt cắt đó."""
+        sec = self.project.find(name)
+        if not sec or not self._svg_widget:
+            return
+        svg = os.path.join(self.project.output_dir, name, f'{name}_frame.svg')
+        if os.path.exists(svg):
+            self._svg_widget.load(svg)
+
+    # ─────────────────────────────────────────
     def _browse_excel(self):
         path, _ = QFileDialog.getOpenFileName(
             self, 'Chọn template số liệu', '.',
             'File Excel (*.xls *.xlsx);;Tất cả (*)')
         if path:
             self.excel_edit.setText(path)
+            self.project.template = path
+            self.project.touch()
+            self.project_changed.emit()
 
     def _browse_output(self):
-        folder = QFileDialog.getExistingDirectory(self, 'Chọn thư mục kết quả', self.out_edit.text())
+        folder = QFileDialog.getExistingDirectory(
+            self, 'Chọn thư mục kết quả', self.out_edit.text() or '.')
         if folder:
             self.out_edit.setText(folder)
 
-    def _in_list(self, path):
-        for i in range(self.file_list.count()):
-            if self.file_list.item(i).text() == path:
-                return True
-        return False
+    def _on_out_changed(self, text):
+        if self.project.output_dir != text:
+            self.project.output_dir = text
+            self.project.touch()
 
-    def _clear(self):
-        self.file_list.clear()
-        self.dxf_edit.clear()
-        self.log_area.clear()
-
-    def _generate(self):
-        dxf_paths = [self.file_list.item(i).text() for i in range(self.file_list.count())]
-        if not dxf_paths:
-            self.status_bar.showMessage('Chưa chọn file DXF nào.')
+    # ─────────────────────────────────────────
+    def _generate(self, names=None):
+        if self.worker is not None:
+            return
+        secs = ([self.project.find(n) for n in names] if names
+                else list(self.project))
+        secs = [s for s in secs if s]
+        if not secs:
+            self.status_bar.showMessage(
+                'Chưa có mặt cắt nào — thêm DXF ở panel bên trái.')
             return
 
-        excel_path = self.excel_edit.text().strip() or None
-        output_dir = self.out_edit.text() or 'output'
-        # None = auto-detect (only generate PT block if DXF has PT-* layers)
-        # False = explicitly skip PT
-        include_pt = None if self.chk_pt.isChecked() else False
+        include_pt = self.chk_pt.isChecked()
+        jobs = [{'name': s.name, 'dxf': s.dxf,
+                 'excel': self.project.template_for(s),
+                 'include_pt': include_pt and s.include_pt}
+                for s in secs]
+
         self.btn_generate.setEnabled(False)
         self.log_area.clear()
-        self.status_bar.showMessage(f'Đang tạo {len(dxf_paths)} mặt cắt…')
-
-        self.worker = GenerateWorker(dxf_paths, output_dir, excel_path,
-                                     include_pt=include_pt)
-        self.worker.log.connect(self._on_log)
-        self._total = len(dxf_paths)
-        self._done = 0
+        self._total, self._done = len(jobs), 0
         self.progress_changed.emit(0, self._total)
-        self.worker.section_done.connect(self._on_section_done)
+        self.status_bar.showMessage(f'Đang tạo {self._total} mặt cắt…')
+
+        self.worker = GenerateWorker(jobs, self.project.output_dir or 'output')
+        self.worker.log.connect(self.log_area.append_auto)
+        self.worker.section_info.connect(self._on_info)
+        self.worker.section_error.connect(self._on_error)
+        self.worker.section_done.connect(self._on_done)
         self.worker.finished_all.connect(self._on_finished)
         self.worker.start()
 
-    def _on_log(self, msg):
-        self.log_area.append_auto(msg)
+    def _on_info(self, name, info):
+        self.project.record_generated(
+            name, info['mct'], info['topo'], info['section_type'],
+            info['n_nodes'], info['n_elems'], info.get('pt_cables'))
+        self.project_changed.emit()
 
-    def _on_section_done(self, name, svg_path):
+    def _on_error(self, name, msg):
+        self.project.record_error(name, msg)
+        self.project_changed.emit()
+
+    def _on_done(self, name, svg_path):
         self._done += 1
         self.progress_changed.emit(self._done, self._total)
         self.status_bar.showMessage(f'Đã tạo: {name}')
@@ -189,8 +215,10 @@ class GenerateTab(QWidget):
             self._svg_widget.load(svg_path)
 
     def _on_finished(self, count):
-        self.btn_generate.setEnabled(True)
-        self.progress_changed.emit(count, max(count, getattr(self, '_total', count)))
+        self.worker = None
+        self.progress_changed.emit(count, max(count, self._total))
         self.status_bar.showMessage(
-            f'Xong: {count} mặt cắt — {self.log_area.summary()}')
-        self.log_area.success(f'Hoàn tất {count} mặt cắt')
+            f'Xong: {count}/{self._total} mặt cắt — {self.log_area.summary()}')
+        self.log_area.success(f'Hoàn tất {count}/{self._total} mặt cắt')
+        self.refresh()
+        self.project_changed.emit()

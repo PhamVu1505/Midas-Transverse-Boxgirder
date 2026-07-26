@@ -72,6 +72,22 @@ Vỏ ứng dụng theo lối phần mềm kỹ thuật (midas / CSI / LUSAS): me
 - Tab phát `progress_changed(done, total)` → thanh bước và status bar tự cập nhật.
 - Chuỗi hiển thị thống nhất tiếng Việt.
 
+### Project (v1.3.0 — Giai đoạn 2)
+`src/project.py` là **nguồn sự thật duy nhất** cho danh sách mặt cắt; ghi ra file `.mtbproj` (JSON).
+
+- Mỗi `Section` nhớ: DXF gốc, template riêng, MCT/topo đã sinh, Beam Force được gán, trạng thái.
+- Trạng thái: `new → generated → assigned → checked`, thêm `error`.
+- **Xóa hẳn `_match_pairs()`** (60 dòng dò tên file để ghép Beam Force ↔ MCT) — thông tin đó vốn đã biết lúc sinh MCT.
+- `Project.template_for(section)`: template riêng nếu có, không thì lấy chung. Mặt cắt cùng số sườn + cùng bề rộng dùng chung được.
+- `Project.__bool__` trả `True`: có `__len__` nên project rỗng sẽ falsy, `x or Project()` từng âm thầm thay bằng đối tượng khác.
+- `gui/project_panel.py` — cây mặt cắt dock trái, dùng chung cả hai tab (lối Works Tree của midas).
+- `QSettings` nhớ project gần đây, vị trí cửa sổ, layout dock.
+
+### Logo và nhận diện
+- `tools/make_logo.py` sinh `installer/icon.ico` (7 cỡ) từ SVG dựng sẵn — mặt cắt dầm hộp, có bản rút gọn riêng cho 16–20px. Sửa logo thì sửa file này rồi chạy lại.
+- `tools/make_assets.py` đóng gói logo TEDI + logo app thành `gui/assets.py` (base64 nhúng) — PyInstaller không cần khai báo `datas`.
+- Tách nền trắng phải dùng **min(RGB)**, không phải max: đỏ thuần (255,0,0) có max=255 nên bị coi là trắng và biến mất.
+
 ## Lệnh thường dùng
 ```bash
 python run_gui.py

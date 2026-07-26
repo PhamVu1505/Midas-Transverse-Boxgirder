@@ -100,3 +100,6 @@ class LogView(QPlainTextEdit):
 
         self.setTextCursor(cur)
         self.ensureCursorVisible()
+        # Đường dẫn dài làm khung tự cuộn sang phải, che mất đầu dòng.
+        # Luôn kéo về mép trái — người đọc cần thấy tên mặt cắt trước tiên.
+        self.horizontalScrollBar().setValue(0)

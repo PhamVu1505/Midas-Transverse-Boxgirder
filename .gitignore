@@ -41,6 +41,9 @@ output/
 # Test folders
 testptn/
 
+# Ảnh xem trước logo (sinh bởi tools/make_logo.py)
+gui/assets/app_logo_preview.png
+
 # Scratch / throwaway analysis scripts
 scratch/
 

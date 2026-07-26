@@ -19,80 +19,104 @@ from src.result_reader import (parse_beam_force, _build_element_thickness,
 
 
 class GenerateWorker(QThread):
-    """Generate MCT + SVG from DXF files."""
-    log = pyqtSignal(str)
-    section_done = pyqtSignal(str, str)  # name, svg_path
-    finished_all = pyqtSignal(int)       # count
+    """Sinh MCT + SVG từ danh sách công việc.
 
-    def __init__(self, dxf_paths: list, output_dir: str, excel_path: str = None,
-                 include_pt: bool = None):
+    Mỗi job là một dict {name, dxf, excel, include_pt} — template đọc theo TỪNG
+    mặt cắt, vì các mặt cắt khác số sườn hoặc khác bề rộng dùng template khác nhau.
+    """
+    log = pyqtSignal(str)
+    section_done = pyqtSignal(str, str)      # name, svg_path
+    section_info = pyqtSignal(str, dict)     # name, thông tin ghi vào project
+    section_error = pyqtSignal(str, str)     # name, thông báo lỗi
+    finished_all = pyqtSignal(int)
+
+    def __init__(self, jobs: list, output_dir: str):
         super().__init__()
-        self.dxf_paths = dxf_paths
+        self.jobs = jobs
         self.output_dir = output_dir
-        self.excel_path = excel_path
-        self.include_pt = include_pt    # True/False/None (None = auto)
 
     def run(self):
         count = 0
-        excel = self.excel_path if self.excel_path and os.path.exists(self.excel_path) else None
-        if not excel:
-            self.log.emit('WARNING: Excel not found — using fallback d_L=d_R=0.4 m and skipping load blocks')
-        else:
-            self.log.emit(source_line(excel))
-        ld = read_loads(excel) if excel else None
-        d_L = ld['d_L'] if ld else 0.4
-        d_R = ld['d_R'] if ld else 0.4
+        seen_excel = set()
 
-        for dxf_path in self.dxf_paths:
-            name = os.path.splitext(os.path.basename(dxf_path))[0]
+        for job in self.jobs:
+            name = job['name']
+            dxf_path = job['dxf']
+            excel = job.get('excel') or None
+            if excel and not os.path.exists(excel):
+                excel = None
+            include_pt = job.get('include_pt', True)
+            include_pt = None if include_pt else False
+
             section_dir = os.path.join(self.output_dir, name)
             os.makedirs(section_dir, exist_ok=True)
 
             try:
-                self.log.emit(f'[{name}] Reading DXF...')
+                if excel and excel not in seen_excel:
+                    seen_excel.add(excel)
+                    self.log.emit(source_line(excel))
+                elif not excel:
+                    self.log.emit(f'[{name}] WARNING: chưa có template số liệu — '
+                                  f'bỏ qua toàn bộ khối tải trọng và vật liệu')
+
+                self.log.emit(f'[{name}] Đọc DXF: {os.path.basename(dxf_path)}')
                 doc = ezdxf.readfile(dxf_path)
                 msp = doc.modelspace()
                 outpoly = _get_polyline_vertices(msp, 'OUTPOLY')
                 inpolys = read_inpolys(msp)
                 stype = section_type_from_inpolys(inpolys)
                 inpoly = inpolys if stype == 'twin_box' else inpolys[0]
-                pt_cables = read_pt_cables(msp) if self.include_pt is not False else []
+                pt_cables = read_pt_cables(msp) if include_pt is not False else []
                 if pt_cables:
-                    layer_names = ', '.join(n for n, _ in pt_cables)
-                    self.log.emit(f'[{name}] PT cables: {layer_names}')
+                    self.log.emit(f'[{name}] Cáp DƯL: '
+                                  + ', '.join(n for n, _ in pt_cables))
 
-                self.log.emit(f'[{name}] Building frame ({stype}, d_L={d_L:.3f}, d_R={d_R:.3f})...')
+                ld = read_loads(excel) if excel else None
+                d_L = ld['d_L'] if ld else 0.4
+                d_R = ld['d_R'] if ld else 0.4
+
+                self.log.emit(f'[{name}] Dựng khung ({stype}, '
+                              f'd_L={d_L:.3f}, d_R={d_R:.3f})…')
                 frame = build_frame(outpoly, inpoly, d_L=d_L, d_R=d_R)
 
                 pt_props = read_pt_properties(excel) if (excel and pt_cables) else None
 
-                self.log.emit(f'[{name}] Writing MCT...')
+                self.log.emit(f'[{name}] Ghi MCT…')
                 mct_text, topo = write_mct(frame, name, excel,
                                            pt_cables=pt_cables, pt_props=pt_props,
-                                           include_pt=self.include_pt)
+                                           include_pt=include_pt)
                 mct_path = os.path.join(section_dir, f'{name}_frame.mct')
                 with open(mct_path, 'w', encoding='utf-8') as f:
                     f.write(mct_text)
 
-                # Save topology for Results step (element IDs, sections, ranges)
                 topo_path = os.path.join(section_dir, f'{name}_topo.json')
                 with open(topo_path, 'w', encoding='utf-8') as f:
                     json.dump(topo, f, indent=2)
 
                 svg_path = os.path.join(section_dir, f'{name}_frame.svg')
                 try:
-                    export_frame_svg(outpoly, inpoly, svg_path, name, section_type=stype)
+                    export_frame_svg(outpoly, inpoly, svg_path, name,
+                                     section_type=stype)
                 except Exception:
                     svg_path = ''
 
                 n_elem = len(topo['elements'])
-                self.log.emit(f'[{name}] Done: {n_elem} elements -> {mct_path}')
+                n_node = sum(len(topo.get(k, []))
+                             for k in ('top_ids', 'bot_ids', 'wL_ids',
+                                       'wC_ids', 'wR_ids'))
+                self.log.emit(f'[{name}] Xong: {n_elem} phần tử -> {mct_path}')
+                self.section_info.emit(name, {
+                    'mct': mct_path, 'topo': topo_path, 'section_type': stype,
+                    'n_nodes': n_node, 'n_elems': n_elem,
+                    'pt_cables': [n for n, _ in pt_cables],
+                })
                 self.section_done.emit(name, svg_path)
                 count += 1
 
             except Exception as e:
-                err_msg = f'[{name}] ERROR: {str(e)}\n{traceback.format_exc()}'
-                self.log.emit(err_msg)
+                self.log.emit(f'[{name}] ERROR: {e}')
+                self.log.emit(traceback.format_exc())
+                self.section_error.emit(name, str(e))
 
         self.finished_all.emit(count)
 

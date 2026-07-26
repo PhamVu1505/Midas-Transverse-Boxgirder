@@ -12,6 +12,7 @@ from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QFontMetrics
 
 from .worker import ResultsWorker
 from .widgets import LogView
+from .theme import LIGHT
 
 
 POINTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
@@ -160,10 +161,14 @@ class CheckPointDiagram(QWidget):
 
 class ResultsTab(QWidget):
     progress_changed = pyqtSignal(int, int)
+    project_changed = pyqtSignal()
 
-    def __init__(self, status_bar):
+    def __init__(self, status_bar, project=None, theme=None):
         super().__init__()
+        from src.project import Project
         self.status_bar = status_bar
+        self.project = project if project is not None else Project()
+        self.t = theme or LIGHT
         self.worker = None
         self.all_results = {}
         self._init_ui()
@@ -171,53 +176,31 @@ class ResultsTab(QWidget):
     def _init_ui(self):
         layout = QVBoxLayout(self)
 
-        # Beam Force files row
-        row_bf = QHBoxLayout()
-        row_bf.addWidget(QLabel('File Beam Force:'))
-        self.bf_edit = QLineEdit()
-        self.bf_edit.setPlaceholderText('Chọn file Beam Force XLS xuất từ Midas…')
-        self.bf_edit.setReadOnly(True)
-        row_bf.addWidget(self.bf_edit, 1)
-        btn_bf = QPushButton('Chọn file…')
-        btn_bf.clicked.connect(self._browse_beam_force)
-        row_bf.addWidget(btn_bf)
-        layout.addLayout(row_bf)
-
-        # MCT files row (generated from Generate tab, contains topology)
-        row_mct = QHBoxLayout()
-        row_mct.addWidget(QLabel('File MCT:'))
-        self.mct_edit = QLineEdit()
-        self.mct_edit.setPlaceholderText('Chọn file MCT do bước Tạo mô hình sinh ra…')
-        self.mct_edit.setReadOnly(True)
-        row_mct.addWidget(self.mct_edit, 1)
-        btn_mct = QPushButton('Chọn file…')
-        btn_mct.clicked.connect(self._browse_mct)
-        row_mct.addWidget(btn_mct)
-        layout.addLayout(row_mct)
-
-        # Output dir row
-        row_out = QHBoxLayout()
-        row_out.addWidget(QLabel('Thư mục kết quả:'))
-        self.out_edit = QLineEdit('.')
-        row_out.addWidget(self.out_edit, 1)
+        # Cặp Beam Force ↔ MCT lấy thẳng từ project — không còn dò theo tên file
+        row = QHBoxLayout()
+        row.addWidget(QLabel('Thư mục kết quả:'))
+        self.out_edit = QLineEdit(self.project.output_dir)
+        row.addWidget(self.out_edit, 1)
         btn_out = QPushButton('Duyệt…')
         btn_out.clicked.connect(self._browse_output)
-        row_out.addWidget(btn_out)
-        layout.addLayout(row_out)
+        row.addWidget(btn_out)
+        layout.addLayout(row)
 
-        # File pair list
         self.pair_list = QListWidget()
         self.pair_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.pair_list.setMaximumHeight(80)
+        self.pair_list.setMaximumHeight(112)
         self.pair_list.setStyleSheet('font-family: Consolas, monospace;')
+        self.pair_list.itemDoubleClicked.connect(self._assign_bf_from_item)
         layout.addWidget(self.pair_list)
 
-        # Buttons row
         row_btn = QHBoxLayout()
+        self.lb_ready = QLabel('')
+        self.lb_ready.setStyleSheet('color: #667085; font-size: 8pt;')
+        row_btn.addWidget(self.lb_ready)
         row_btn.addStretch()
-        btn_clear = QPushButton('Xóa danh sách')
-        btn_clear.clicked.connect(self._clear)
-        row_btn.addWidget(btn_clear)
+        btn_bf = QPushButton('Gán Beam Force…')
+        btn_bf.clicked.connect(self._assign_bf_selected)
+        row_btn.addWidget(btn_bf)
         self.btn_process = QPushButton('Xử lý tất cả')
         self.btn_process.setProperty('primary', True)
         self.btn_process.clicked.connect(self._process)
@@ -265,10 +248,8 @@ class ResultsTab(QWidget):
         btn_row.addWidget(btn_open)
         layout.addLayout(btn_row)
 
-        # Internal storage
-        self._bf_files = []   # list of Beam Force XLS paths
-        self._mct_files = []  # list of MCT file paths
-        self._pairs = []      # list of (name, bf_path, topo_path)
+        self._pairs = []      # [(name, bf_path, topo_path)] dựng từ project
+        self.refresh()
 
     def _style_table_headers(self):
         current_group = ''
@@ -286,108 +267,97 @@ class ResultsTab(QWidget):
     def clear(self): self._clear()
     def open_folder(self): self._open_folder()
 
-    def _browse_beam_force(self):
-        files, _ = QFileDialog.getOpenFileNames(
-            self, 'Chọn file Beam Force', '.',
-            'File Excel (*.xls *.xlsx);;Tất cả (*)')
-        if files:
-            self._bf_files = files
-            self.bf_edit.setText(f'{len(files)} file đã chọn')
-            self._match_pairs()
-
-    def _browse_mct(self):
-        files, _ = QFileDialog.getOpenFileNames(
-            self, 'Chọn file MCT', '.',
-            'File MCT (*.mct)')
-        if files:
-            self._mct_files = files
-            self.mct_edit.setText(f'{len(files)} file đã chọn')
-            self._match_pairs()
+    def set_project(self, project):
+        self.project = project
+        self.out_edit.setText(project.output_dir)
+        self.refresh()
 
     def _browse_output(self):
         folder = QFileDialog.getExistingDirectory(
-            self, 'Chọn thư mục kết quả', self.out_edit.text())
+            self, 'Chọn thư mục kết quả', self.out_edit.text() or '.')
         if folder:
             self.out_edit.setText(folder)
+            self.project.output_dir = folder
+            self.project.touch()
 
-    def _match_pairs(self):
-        """Auto-match Beam Force files with MCT files by section name.
-
-        Each MCT file ({name}_frame.mct) must have a companion
-        {name}_topo.json in the same directory (created by Generate).
-        """
+    def refresh(self):
+        """Dựng lại danh sách cặp từ project — thay cho _match_pairs() dò tên file."""
         self.pair_list.clear()
         self._pairs = []
-
-        if not self._bf_files or not self._mct_files:
-            return
-
-        # Build MCT lookup: section name -> topo.json path
-        mct_map = {}   # NAME (upper) -> (name, topo_path)
-        dir_map = {}   # directory path -> (name, topo_path)
-        for mct in self._mct_files:
-            mct_base = os.path.splitext(os.path.basename(mct))[0]
-            # Strip "_frame" suffix: "S16_frame" -> "S16"
-            name = mct_base
-            if name.endswith('_frame'):
-                name = name[:-6]
-            # Look for companion topo.json
-            mct_dir = os.path.dirname(mct)
-            topo_path = os.path.join(mct_dir, f'{name}_topo.json')
-            if os.path.exists(topo_path):
-                mct_map[name.upper()] = (name, topo_path)
-                dir_map[os.path.normpath(mct_dir)] = (name, topo_path)
-
-        for bf in self._bf_files:
-            bf_base = os.path.splitext(os.path.basename(bf))[0]
-            # Extract section name from filename: "Beam Force_S16" -> "S16"
-            bf_name = bf_base
-            for prefix in ['Beam Force_', 'Beam Force ', 'BeamForce_', 'BeamForce ']:
-                if bf_base.startswith(prefix):
-                    bf_name = bf_base[len(prefix):]
-                    break
-
-            # If name is still generic (e.g. "Beam Force"), use parent folder name
-            if bf_name.upper().replace(' ', '') in ('BEAMFORCE', 'BEAM FORCE', ''):
-                bf_name = os.path.basename(os.path.dirname(bf))
-
-            # Try match by name first, then by same directory
-            match = mct_map.get(bf_name.upper())
-            if not match:
-                bf_dir = os.path.normpath(os.path.dirname(bf))
-                match = dir_map.get(bf_dir)
-            if match:
-                name, topo_path = match
-                # Count elements from topo.json for display
-                try:
-                    import json
-                    with open(topo_path, 'r', encoding='utf-8') as f:
-                        topo = json.load(f)
-                    n_elem = len(topo['elements'])
-                    info = f'{n_elem} elements'
-                except Exception:
-                    info = 'topo loaded'
-                self._pairs.append((name, bf, topo_path))
+        n_ready = n_missing = 0
+        for s in self.project:
+            if not s.topo or not os.path.exists(s.topo):
+                self.pair_list.addItem(f'{s.name:<12} chưa tạo MCT')
+                continue
+            if s.beam_force and os.path.exists(s.beam_force):
+                self._pairs.append((s.name, s.beam_force, s.topo))
                 self.pair_list.addItem(
-                    f'{name}: {os.path.basename(bf)} <-> MCT ({info})')
+                    f'{s.name:<12} {s.n_elems:>4} phần tử  ←  '
+                    f'{os.path.basename(s.beam_force)}')
+                n_ready += 1
             else:
                 self.pair_list.addItem(
-                    f'{bf_name}: {os.path.basename(bf)} <-> ??? (no matching MCT/topo)')
+                    f'{s.name:<12} {s.n_elems:>4} phần tử  ←  '
+                    f'(chưa gán Beam Force — bấm đúp để chọn)')
+                n_missing += 1
+        bits = []
+        if n_ready:
+            bits.append(f'{n_ready} mặt cắt sẵn sàng')
+        if n_missing:
+            bits.append(f'{n_missing} chưa có Beam Force')
+        self.lb_ready.setText(' · '.join(bits) or 'Chưa có mặt cắt nào đã tạo MCT')
+        self.btn_process.setEnabled(n_ready > 0 and self.worker is None)
+
+    # API công khai
+    def process(self): self._process()
+    def clear(self): self._clear()
+    def open_folder(self): self._open_folder()
+
+    def _row_name(self, item):
+        return item.text().split()[0] if item else ''
+
+    def _assign_bf_from_item(self, item):
+        self._assign_bf([self._row_name(item)])
+
+    def _assign_bf_selected(self):
+        names = [self._row_name(i) for i in self.pair_list.selectedItems()]
+        self._assign_bf([n for n in names if n])
+
+    def _assign_bf(self, names):
+        if not names:
+            self.status_bar.showMessage('Chọn mặt cắt trong danh sách trước.')
+            return
+        if len(names) == 1:
+            sec = self.project.find(names[0])
+            start = os.path.dirname(sec.mct) if sec and sec.mct else '.'
+            path, _ = QFileDialog.getOpenFileName(
+                self, f'Chọn Beam Force cho {names[0]}', start,
+                'File Excel (*.xls *.xlsx);;Tất cả (*)')
+            if path:
+                self.project.set_beam_force(names[0], path)
+        else:
+            files, _ = QFileDialog.getOpenFileNames(
+                self, 'Chọn các file Beam Force', '.',
+                'File Excel (*.xls *.xlsx);;Tất cả (*)')
+            # ghép theo tên mặt cắt xuất hiện trong tên file
+            for n in names:
+                hit = next((f for f in files
+                            if n.upper() in os.path.basename(f).upper()), None)
+                if hit:
+                    self.project.set_beam_force(n, hit)
+        self.refresh()
+        self.project_changed.emit()
 
     def _clear(self):
-        self._bf_files = []
-        self._mct_files = []
-        self._pairs = []
-        self.bf_edit.clear()
-        self.mct_edit.clear()
-        self.pair_list.clear()
         self.log_area.clear()
         self.all_results.clear()
         self.section_combo.clear()
+        self.refresh()
 
     def _process(self):
         if not self._pairs:
-            self.status_bar.showMessage('Chưa ghép được cặp file nào — chọn cả Beam Force lẫn MCT.')
+            self.status_bar.showMessage(
+                'Chưa mặt cắt nào sẵn sàng — cần đã tạo MCT và đã gán Beam Force.')
             return
 
         self.btn_process.setEnabled(False)
@@ -411,6 +381,7 @@ class ResultsTab(QWidget):
 
     def _on_section_done(self, name, check_points):
         self.all_results[name] = check_points
+        self.project.record_checked(name)
         self.section_combo.addItem(name)
         self._done += 1
         self.progress_changed.emit(self._done, self._total)
