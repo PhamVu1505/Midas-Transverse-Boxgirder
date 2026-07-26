@@ -32,6 +32,7 @@ def _write_constraint_block(blocks, bot_ids, bot_nodes, supports, defaults):
     """
     blocks.append('*CONSTRAINT    ; Supports')
     blocks.append('; NODE_LIST, CONST(Dx,Dy,Dz,Rx,Ry,Rz), GROUP')
+    eff = []
     if supports:
         used = set()
         for sp in sorted(supports, key=lambda d: float(d.get('x', 0))):
@@ -47,10 +48,19 @@ def _write_constraint_block(blocks, bot_ids, bot_nodes, supports, defaults):
             blocks.append(f'   {nid}, {code}, Boundary'
                           f'    ; {SUPPORT_LABEL.get(kind, kind)}'
                           f' @ X={bot_nodes[i]["x"]:.3f}')
+            eff.append({'id': int(nid), 'x': round(float(bot_nodes[i]['x']), 6),
+                        'kind': kind, 'code': code})
     else:
+        by_id = {int(n): bot_nodes[k]['x'] for k, n in enumerate(bot_ids)}
+        rev = {v: k for k, v in SUPPORT_CODE.items()}
         for nid, code in defaults:
             blocks.append(f'   {nid}, {code}, Boundary')
+            eff.append({'id': int(nid), 'x': round(float(by_id.get(int(nid), 0)), 6),
+                        'kind': rev.get(code, 'roller'), 'code': code})
     blocks.append('')
+    # Trả lại bộ gối THỰC TẾ đã ghi để lưu vào topo.json — nhờ vậy khung xem
+    # hiện đúng thứ có trong MCT, kể cả khi người dùng chưa đặt gối nào.
+    return sorted(eff, key=lambda d: d['x'])
 
 
 def write_mct(frame: dict, section_name: str = 'Section',
@@ -430,7 +440,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
     # bot_ids[-1] = web R bottom = roller (Dy+Dz = 011000)
     # Dy luôn bị khóa: khung ngang là bài toán phẳng XZ, không khóa Dy thì
     # Midas báo singular trong không gian 3D.
-    _write_constraint_block(
+    eff_supports = _write_constraint_block(
         blocks, bot_ids, bot_nodes, supports,
         defaults=[(bot_ids[-1], '011000'), (bot_ids[0], '111000')])
 
@@ -520,6 +530,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
             'outpoly': [[round(a, 4), round(b, 4)] for a, b in frame['outpoly_mct']],
             'inpolys': [[[round(a, 4), round(b, 4)] for a, b in frame['inpoly_mct']]],
         },
+        'supports': eff_supports,
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,
@@ -868,7 +879,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
     blocks.append('; NAME')
     blocks.append(' Load')
     blocks.append('')
-    _write_constraint_block(
+    eff_supports = _write_constraint_block(
         blocks, bot_ids, bot_nodes, supports,
         defaults=[(bot_ids[-1], '011000'),
                   (bot_ids[bot_center_idx], '011000'),
@@ -944,6 +955,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
             'inpolys': [[[round(a, 4), round(b, 4)] for a, b in frame['inpoly_mct']],
                         [[round(a, 4), round(b, 4)] for a, b in frame['inpoly_right_mct']]],
         },
+        'supports': eff_supports,
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,

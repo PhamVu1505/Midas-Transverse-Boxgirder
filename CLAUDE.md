@@ -96,6 +96,21 @@ Vỏ ứng dụng theo lối phần mềm kỹ thuật (midas / CSI / LUSAS): me
 - `tools/make_assets.py` đóng gói logo TEDI + logo app thành `gui/assets.py` (base64 nhúng) — PyInstaller không cần khai báo `datas`.
 - Tách nền trắng phải dùng **min(RGB)**, không phải max: đỏ thuần (255,0,0) có max=255 nên bị coi là trắng và biến mất.
 
+### Bố cục giao diện (dựng theo mockup)
+Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
+`Model | Section shape | Parts | Results table | MCT source` — ba tab đầu cùng trỏ về `ViewerPanel`, chỉ đổi chế độ vẽ.
+
+| Vùng | Nội dung |
+|------|----------|
+| Dock trái `Project` | Cây mặt cắt · Thiết lập (template + thư mục kết quả) · Lớp hiển thị |
+| Trung tâm | Thanh bước → tab chế độ xem + nút Sửa gối → canvas (zoom nổi góc trên phải, chú giải góc dưới trái, dòng truy vấn đáy) |
+| Dock phải `Properties` | Tab Properties (mặt cắt · node đang rê · gối) và Input data (40 khóa template) |
+| Dock đáy `Messages` | Nhật ký phân cấp màu, trải hết bề ngang |
+| Status bar | Trạng thái · chi tiết · toạ độ con trỏ · progress · số mặt cắt · đơn vị · phiên bản |
+
+- `gui/generate_tab.py` giờ là **`GenerateController`** (QObject, không phải widget) — chỉ điều phối worker và ghi kết quả vào project.
+- `gui/viewer_panel.py` gói canvas + lớp nổi; `gui/properties_panel.py` là dock phải.
+
 ### Khung xem mặt cắt (v1.3.0 — Giai đoạn 3)
 `gui/frame_view.py` vẽ thẳng từ `topo.json`, tức **đúng mô hình đã ghi ra MCT**, không phải hình dựng lại. Zoom/pan/fit, bật tắt lớp, rê chuột tra node.
 

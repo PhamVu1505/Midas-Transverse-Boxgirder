@@ -267,6 +267,9 @@ class ResultsTab(QWidget):
     def clear(self): self._clear()
     def open_folder(self): self._open_folder()
 
+    def set_log(self, log):
+        self.log_area = log
+
     def set_project(self, project):
         self.project = project
         self.out_edit.setText(project.output_dir)

@@ -12,7 +12,8 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QBrush, QFont, QAction
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget,
                              QTreeWidgetItem, QLabel, QPushButton, QMenu,
-                             QFileDialog, QAbstractItemView, QHeaderView)
+                             QFileDialog, QAbstractItemView, QHeaderView,
+                             QCheckBox, QLineEdit, QToolButton)
 
 from src.project import (Project, STATUS_LABEL, NEW, GENERATED, ASSIGNED,
                          CHECKED, ERROR)
@@ -34,6 +35,8 @@ class ProjectPanel(QWidget):
     section_selected = pyqtSignal(str)     # tên mặt cắt
     project_changed = pyqtSignal()         # danh sách/thiết lập đổi
     generate_requested = pyqtSignal(list)  # tên các mặt cắt cần tạo MCT
+    layer_toggled = pyqtSignal(str, bool)  # lớp hiển thị của khung xem
+    settings_changed = pyqtSignal()        # template / thư mục kết quả
 
     def __init__(self, project: Project = None, theme: dict = None, parent=None):
         super().__init__(parent)
@@ -65,6 +68,7 @@ class ProjectPanel(QWidget):
         self.tree.customContextMenuRequested.connect(self._menu)
         self.tree.itemSelectionChanged.connect(self._on_select)
         self.tree.setStyleSheet('QTreeWidget { border: 0; }')
+        self.tree.setMinimumHeight(172)
         h = self.tree.header()
         h.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -79,6 +83,37 @@ class ProjectPanel(QWidget):
         self.lb_sum.setWordWrap(True)
         lay.addWidget(self.lb_sum)
 
+        # ── Thiết lập: template chung + thư mục kết quả ──
+        self._sec_head(lay, 'THIẾT LẬP')
+        setb = QWidget()
+        sv = QVBoxLayout(setb)
+        sv.setContentsMargins(10, 5, 10, 7)
+        sv.setSpacing(4)
+        self.ed_tpl, r1 = self._path_row('Template số liệu', self._pick_tpl)
+        self.ed_out, r2 = self._path_row('Thư mục kết quả', self._pick_out)
+        sv.addWidget(r1)
+        sv.addWidget(r2)
+        self.ed_out.textChanged.connect(self._out_typed)
+        lay.addWidget(setb)
+
+        from .frame_view import DEFAULT_LAYERS
+        self._sec_head(lay, 'LỚP HIỂN THỊ')
+        box = QWidget()
+        lv = QVBoxLayout(box)
+        lv.setContentsMargins(10, 4, 10, 6)
+        lv.setSpacing(1)
+        for key, label in (('concrete', 'Bê tông'), ('elements', 'Phần tử'),
+                           ('nodes', 'Node'), ('ids', 'Số hiệu node'),
+                           ('eids', 'Số hiệu phần tử'), ('supports', 'Gối'),
+                           ('pt', 'Cáp DƯL'), ('dims', 'Kích thước'),
+                           ('grid', 'Lưới')):
+            c = QCheckBox(label)
+            c.setChecked(DEFAULT_LAYERS.get(key, True))
+            c.setStyleSheet('font-size: 9pt;')
+            c.toggled.connect(lambda on, k=key: self.layer_toggled.emit(k, on))
+            lv.addWidget(c)
+        lay.addWidget(box)
+
         row = QHBoxLayout()
         row.setContentsMargins(8, 6, 8, 8)
         row.setSpacing(6)
@@ -91,9 +126,70 @@ class ProjectPanel(QWidget):
         row.addWidget(b_del)
         lay.addLayout(row)
 
+    def _sec_head(self, lay, text):
+        lb = QLabel(text)
+        lb.setStyleSheet(
+            f'color: {self.t["ink_2"]}; font-size: 8pt; font-weight: 600;'
+            f' letter-spacing: 1px; padding: 9px 12px 5px;'
+            f' border-top: 1px solid {self.t["border_soft"]};'
+            f' border-bottom: 1px solid {self.t["border_soft"]};'
+            f' background: {self.t["panel"]};')
+        lay.addWidget(lb)
+        return lb
+
+    @staticmethod
+    def _set_path(ed, text):
+        """Đặt đường dẫn rồi kéo con trỏ về đầu — nếu không QLineEdit cuộn sang
+        phải và chỉ thấy phần đuôi."""
+        ed.setText(text or '')
+        ed.setToolTip(text or '')
+        ed.setCursorPosition(0)
+
+    def _path_row(self, label, on_pick):
+        box = QWidget()
+        h = QHBoxLayout(box)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(4)
+        ed = QLineEdit()
+        ed.setPlaceholderText(label + '…')
+        ed.setToolTip(label)
+        ed.setStyleSheet(f'font-family: {FONT_MONO}; font-size: 8pt;')
+        h.addWidget(ed, 1)
+        b = QToolButton()
+        b.setText('…')
+        b.setFixedWidth(24)
+        b.setToolTip('Chọn ' + label.lower())
+        b.clicked.connect(on_pick)
+        h.addWidget(b)
+        return ed, box
+
+    def _pick_tpl(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, 'Chọn template số liệu', '.',
+            'File Excel (*.xls *.xlsx);;Tất cả (*)')
+        if path:
+            self.project.template = path
+            self.project.touch()
+            self._set_path(self.ed_tpl, path)
+            self.settings_changed.emit()
+
+    def _pick_out(self):
+        folder = QFileDialog.getExistingDirectory(
+            self, 'Chọn thư mục kết quả', self.ed_out.text() or '.')
+        if folder:
+            self._set_path(self.ed_out, folder)
+
+    def _out_typed(self, text):
+        if self.project.output_dir != text:
+            self.project.output_dir = text
+            self.project.touch()
+            self.settings_changed.emit()
+
     # ─────────────────────────────────────────
     def set_project(self, project: Project):
         self.project = project
+        self._set_path(self.ed_tpl, project.template)
+        self._set_path(self.ed_out, project.output_dir)
         self.refresh()
 
     def selected_names(self) -> list:

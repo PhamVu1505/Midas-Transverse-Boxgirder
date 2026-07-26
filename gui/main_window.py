@@ -5,15 +5,21 @@ import webbrowser
 
 from PyQt6.QtCore import Qt, QSize, QSettings
 from PyQt6.QtGui import QAction, QKeySequence
-from PyQt6.QtWidgets import (QMainWindow, QTabWidget, QStatusBar, QLabel,
+from PyQt6.QtWidgets import (QMainWindow, QTabBar, QStackedWidget,
+                             QStatusBar, QLabel, QPlainTextEdit,
                              QProgressBar, QWidget, QVBoxLayout, QToolBar,
                              QMessageBox, QFrame, QDockWidget, QFileDialog,
-                             QDialog, QHBoxLayout, QPushButton)
+                             QDialog, QHBoxLayout, QPushButton, QToolButton,
+                             QTabWidget)
 
 from src.project import Project, FILE_EXT, CHECKED, ERROR
-from .generate_tab import GenerateTab
+from .generate_tab import GenerateController
 from .results_tab import ResultsTab
 from .project_panel import ProjectPanel
+from .properties_panel import PropertiesPanel
+from .viewer_panel import ViewerPanel
+from .frame_view import MODEL, SHAPE, PARTS
+from .widgets import LogView
 from .icons import icon
 from .theme import LIGHT, FONT_MONO
 from .widgets import StepBar, ACTIVE, DONE
@@ -38,7 +44,7 @@ class MainWindow(QMainWindow):
 
         self._build_status()
         self._build_central()
-        self._build_dock()
+        self._build_docks()
         self._build_menu()
         self._build_toolbar()
         self._connect()
@@ -50,6 +56,12 @@ class MainWindow(QMainWindow):
     # ─────────────────────────────────────────
     # Dựng giao diện
     # ─────────────────────────────────────────
+    # Vùng trung tâm theo mockup: tab CHẾ ĐỘ XEM (không phải tab quy trình),
+    # ba tab đầu cùng trỏ về khung xem nhưng đổi chế độ vẽ.
+    VIEW_TABS = [('Model', 0, MODEL), ('Section shape', 0, SHAPE),
+                 ('Parts', 0, PARTS), ('Results table', 1, None),
+                 ('MCT source', 2, None)]
+
     def _build_central(self):
         root = QWidget()
         lay = QVBoxLayout(root)
@@ -59,28 +71,106 @@ class MainWindow(QMainWindow):
         self.steps = StepBar(theme=self.t)
         lay.addWidget(self.steps)
 
-        self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
-        self.gen_tab = GenerateTab(self.status, self.project, self.t)
-        self.res_tab = ResultsTab(self.status, self.project, self.t)
-        self.tabs.addTab(self.gen_tab, 'Tạo mô hình  (DXF → MCT)')
-        self.tabs.addTab(self.res_tab, 'Kiểm toán  (Beam Force → Check)')
-        self.tabs.currentChanged.connect(self._on_tab)
-        lay.addWidget(self.tabs, 1)
+        bar = QWidget()
+        bl = QHBoxLayout(bar)
+        bl.setContentsMargins(6, 0, 8, 0)
+        bl.setSpacing(8)
+        self.tabbar = QTabBar()
+        self.tabbar.setDrawBase(False)
+        self.tabbar.setExpanding(False)
+        self.tabbar.setUsesScrollButtons(False)
+        self.tabbar.setSizePolicy(self.tabbar.sizePolicy().horizontalPolicy().Minimum,
+                                  self.tabbar.sizePolicy().verticalPolicy().Preferred)
+        for label, _, _ in self.VIEW_TABS:
+            self.tabbar.addTab(label)
+        self.tabbar.currentChanged.connect(self._on_view_tab)
+        bl.addWidget(self.tabbar)
+        bl.addStretch()
 
+        self.btn_sup = QToolButton()
+        self.btn_sup.setText('Sửa gối')
+        self.btn_sup.setCheckable(True)
+        self.btn_sup.setToolTip('Bấm node đáy để đặt gối · kéo tam giác để dời · '
+                                'chuột phải để xóa')
+        self.btn_sup.toggled.connect(self._toggle_supports)
+        bl.addWidget(self.btn_sup)
+        bar.setStyleSheet(f'background: {self.t["panel_alt"]};'
+                          f' border-bottom: 1px solid {self.t["border"]};')
+        lay.addWidget(bar)
+
+        self.viewer = ViewerPanel(self.t)
+        self.res_tab = ResultsTab(self.status, self.project, self.t)
+        self.mct_view = QPlainTextEdit()
+        self.mct_view.setReadOnly(True)
+        self.mct_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.mct_view.setStyleSheet(
+            f'font-family: {FONT_MONO}; font-size: 9pt; border: 0;')
+
+        self.stack = QStackedWidget()
+        for w in (self.viewer, self.res_tab, self.mct_view):
+            self.stack.addWidget(w)
+        lay.addWidget(self.stack, 1)
+
+        self.gen_tab = GenerateController(self.status, self.project, self.viewer)
         self.setCentralWidget(root)
         self.steps.set_state(0, ACTIVE)
 
-    def _build_dock(self):
+    def _on_view_tab(self, idx):
+        if not (0 <= idx < len(self.VIEW_TABS)):
+            return
+        _, page, mode = self.VIEW_TABS[idx]
+        self.stack.setCurrentIndex(page)
+        if mode:
+            self.viewer.set_mode(mode)
+        elif page == 1:
+            self.res_tab.refresh()
+            self.steps.set_state(3, ACTIVE)
+        elif page == 2:
+            self.mct_view.setPlainText(
+                self.gen_tab.current_mct_text() or
+                '; Chọn một mặt cắt đã tạo MCT ở panel bên trái.')
+        self.btn_sup.setEnabled(page == 0)
+
+    def _toggle_supports(self, on):
+        self.viewer.set_edit_supports(on)
+
+    def _dock(self, title, obj, widget, area, min_w=0, min_h=0):
+        d = QDockWidget(title, self)
+        d.setObjectName(obj)
+        d.setWidget(widget)
+        d.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable
+                      | QDockWidget.DockWidgetFeature.DockWidgetFloatable)
+        if min_w:
+            d.setMinimumWidth(min_w)
+        if min_h:
+            d.setMinimumHeight(min_h)
+        self.addDockWidget(area, d)
+        return d
+
+    def _build_docks(self):
+        """Bố cục theo lối midas: cây trái, thuộc tính phải, thông báo dưới."""
         self.panel = ProjectPanel(self.project, self.t)
-        dock = QDockWidget('Project', self)
-        dock.setObjectName('projectDock')
-        dock.setWidget(self.panel)
-        dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable
-                         | QDockWidget.DockWidgetFeature.DockWidgetFloatable)
-        dock.setMinimumWidth(230)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
-        self.dock = dock
+        self.dock = self._dock('Project', 'projectDock', self.panel,
+                               Qt.DockWidgetArea.LeftDockWidgetArea, min_w=234)
+
+        self.props = PropertiesPanel(self.t)
+        self.props.set_project(self.project)
+        self.dock_props = self._dock('Properties', 'propsDock', self.props,
+                                     Qt.DockWidgetArea.RightDockWidgetArea,
+                                     min_w=246)
+
+        # Message window trải hết bề ngang dưới đáy — đúng như midas và mockup
+        self.log = LogView(theme=self.t)
+        wrap = QWidget()
+        lv = QVBoxLayout(wrap)
+        lv.setContentsMargins(0, 0, 0, 0)
+        lv.addWidget(self.log)
+        self.dock_log = self._dock('Messages', 'logDock', wrap,
+                                   Qt.DockWidgetArea.BottomDockWidgetArea,
+                                   min_h=118)
+        self.resizeDocks([self.dock_log], [156], Qt.Orientation.Vertical)
+        self.gen_tab.set_log(self.log)
+        self.res_tab.set_log(self.log)
 
     def _build_status(self):
         self.status = QStatusBar()
@@ -91,6 +181,12 @@ class MainWindow(QMainWindow):
         self.status.addWidget(self.lb_msg)
         self.lb_detail = QLabel('')
         self.status.addWidget(self.lb_detail, 1)
+
+        self.lb_cursor = QLabel('')
+        self.lb_cursor.setStyleSheet(
+            f'font-family: {FONT_MONO}; color: {self.t["ink_3"]};')
+        self.status.addPermanentWidget(self.lb_cursor)
+        self.status.addPermanentWidget(self._sep())
 
         self.prog = QProgressBar()
         self.prog.setFixedWidth(120)
@@ -177,6 +273,16 @@ class MainWindow(QMainWindow):
         m.addAction(self.a_bf)
         m.addAction(self.a_run)
 
+        m = mb.addMenu('&Xem')
+        for d, label in ((self.dock, 'Panel &Project'),
+                         (self.dock_props, 'Panel &Properties'),
+                         (self.dock_log, 'Cửa sổ &Thông báo')):
+            a = d.toggleViewAction()
+            a.setText(label)
+            m.addAction(a)
+        m.addSeparator()
+        m.addAction(self._act('&Vừa khung', lambda: self.gen_tab.view.fit(), 'F'))
+
         m = mb.addMenu('&Công cụ')
         m.addAction(self._act('Kiểm tra &template số liệu…', self.check_template,
                               None, 'info',
@@ -227,11 +333,19 @@ class MainWindow(QMainWindow):
 
     def _connect(self):
         self.panel.section_selected.connect(self.gen_tab.show_section)
+        self.panel.section_selected.connect(self._on_section_selected)
+        self.panel.layer_toggled.connect(self.viewer.view.set_layer)
+        self.panel.settings_changed.connect(self._on_project_changed)
         self.panel.generate_requested.connect(self.gen_tab.generate)
         self.panel.project_changed.connect(self._on_project_changed)
-        for tab in (self.gen_tab, self.res_tab):
-            tab.project_changed.connect(self._on_project_changed)
+        self.viewer.view.node_hovered.connect(self.props.show_node)
+        self.viewer.cursor_moved.connect(self.lb_cursor.setText)
+        self.viewer.supports_changed.connect(self.gen_tab.on_supports_changed)
+        self.viewer.supports_changed.connect(
+            lambda _: self._on_section_selected(self.gen_tab._current))
+        self.gen_tab.project_changed.connect(self._on_project_changed)
         self.gen_tab.progress_changed.connect(self._on_generate_progress)
+        self.res_tab.project_changed.connect(self._on_project_changed)
         self.res_tab.progress_changed.connect(self._on_results_progress)
 
     # ─────────────────────────────────────────
@@ -239,7 +353,9 @@ class MainWindow(QMainWindow):
     # ─────────────────────────────────────────
     def _apply_project(self, project: Project):
         self.project = project
+        self.gen_tab.project = project
         self.panel.set_project(project)
+        self.props.set_project(project)
         self.gen_tab.set_project(project)
         self.res_tab.set_project(project)
         self._on_project_changed()
@@ -247,8 +363,16 @@ class MainWindow(QMainWindow):
         self.steps.set_state(0, DONE if len(project) else ACTIVE,
                              f'{len(project)} file' if len(project) else '')
 
+    def _on_section_selected(self, name):
+        if not name:
+            return
+        v = self.gen_tab.view
+        self.props.show_section(name, v.stats(),
+                                [dict(sp, id=v._sup_node(sp)) for sp in v.supports])
+
     def _on_project_changed(self):
         self.panel.refresh()
+        self.props.refresh()
         self.gen_tab.refresh()
         self.res_tab.refresh()
         self._update_title()
@@ -368,29 +492,22 @@ class MainWindow(QMainWindow):
         self.panel.add_folder_dialog()
 
     def pick_template(self):
-        self.tabs.setCurrentIndex(0)
         self.gen_tab.browse_excel()
 
     def generate_all(self):
-        self.tabs.setCurrentIndex(0)
         self.gen_tab.generate()
 
     def generate_selected(self):
         names = self.panel.selected_names()
-        self.tabs.setCurrentIndex(0)
         self.gen_tab.generate(names or None)
 
     def clear_log(self):
-        w = self.tabs.currentWidget()
-        if hasattr(w, 'clear'):
-            w.clear()
+        self.log.clear()
 
     def assign_bf(self):
-        self.tabs.setCurrentIndex(1)
         self.res_tab._assign_bf_selected()
 
     def process_results(self):
-        self.tabs.setCurrentIndex(1)
         self.res_tab.process()
 
     def open_output(self):
@@ -501,11 +618,6 @@ class MainWindow(QMainWindow):
         self.prog.setVisible(True)
         self.prog.setMaximum(total)
         self.prog.setValue(done)
-
-    def _on_tab(self, idx):
-        if idx == 1:
-            self.res_tab.refresh()
-            self.steps.set_state(3, ACTIVE)
 
     def _on_generate_progress(self, done, total):
         self.set_progress(done, total)

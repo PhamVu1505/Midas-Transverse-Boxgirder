@@ -124,6 +124,10 @@ class FrameView(QWidget):
             'x0': min(xs), 'x1': max(xs),
         }
         self.m['B'] = self.m['x1'] - self.m['x0']
+        # Gối lấy từ topo — đó là bộ ĐÃ GHI vào MCT, kể cả khi người dùng chưa
+        # đặt gì (writer dùng bộ mặc định). Nhờ vậy khung xem luôn khớp với file.
+        self.supports = [{'x': float(sp['x']), 'kind': sp.get('kind', 'roller')}
+                         for sp in topo.get('supports', [])]
         self._fitted = False
         self._hover = self._sel = None
         self.update()
