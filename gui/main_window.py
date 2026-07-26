@@ -451,16 +451,30 @@ class MainWindow(QMainWindow):
         return True
 
     def _confirm_discard(self) -> bool:
+        """Hỏi trước khi bỏ thay đổi.
+
+        Đặt chữ cho từng nút thay vì dùng Save/Discard/Cancel mặc định của Qt:
+        "Discard" dịch máy ra khó hiểu, trong khi mọi phần mềm quen thuộc đều
+        dùng cặp Lưu / Không lưu / Hủy.
+        """
         if not self.project.dirty or not len(self.project):
             return True
-        r = QMessageBox.question(
-            self, 'Project chưa lưu',
-            'Project hiện tại có thay đổi chưa lưu. Lưu lại trước khi tiếp tục?',
-            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel)
-        if r == QMessageBox.StandardButton.Cancel:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle('Project chưa lưu')
+        box.setText(f'<b>Lưu thay đổi vào "{self.project.title}"?</b>')
+        box.setInformativeText('Không lưu thì mọi thay đổi từ lần lưu gần nhất '
+                               'sẽ mất.')
+        b_save = box.addButton('Lưu', QMessageBox.ButtonRole.AcceptRole)
+        b_no = box.addButton('Không lưu', QMessageBox.ButtonRole.DestructiveRole)
+        b_cancel = box.addButton('Hủy', QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(b_save)
+        box.setEscapeButton(b_cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is b_cancel:
             return False
-        if r == QMessageBox.StandardButton.Save:
+        if clicked is b_save:
             return bool(self.save_project())
         return True
 
@@ -576,13 +590,14 @@ class MainWindow(QMainWindow):
         top.addWidget(app_lb, 0, Qt.AlignmentFlag.AlignTop)
 
         txt = QLabel(
-            f'<div style="font-size:14pt;font-weight:600">{APP_NAME}</div>'
+            f'<div style="color:{self.t["ink"]};font-size:14pt;'
+            f'font-weight:600">{APP_NAME}</div>'
             f'<div style="color:{self.t["ink_2"]};font-size:10pt">{VERSION}</div>'
             f'<div style="height:8px"></div>'
-            f'<div>Phân tích khung ngang dầm hộp bê tông cốt thép '
-            f'dự ứng lực.</div>'
+            f'<div style="color:{self.t["ink"]}">Phân tích khung ngang dầm hộp '
+            f'bê tông cốt thép dự ứng lực.</div>'
             f'<div style="color:{self.t["ink_2"]}">Tự động hóa từ mặt cắt DXF '
-            f'đến bảng kiểm toán, dùng cho mọi dự án.</div>'
+            f'đến bảng kiểm toán.</div>'
             f'<div style="height:10px"></div>'
             f'<div style="color:{self.t["ink_2"]};font-size:9pt">DXF → MCT → '
             f'Midas/Civil → Beam Force → Bảng kiểm toán</div>')

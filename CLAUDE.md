@@ -129,10 +129,14 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 - **`tendons[].path_mct`**: `profile_points` là `(x tính từ mép trái, y = chiều sâu dưới mặt cầu, bán kính bo)` — vẽ thẳng `p[0],p[1]` sẽ ra đường nằm ngang ở đáy. Writer xuất sẵn `path_mct` theo toạ độ MCT.
 - `FrameView.MARGIN` là lề **pixel**: đường kích thước H và ký hiệu gối vẽ ngoài bao hình học nên phải chừa chỗ khi fit.
 
+### Tài liệu hướng dẫn
+`docs/USER-GUIDE.txt` **sinh tự động** từ `gui/help_dialog._topics()` — đừng sửa tay. Sửa nội dung trong app rồi chạy `python tools/make_user_guide.py`. Installer đóng gói file .txt này và tạo lối tắt "User Guide" ở Start Menu, nên hai bản phải luôn khớp.
+
 ## Lệnh thường dùng
 ```bash
 python run_gui.py
 python -m pytest tests/test_regression.py -q     # regression: single + twin box
+python tools/make_user_guide.py                  # sinh lại docs/USER-GUIDE.txt
 installer\build.bat
 ```
 
