@@ -7,10 +7,11 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                               QTableWidgetItem, QPlainTextEdit, QFileDialog,
                               QHeaderView, QSplitter, QListWidget,
                               QAbstractItemView, QMessageBox)
-from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtCore import Qt, QRectF, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QFontMetrics
 
 from .worker import ResultsWorker
+from .widgets import LogView
 
 
 POINTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
@@ -158,6 +159,8 @@ class CheckPointDiagram(QWidget):
 
 
 class ResultsTab(QWidget):
+    progress_changed = pyqtSignal(int, int)
+
     def __init__(self, status_bar):
         super().__init__()
         self.status_bar = status_bar
@@ -170,34 +173,34 @@ class ResultsTab(QWidget):
 
         # Beam Force files row
         row_bf = QHBoxLayout()
-        row_bf.addWidget(QLabel('Beam Force:'))
+        row_bf.addWidget(QLabel('File Beam Force:'))
         self.bf_edit = QLineEdit()
-        self.bf_edit.setPlaceholderText('Select Beam Force XLS file(s)...')
+        self.bf_edit.setPlaceholderText('Chọn file Beam Force XLS xuất từ Midas…')
         self.bf_edit.setReadOnly(True)
         row_bf.addWidget(self.bf_edit, 1)
-        btn_bf = QPushButton('Files...')
+        btn_bf = QPushButton('Chọn file…')
         btn_bf.clicked.connect(self._browse_beam_force)
         row_bf.addWidget(btn_bf)
         layout.addLayout(row_bf)
 
         # MCT files row (generated from Generate tab, contains topology)
         row_mct = QHBoxLayout()
-        row_mct.addWidget(QLabel('MCT files:'))
+        row_mct.addWidget(QLabel('File MCT:'))
         self.mct_edit = QLineEdit()
-        self.mct_edit.setPlaceholderText('Select MCT file(s) from Generate output...')
+        self.mct_edit.setPlaceholderText('Chọn file MCT do bước Tạo mô hình sinh ra…')
         self.mct_edit.setReadOnly(True)
         row_mct.addWidget(self.mct_edit, 1)
-        btn_mct = QPushButton('Files...')
+        btn_mct = QPushButton('Chọn file…')
         btn_mct.clicked.connect(self._browse_mct)
         row_mct.addWidget(btn_mct)
         layout.addLayout(row_mct)
 
         # Output dir row
         row_out = QHBoxLayout()
-        row_out.addWidget(QLabel('Output dir:'))
+        row_out.addWidget(QLabel('Thư mục kết quả:'))
         self.out_edit = QLineEdit('.')
         row_out.addWidget(self.out_edit, 1)
-        btn_out = QPushButton('Browse...')
+        btn_out = QPushButton('Duyệt…')
         btn_out.clicked.connect(self._browse_output)
         row_out.addWidget(btn_out)
         layout.addLayout(row_out)
@@ -206,24 +209,24 @@ class ResultsTab(QWidget):
         self.pair_list = QListWidget()
         self.pair_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.pair_list.setMaximumHeight(80)
-        self.pair_list.setStyleSheet('font-family: Consolas, monospace; font-size: 11px;')
+        self.pair_list.setStyleSheet('font-family: Consolas, monospace;')
         layout.addWidget(self.pair_list)
 
         # Buttons row
         row_btn = QHBoxLayout()
         row_btn.addStretch()
-        btn_clear = QPushButton('Clear')
+        btn_clear = QPushButton('Xóa danh sách')
         btn_clear.clicked.connect(self._clear)
         row_btn.addWidget(btn_clear)
-        self.btn_process = QPushButton('Process All')
-        self.btn_process.setStyleSheet('font-weight: bold; padding: 6px 20px;')
+        self.btn_process = QPushButton('Xử lý tất cả')
+        self.btn_process.setProperty('primary', True)
         self.btn_process.clicked.connect(self._process)
         row_btn.addWidget(self.btn_process)
         layout.addLayout(row_btn)
 
         # Section selector
         row_view = QHBoxLayout()
-        row_view.addWidget(QLabel('View section:'))
+        row_view.addWidget(QLabel('Xem mặt cắt:'))
         self.section_combo = QComboBox()
         self.section_combo.setMinimumWidth(120)
         self.section_combo.currentTextChanged.connect(self._on_section_changed)
@@ -250,16 +253,14 @@ class ResultsTab(QWidget):
         layout.addWidget(splitter, 1)
 
         # Log
-        self.log_area = QPlainTextEdit()
-        self.log_area.setReadOnly(True)
-        self.log_area.setMaximumHeight(120)
-        self.log_area.setStyleSheet('font-family: Consolas, monospace; font-size: 11px;')
+        self.log_area = LogView()
+        self.log_area.setMaximumHeight(130)
         layout.addWidget(self.log_area)
 
         # Bottom buttons
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        btn_open = QPushButton('Open Output Folder')
+        btn_open = QPushButton('Mở thư mục kết quả')
         btn_open.clicked.connect(self._open_folder)
         btn_row.addWidget(btn_open)
         layout.addLayout(btn_row)
@@ -280,27 +281,32 @@ class ResultsTab(QWidget):
                 item.setBackground(color)
                 self.table.setItem(i, j, item)
 
+    # API công khai cho menu/toolbar
+    def process(self): self._process()
+    def clear(self): self._clear()
+    def open_folder(self): self._open_folder()
+
     def _browse_beam_force(self):
         files, _ = QFileDialog.getOpenFileNames(
-            self, 'Select Beam Force XLS', '.',
-            'Excel Files (*.xls *.xlsx);;All Files (*)')
+            self, 'Chọn file Beam Force', '.',
+            'File Excel (*.xls *.xlsx);;Tất cả (*)')
         if files:
             self._bf_files = files
-            self.bf_edit.setText(f'{len(files)} file(s) selected')
+            self.bf_edit.setText(f'{len(files)} file đã chọn')
             self._match_pairs()
 
     def _browse_mct(self):
         files, _ = QFileDialog.getOpenFileNames(
-            self, 'Select MCT Files', '.',
-            'MCT Files (*.mct)')
+            self, 'Chọn file MCT', '.',
+            'File MCT (*.mct)')
         if files:
             self._mct_files = files
-            self.mct_edit.setText(f'{len(files)} file(s) selected')
+            self.mct_edit.setText(f'{len(files)} file đã chọn')
             self._match_pairs()
 
     def _browse_output(self):
         folder = QFileDialog.getExistingDirectory(
-            self, 'Select Output Folder', self.out_edit.text())
+            self, 'Chọn thư mục kết quả', self.out_edit.text())
         if folder:
             self.out_edit.setText(folder)
 
@@ -381,7 +387,7 @@ class ResultsTab(QWidget):
 
     def _process(self):
         if not self._pairs:
-            self.status_bar.showMessage('No matched file pairs. Select Beam Force + MCT files.')
+            self.status_bar.showMessage('Chưa ghép được cặp file nào — chọn cả Beam Force lẫn MCT.')
             return
 
         self.btn_process.setEnabled(False)
@@ -392,18 +398,23 @@ class ResultsTab(QWidget):
         output_dir = self.out_edit.text() or 'output'
         self.worker = ResultsWorker(self._pairs, output_dir)
         self.worker.log.connect(self._on_log)
+        self._total = len(self._pairs)
+        self._done = 0
+        self.progress_changed.emit(0, self._total)
         self.worker.section_done.connect(self._on_section_done)
         self.worker.error_mismatch.connect(self._on_mismatch)
         self.worker.finished_all.connect(self._on_finished)
         self.worker.start()
 
     def _on_log(self, msg):
-        self.log_area.appendPlainText(msg)
+        self.log_area.append_auto(msg)
 
     def _on_section_done(self, name, check_points):
         self.all_results[name] = check_points
         self.section_combo.addItem(name)
-        self.status_bar.showMessage(f'Processed: {name}')
+        self._done += 1
+        self.progress_changed.emit(self._done, self._total)
+        self.status_bar.showMessage(f'Đã xử lý: {name}')
 
     def _on_mismatch(self, name, mct_count, result_count, bf_path):
         """Handle element mismatch - ask user to select a different file."""
@@ -429,8 +440,10 @@ class ResultsTab(QWidget):
 
     def _on_finished(self, count):
         self.btn_process.setEnabled(True)
-        self.status_bar.showMessage(f'Done: {count} section(s) processed.')
-        self.log_area.appendPlainText(f'\nCompleted: {count} section(s)')
+        self.progress_changed.emit(count, max(count, getattr(self, '_total', count)))
+        self.status_bar.showMessage(
+            f'Xong: {count} mặt cắt — {self.log_area.summary()}')
+        self.log_area.success(f'Hoàn tất {count} mặt cắt')
 
     def _on_section_changed(self, name):
         if name and name in self.all_results:

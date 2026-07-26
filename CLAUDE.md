@@ -15,7 +15,7 @@ Tự động hóa toàn bộ quy trình phân tích khung ngang tại các mặt
 
 Kiến trúc chi tiết: xem `docs/ARCHITECTURE.md`.
 
-## Trạng thái hiện tại (v1.2.1)
+## Trạng thái hiện tại (v1.3.0)
 
 Toàn bộ pipeline đã hoàn thiện. **Tested**: S1, S7, S12, S16, S20, SLT, S1_V2 (Twin Box).
 
@@ -61,6 +61,16 @@ Toàn bộ 40 khóa đọc từ **một sheet `INPUT`** bố cục khóa–giá 
 | Đáy vách giữa (twin box) | **011000** | Khóa Dy+Dz |
 
 `Dy` **luôn** bị khóa: khung ngang là bài toán phẳng XZ, thiếu Dy thì Midas báo singular trong không gian 3D.
+
+### Giao diện (v1.3.0 — Giai đoạn 1)
+Vỏ ứng dụng theo lối phần mềm kỹ thuật (midas / CSI / LUSAS): menu bar, toolbar có icon, thanh bước quy trình, status bar (đơn vị · số mặt cắt · tiến độ · phiên bản).
+
+- `gui/theme.py` — **toàn bộ** token màu/cỡ chữ/mật độ + QSS. Không đặt `setStyleSheet` rải rác trong tab nữa.
+- `gui/icons.py` — icon SVG nội tuyến, tô theo token; không cần bundle file ảnh.
+- `gui/widgets/log_view.py` — log phân cấp màu (info/ok/cảnh báo/lỗi), tự đoán mức từ nội dung.
+- `gui/widgets/step_bar.py` — 5 bước; bước ③ chạy Midas vẽ **nét đứt + chữ nghiêng** vì nằm ngoài app.
+- Tab phát `progress_changed(done, total)` → thanh bước và status bar tự cập nhật.
+- Chuỗi hiển thị thống nhất tiếng Việt.
 
 ## Lệnh thường dùng
 ```bash
