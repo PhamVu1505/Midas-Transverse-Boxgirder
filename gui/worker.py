@@ -10,6 +10,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from src.dxf_reader import _get_polyline_vertices, read_inpolys, read_pt_cables, section_type_from_inpolys
 from src.frame_builder import build_frame
 from src.load_reader import read_loads
+from src.input_reader import source_line
 from src.mct_frame_writer import write_mct
 from src.pt_property_reader import read_pt_properties
 from src.svg_export import export_frame_svg
@@ -36,6 +37,8 @@ class GenerateWorker(QThread):
         excel = self.excel_path if self.excel_path and os.path.exists(self.excel_path) else None
         if not excel:
             self.log.emit('WARNING: Excel not found — using fallback d_L=d_R=0.4 m and skipping load blocks')
+        else:
+            self.log.emit(source_line(excel))
         ld = read_loads(excel) if excel else None
         d_L = ld['d_L'] if ld else 0.4
         d_R = ld['d_R'] if ld else 0.4

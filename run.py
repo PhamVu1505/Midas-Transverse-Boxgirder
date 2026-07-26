@@ -18,6 +18,7 @@ import ezdxf
 from src.dxf_reader import _get_polyline_vertices, read_inpolys, read_pt_cables, section_type_from_inpolys
 from src.frame_builder import build_frame
 from src.load_reader import read_loads
+from src.input_reader import source_line
 from src.mct_frame_writer import write_mct
 from src.pt_property_reader import read_pt_properties
 from src.result_reader import (parse_beam_force, _build_element_thickness,
@@ -55,6 +56,8 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
     if not excel:
         print(f'[{name}] WARNING: Excel not found at {EXCEL_PATH}')
         print(f'[{name}] WARNING: using fallback d_L=d_R=0.4 m and skipping all load blocks')
+    else:
+        print(f'[{name}] ' + source_line(excel))
     ld = read_loads(excel) if excel else None
     d_L = ld['d_L'] if ld else 0.4
     d_R = ld['d_R'] if ld else 0.4

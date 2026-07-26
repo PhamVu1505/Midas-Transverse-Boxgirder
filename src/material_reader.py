@@ -1,47 +1,21 @@
 """
-Material Reader - Đọc vật liệu từ Excel và xuất file MCT block.
+Material Reader — thông số vật liệu bê tông.
 
-Input:  data/Midas-Transverse-Boxgirder-analysis.xls (sheet General)
-Output: output/material.mct (standalone block, có thể mở kiểm tra)
+Việc đọc số liệu đã chuyển sang `src/input_reader.py` (sheet INPUT khóa–giá trị,
+có đường lui legacy đọc ô cứng). Module này giữ lại API cũ để mọi call site chạy
+nguyên, và giữ phần ghi khối MCT vật liệu.
 """
 
-import os
-import xlrd
-
-
-def _to_float(val, default=0.0):
-    """Safely convert Excel value to float."""
-    if val is None or val == '':
-        return default
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return default
+from .input_reader import read_material as _read_material
 
 
 def read_material(excel_path: str) -> dict:
-    """Đọc thông số vật liệu từ sheet 'General'.
+    """Đọc thông số vật liệu. Ủy quyền cho input_reader.
 
     Returns:
         dict với keys: fc_mpa, Ec_mpa, Ec_kpa, nu, alpha, density, RH
     """
-    wb = xlrd.open_workbook(excel_path)
-    ws = wb.sheet_by_name('General')
-
-    fc_mpa = _to_float(ws.cell(69, 7).value, 50.0)    # H70: f'c (MPa)
-    ec_mpa = _to_float(ws.cell(71, 7).value, 32500.0) # H72: Ec (MPa)
-    alpha = _to_float(ws.cell(72, 7).value, 1.08e-5)  # H73: alpha (/°C)
-    RH = _to_float(ws.cell(81, 7).value, 80.0)        # H82: relative humidity (%)
-
-    return {
-        'fc_mpa': round(fc_mpa, 1),
-        'Ec_mpa': round(ec_mpa, 4),
-        'Ec_kpa': round(ec_mpa * 1000, 1),
-        'nu': 0.2,            # default for concrete
-        'alpha': alpha,
-        'density': 24.5,      # default kN/m³ for normal-weight concrete
-        'RH': round(RH, 1),   # H82: relative humidity (%) for CEB-FIP TDM
-    }
+    return _read_material(excel_path)
 
 
 def write_material_mct(mat: dict, output_path: str):
