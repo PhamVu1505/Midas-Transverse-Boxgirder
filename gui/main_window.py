@@ -453,28 +453,26 @@ class MainWindow(QMainWindow):
     def _confirm_discard(self) -> bool:
         """Hỏi trước khi bỏ thay đổi.
 
-        Đặt chữ cho từng nút thay vì dùng Save/Discard/Cancel mặc định của Qt:
-        "Discard" dịch máy ra khó hiểu, trong khi mọi phần mềm quen thuộc đều
-        dùng cặp Lưu / Không lưu / Hủy.
+        Nút Discard mặc định của Qt đổi nhãn thành "Don't Save" — đây là chữ mà
+        Windows và macOS đều dùng, người dùng nhìn là biết ngay hậu quả, còn
+        "Discard" thì mơ hồ.
         """
         if not self.project.dirty or not len(self.project):
             return True
         box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Warning)
+        box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle('Project chưa lưu')
-        box.setText(f'<b>Lưu thay đổi vào "{self.project.title}"?</b>')
-        box.setInformativeText('Không lưu thì mọi thay đổi từ lần lưu gần nhất '
-                               'sẽ mất.')
-        b_save = box.addButton('Lưu', QMessageBox.ButtonRole.AcceptRole)
-        b_no = box.addButton('Không lưu', QMessageBox.ButtonRole.DestructiveRole)
-        b_cancel = box.addButton('Hủy', QMessageBox.ButtonRole.RejectRole)
-        box.setDefaultButton(b_save)
-        box.setEscapeButton(b_cancel)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is b_cancel:
+        box.setText('Project hiện tại có thay đổi chưa lưu. '
+                    'Lưu lại trước khi tiếp tục?')
+        box.setStandardButtons(QMessageBox.StandardButton.Save
+                               | QMessageBox.StandardButton.Discard
+                               | QMessageBox.StandardButton.Cancel)
+        box.button(QMessageBox.StandardButton.Discard).setText("Don't Save")
+        box.setDefaultButton(QMessageBox.StandardButton.Save)
+        r = box.exec()
+        if r == QMessageBox.StandardButton.Cancel:
             return False
-        if clicked is b_save:
+        if r == QMessageBox.StandardButton.Save:
             return bool(self.save_project())
         return True
 
