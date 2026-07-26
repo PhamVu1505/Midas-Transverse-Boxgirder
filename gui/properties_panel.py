@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QLabel,
                              QScrollArea, QFrame)
 
+from .support_editor import SupportEditor
 from .theme import LIGHT, FONT_MONO
 
 
@@ -33,7 +34,7 @@ class PropertiesPanel(QWidget):
 
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
-        self.body = self._scroll()
+        self.body = self._scroll(with_supports=True)
         self.input = self._scroll()
         self.tabs.addTab(self.body[0], 'Properties')
         self.tabs.addTab(self.input[0], 'Input data')
@@ -41,17 +42,26 @@ class PropertiesPanel(QWidget):
 
         self.refresh()
 
-    def _scroll(self):
+    def _scroll(self, with_supports=False):
         area = QScrollArea()
         area.setWidgetResizable(True)
         area.setFrameShape(QFrame.Shape.NoFrame)
+        host = QWidget()
+        v = QVBoxLayout(host)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
         lb = QLabel()
         lb.setTextFormat(Qt.TextFormat.RichText)
         lb.setAlignment(Qt.AlignmentFlag.AlignTop)
         lb.setWordWrap(True)
-        lb.setContentsMargins(11, 8, 11, 12)
+        lb.setContentsMargins(11, 8, 11, 4)
         lb.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        area.setWidget(lb)
+        v.addWidget(lb)
+        if with_supports:
+            self.sup_editor = SupportEditor(self.t)
+            v.addWidget(self.sup_editor)
+        v.addStretch()
+        area.setWidget(host)
         return area, lb
 
     # ─────────────────────────────────────────
@@ -123,14 +133,6 @@ class PropertiesPanel(QWidget):
             h.append(self._row('Template',
                                (os.path.basename(tpl) if tpl else 'chưa gán')
                                + ('' if sec.template else ' (chung)')))
-
-        if self._supports:
-            h.append(self._grp(f'Gối ({len(self._supports)})'))
-            for s in self._supports:
-                kind = {'pin': 'Gối cố định', 'roller': 'Gối di động',
-                        'fixed': 'Ngàm'}.get(s.get('kind'), s.get('kind'))
-                h.append(self._row(f'n{s.get("id", "?")} · {kind}',
-                                   f'{s["x"]:+.3f} m'))
 
         if not h:
             h.append(f'<div style="color:{self.t["ink_3"]};font-size:9pt;'

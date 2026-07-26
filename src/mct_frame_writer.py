@@ -466,28 +466,40 @@ def write_mct(frame: dict, section_name: str = 'Section',
         _write_elem_depmatl_block(depmatl_lines, elements, sections)
         blocks[elem_depmatl_insert_idx:elem_depmatl_insert_idx] = depmatl_lines
 
+    # Đọc tải trọng TRƯỚC khi khai báo *STLDCASE — cần biết có template hay không.
+    ld = read_loads(excel_path) if (excel_path and os.path.exists(excel_path)) else None
+
     # ── STLDCASE ──
-    blocks.append('*STLDCASE    ; Static Load Cases')
-    blocks.append('; LCNAME, LCTYPE, DESC')
-    if tendons:
-        blocks.append('   Prestress, PS, ')
-    blocks.append('   Self Weight, DC, ')
-    blocks.append('   TpG(+), TPG, ')
-    blocks.append('   System Temperature, T , ')
-    blocks.append('   WS   , W , ')
-    blocks.append('   Barrier, DW, ')
-    blocks.append('   Pavement, DW, ')
-    blocks.append('   Median Strip, DW, ')
-    blocks.append('   TpG(-), TPG, ')
-    blocks.append('   WL   , WL, ')
-    blocks.append('')
+    # Chỉ khai báo các trường hợp tải khi THẬT SỰ ghi được dữ liệu tải trọng.
+    # Không có template mà vẫn khai báo thì *LOADCOMB phía dưới sẽ trỏ tới
+    # mv1/mv2 chưa hề tồn tại → Midas báo "load name ((null)) does not exist".
+    if ld:
+        blocks.append('*STLDCASE    ; Static Load Cases')
+        blocks.append('; LCNAME, LCTYPE, DESC')
+        if tendons:
+            blocks.append('   Prestress, PS, ')
+        blocks.append('   Self Weight, DC, ')
+        blocks.append('   TpG(+), TPG, ')
+        blocks.append('   System Temperature, T , ')
+        blocks.append('   WS   , W , ')
+        blocks.append('   Barrier, DW, ')
+        blocks.append('   Pavement, DW, ')
+        blocks.append('   Median Strip, DW, ')
+        blocks.append('   TpG(-), TPG, ')
+        blocks.append('   WL   , WL, ')
+        blocks.append('')
+    else:
+        blocks.append('*STLDCASE    ; Static Load Cases')
+        blocks.append('; LCNAME, LCTYPE, DESC')
+        if tendons:
+            blocks.append('   Prestress, PS, ')
+        blocks.append('   Self Weight, DC, ')
+        blocks.append('')
+        blocks.append('; CHƯA CÓ TEMPLATE SỐ LIỆU — bỏ toàn bộ khối tải trọng,')
+        blocks.append('; hoạt tải di động và tổ hợp. Chọn template rồi tạo lại.')
+        blocks.append('')
 
     # ── Load data ──
-    if excel_path and os.path.exists(excel_path):
-        ld = read_loads(excel_path)
-    else:
-        ld = None
-
     if tendons:
         _write_tendon_prestress_block(blocks, tendons, pt_props)
 
@@ -510,7 +522,8 @@ def write_mct(frame: dict, section_name: str = 'Section',
                            ll_L_idx, ll_R_idx)
 
     # ── Load combinations ──
-    _write_load_combinations(blocks, has_pt=bool(tendons))
+    if ld:
+        _write_load_combinations(blocks, has_pt=bool(tendons))
 
     # ── Analysis control (P-delta, time-dependent) khi có CSA ──
     if tendons:
@@ -905,22 +918,38 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
         _write_elem_depmatl_block(depmatl_lines, elements, sections)
         blocks[elem_depmatl_insert_idx:elem_depmatl_insert_idx] = depmatl_lines
 
-    blocks.append('*STLDCASE    ; Static Load Cases')
-    blocks.append('; LCNAME, LCTYPE, DESC')
-    if tendons:
-        blocks.append('   Prestress, PS, ')
-    blocks.append('   Self Weight, DC, ')
-    blocks.append('   TpG(+), TPG, ')
-    blocks.append('   System Temperature, T , ')
-    blocks.append('   WS   , W , ')
-    blocks.append('   Barrier, DW, ')
-    blocks.append('   Pavement, DW, ')
-    blocks.append('   Median Strip, DW, ')
-    blocks.append('   TpG(-), TPG, ')
-    blocks.append('   WL   , WL, ')
-    blocks.append('')
+    # Đọc tải trọng TRƯỚC khi khai báo *STLDCASE — cần biết có template hay không.
+    ld = read_loads(excel_path) if (excel_path and os.path.exists(excel_path)) else None
 
-    ld = read_loads(excel_path) if excel_path and os.path.exists(excel_path) else None
+    # Chỉ khai báo các trường hợp tải khi THẬT SỰ ghi được dữ liệu tải trọng.
+    # Không có template mà vẫn khai báo thì *LOADCOMB phía dưới sẽ trỏ tới
+    # mv1/mv2 chưa hề tồn tại → Midas báo "load name ((null)) does not exist".
+    if ld:
+        blocks.append('*STLDCASE    ; Static Load Cases')
+        blocks.append('; LCNAME, LCTYPE, DESC')
+        if tendons:
+            blocks.append('   Prestress, PS, ')
+        blocks.append('   Self Weight, DC, ')
+        blocks.append('   TpG(+), TPG, ')
+        blocks.append('   System Temperature, T , ')
+        blocks.append('   WS   , W , ')
+        blocks.append('   Barrier, DW, ')
+        blocks.append('   Pavement, DW, ')
+        blocks.append('   Median Strip, DW, ')
+        blocks.append('   TpG(-), TPG, ')
+        blocks.append('   WL   , WL, ')
+        blocks.append('')
+    else:
+        blocks.append('*STLDCASE    ; Static Load Cases')
+        blocks.append('; LCNAME, LCTYPE, DESC')
+        if tendons:
+            blocks.append('   Prestress, PS, ')
+        blocks.append('   Self Weight, DC, ')
+        blocks.append('')
+        blocks.append('; CHƯA CÓ TEMPLATE SỐ LIỆU — bỏ toàn bộ khối tải trọng,')
+        blocks.append('; hoạt tải di động và tổ hợp. Chọn template rồi tạo lại.')
+        blocks.append('')
+
     if tendons:
         _write_tendon_prestress_block(blocks, tendons, pt_props)
     if ld:
@@ -939,7 +968,8 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                            wL_insert_idx, wR_insert_idx,
                            ll_L_idx, ll_R_idx,
                            n_int_floor=n_int_floor)
-    _write_load_combinations(blocks, has_pt=bool(tendons))
+    if ld:
+        _write_load_combinations(blocks, has_pt=bool(tendons))
     if tendons:
         _write_anal_ctrl_block(blocks)
     blocks.append('*ENDDATA')

@@ -105,8 +105,23 @@ class FrameView(QWidget):
                 order.append(int(i))
         order.sort()
 
-        elems = [(int(e[0]), int(e[1]), int(e[2]))
-                 for e in topo.get('elements', []) if len(e) >= 3]
+        # Section THẬT của từng phần tử: (sid, type, offset, d_i, d_j, w).
+        # Phải dùng cái này thay vì suy offset từ bộ phận của node — phần tử nối
+        # (connector) mang offset CC và chiều dày của BỤNG, trong khi node đầu
+        # của nó lại thuộc bản mặt (CT). Suy sai thì dải vẽ lệch hẳn chỗ giao.
+        secmap = {int(sec[0]): sec for sec in topo.get('sections', [])
+                  if len(sec) >= 5}
+        elems = []
+        for e in topo.get('elements', []):
+            if len(e) < 3:
+                continue
+            sec = secmap.get(int(e[3])) if len(e) >= 4 else None
+            elems.append({
+                'id': int(e[0]), 'a': int(e[1]), 'b': int(e[2]),
+                'offset': sec[2] if sec else None,
+                'di': float(sec[3]) if sec else None,
+                'dj': float(sec[4]) if sec else None,
+            })
         ts = [nodes[i]['t'] for i in order if nodes[i]['t'] > 0.005]
         xs = [p[0] for p in g['outpoly']]
 
@@ -372,8 +387,8 @@ class FrameView(QWidget):
     def _draw_elements(self, p):
         m = self.m
         p.setBrush(Qt.BrushStyle.NoBrush)
-        for eid, a, b in m['elems']:
-            A, B = m['nodes'].get(a), m['nodes'].get(b)
+        for e in m['elems']:
+            A, B = m['nodes'].get(e['a']), m['nodes'].get(e['b'])
             if not A or not B:
                 continue
             col = PART_HUE.get(A['part'], self.t['ink']) if self.mode == PARTS \
@@ -388,8 +403,8 @@ class FrameView(QWidget):
         if self._s > 16:
             p.setPen(QPen(QColor(self.t['ink_2']), 1))
             tk = 4.4 / self._s
-            for eid, a, b in m['elems']:
-                A, B = m['nodes'].get(a), m['nodes'].get(b)
+            for e in m['elems']:
+                A, B = m['nodes'].get(e['a']), m['nodes'].get(e['b'])
                 if not A or not B:
                     continue
                 dx, dz = B['x'] - A['x'], B['z'] - A['z']
@@ -402,14 +417,19 @@ class FrameView(QWidget):
                         QPointF(self.TX(N['x'] - nx * tk), self.TZ(N['z'] - nz * tk)),
                         QPointF(self.TX(N['x'] + nx * tk), self.TZ(N['z'] + nz * tk)))
 
-    def _ribbon(self, A, B):
-        """Dải vuốt côn theo quy ước offset: CT treo xuống, CB nhô lên, CC đối xứng."""
+    def _ribbon(self, A, B, off=None, ti=None, tj=None):
+        """Dải vuốt côn theo offset của SECTION, không suy từ bộ phận của node.
+
+        CT treo xuống · CB nhô lên · CC đối xứng ±t/2.
+        """
         dx, dz = B['x'] - A['x'], B['z'] - A['z']
         ln = math.hypot(dx, dz)
         if ln < 1e-9:
             return None
         nx, nz = -dz / ln, dx / ln
-        off = OFFSET.get(A['part'], 'CC')
+        off = off or OFFSET.get(A['part'], 'CC')
+        A = dict(A, t=A['t'] if ti is None else ti)
+        B = dict(B, t=B['t'] if tj is None else tj)
         if off == 'CT':
             if nz > 0:
                 nx, nz = -nx, -nz
@@ -428,23 +448,43 @@ class FrameView(QWidget):
                 (A['x'] - nx * A['t'] / 2, A['z'] - nz * A['t'] / 2)]
 
     def _draw_shape(self, p):
+        """Tô HỢP NHẤT một lần, rồi mới vẽ viền từng phần tử.
+
+        Tô từng dải chồng lên nhau thì alpha cộng dồn, chỗ giao bản–bụng hóa
+        đậm sì trông như lỗi — trong khi thật ra các phần tử vốn chồng nhau tại
+        nút, đúng như Midas dựng. Hợp nhất cho tông đều; viền vẫn cho thấy ranh
+        giới từng phần tử và chỗ chồng lấn.
+        """
         m = self.m
-        fill = QColor(self.t['accent']); fill.setAlpha(48)
-        p.setBrush(QBrush(fill))
-        p.setPen(QPen(QColor(self.t['accent']), 1))
-        for eid, a, b in m['elems']:
-            A, B = m['nodes'].get(a), m['nodes'].get(b)
+        quads = []
+        for e in m['elems']:
+            A, B = m['nodes'].get(e['a']), m['nodes'].get(e['b'])
             if not A or not B:
                 continue
-            q = self._ribbon(A, B)
+            q = self._ribbon(A, B, e.get('offset'), e.get('di'), e.get('dj'))
             if q:
-                p.drawPolygon(self._poly(q))
+                quads.append(q)
+
+        union = QPainterPath()
+        for q in quads:
+            sub = QPainterPath()
+            sub.addPolygon(self._poly(q))
+            sub.closeSubpath()
+            union = union.united(sub)
+        fill = QColor(self.t['accent'])
+        fill.setAlpha(58)
+        p.fillPath(union, QBrush(fill))
+
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(self.t['accent']), 1))
+        for q in quads:
+            p.drawPolygon(self._poly(q))
+
         pen = QPen(QColor(self.t['ink_2']), 1)
         pen.setStyle(Qt.PenStyle.DashLine)
         p.setPen(pen)
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        for eid, a, b in m['elems']:
-            A, B = m['nodes'].get(a), m['nodes'].get(b)
+        for e in m['elems']:
+            A, B = m['nodes'].get(e['a']), m['nodes'].get(e['b'])
             if A and B:
                 p.drawLine(QPointF(self.TX(A['x']), self.TZ(A['z'])),
                            QPointF(self.TX(B['x']), self.TZ(B['z'])))
@@ -492,8 +532,8 @@ class FrameView(QWidget):
         p.setFont(f)
         fm = QFontMetrics(f)
         m = self.m
-        for eid, a, b in m['elems']:
-            A, B = m['nodes'].get(a), m['nodes'].get(b)
+        for e in m['elems']:
+            A, B = m['nodes'].get(e['a']), m['nodes'].get(e['b'])
             if not A or not B:
                 continue
             ax, ay = self.TX(A['x']), self.TZ(A['z'])
@@ -501,7 +541,7 @@ class FrameView(QWidget):
             if math.hypot(bx - ax, by - ay) < min_len:
                 continue
             x, y = (ax + bx) / 2, (ay + by) / 2
-            s = str(eid)
+            s = str(e['id'])
             w = fm.horizontalAdvance(s)
             p.fillRect(QRectF(x - w / 2 - 2, y - 6, w + 4, 12),
                        QColor(self.t['panel']))
@@ -670,7 +710,8 @@ class FrameView(QWidget):
                 'x': n['x'], 'z': n['z'], 't': n['t'], 'kp': n['kp'],
                 'part': PART_LABEL.get(n['part'], n['part']),
                 'offset': OFFSET.get(n['part'], 'CC'),
-                'elems': [e0 for e0, a, b in self.m['elems'] if hit in (a, b)],
+                'elems': [e['id'] for e in self.m['elems']
+                      if hit in (e['a'], e['b'])],
             })
 
     def leaveEvent(self, _):

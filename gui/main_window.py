@@ -133,6 +133,10 @@ class MainWindow(QMainWindow):
 
     def _toggle_supports(self, on):
         self.viewer.set_edit_supports(on)
+        if on:
+            self.dock_props.show()
+            self.dock_props.raise_()
+            self.props.tabs.setCurrentIndex(0)
 
     def _dock(self, title, obj, widget, area, min_w=0, min_h=0):
         d = QDockWidget(title, self)
@@ -339,6 +343,14 @@ class MainWindow(QMainWindow):
         self.panel.generate_requested.connect(self.gen_tab.generate)
         self.panel.project_changed.connect(self._on_project_changed)
         self.viewer.view.node_hovered.connect(self.props.show_node)
+        self.props.sup_editor.set_view(self.viewer.view)
+        self.props.sup_editor.changed.connect(self.gen_tab.on_supports_changed)
+        self.props.sup_editor.message.connect(self.viewer.query.setText)
+        self.viewer.supports_changed.connect(
+            lambda _: self.props.sup_editor.rebuild())
+        self.gen_tab.section_shown.connect(self._on_section_selected)
+        self.gen_tab.section_shown.connect(
+            lambda _: self.props.sup_editor.rebuild())
         self.viewer.cursor_moved.connect(self.lb_cursor.setText)
         self.viewer.supports_changed.connect(self.gen_tab.on_supports_changed)
         self.viewer.supports_changed.connect(
@@ -492,7 +504,7 @@ class MainWindow(QMainWindow):
         self.panel.add_folder_dialog()
 
     def pick_template(self):
-        self.gen_tab.browse_excel()
+        self.panel._pick_tpl()
 
     def generate_all(self):
         self.gen_tab.generate()
@@ -505,9 +517,11 @@ class MainWindow(QMainWindow):
         self.log.clear()
 
     def assign_bf(self):
+        self.tabbar.setCurrentIndex(3)
         self.res_tab._assign_bf_selected()
 
     def process_results(self):
+        self.tabbar.setCurrentIndex(3)
         self.res_tab.process()
 
     def open_output(self):

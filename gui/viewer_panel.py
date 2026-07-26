@@ -6,11 +6,13 @@ truy vấn ở đáy. Thanh chế độ nằm ngoài (do cửa sổ chính quả
 của cả vùng trung tâm chứ không riêng canvas.
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                             QToolButton, QComboBox, QFrame)
+                             QToolButton, QFrame, QSpinBox, QButtonGroup,
+                             QSizePolicy)
 
 from .frame_view import FrameView, MODEL, SHAPE, PARTS
+from .icons import support_icon, SUPPORT_NAME, SUPPORT_CODE
 from .theme import LIGHT, FONT_MONO
 
 KIND_LABEL = [('pin', 'Gối cố định'), ('roller', 'Gối di động'), ('fixed', 'Ngàm')]
@@ -63,17 +65,6 @@ class ViewerPanel(QWidget):
         self._stage = stage
         stage.installEventFilter(self)
 
-        # ── dải sửa gối ──
-        self.sup_bar = QWidget()
-        self.sup_bar.setVisible(False)
-        self.sup_bar.setStyleSheet(
-            f'background: {self.t["accent_soft"]};'
-            f' border-top: 1px solid {self.t["accent_line"]};')
-        self.sup_lay = QHBoxLayout(self.sup_bar)
-        self.sup_lay.setContentsMargins(9, 5, 9, 5)
-        self.sup_lay.setSpacing(6)
-        lay.addWidget(self.sup_bar)
-
         # ── dòng truy vấn ──
         self.query = QLabel('Rê chuột lên mặt cắt để tra node')
         self.query.setStyleSheet(
@@ -122,12 +113,15 @@ class ViewerPanel(QWidget):
         self._place_overlays()
 
     def set_edit_supports(self, on):
+        """Danh sách gối nằm ở dock Properties; đây chỉ bật thao tác trên hình."""
         self.view.set_edit_supports(on)
-        self.sup_bar.setVisible(on)
-        if on:
-            self.rebuild_sup_bar()
-            self.query.setText('Bấm node đáy để đặt gối · kéo tam giác để dời · '
-                               'chuột phải để xóa')
+        self.query.setText(
+            'Bấm node đáy để đặt gối · kéo tam giác để dời · chuột phải để xóa'
+            if on else 'Rê chuột lên mặt cắt để tra node')
+
+    def rebuild_sup_bar(self):
+        """Giữ tên cũ cho nơi gọi — danh sách gối do SupportEditor lo."""
+        pass
 
     # ─────────────────────────────────────────
     def _on_hover(self, nid, info):
@@ -147,53 +141,9 @@ class ViewerPanel(QWidget):
         self.cursor_moved.emit(f'X {info["x"]:.3f} · Z {info["z"]:.3f}')
 
     def _on_sup_changed(self, sups):
-        self.rebuild_sup_bar()
         self.supports_changed.emit(sups)
-
-    def rebuild_sup_bar(self):
-        while self.sup_lay.count():
-            it = self.sup_lay.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
-        sups = self.view.supports
-        if not sups:
-            lb = QLabel('Chưa đặt gối — dùng bộ mặc định khi tạo MCT')
-            lb.setStyleSheet(f'color: {self.t["ink_2"]}; font-size: 8pt;')
-            self.sup_lay.addWidget(lb)
-            self.sup_lay.addStretch()
-            return
-        kinds = [k for k, _ in KIND_LABEL]
-        for i, sp in enumerate(sups):
-            nid = self.view._sup_node(sp)
-            lb = QLabel(f'n{nid}  X={sp["x"]:+.3f}')
-            lb.setStyleSheet(f'font-family: {FONT_MONO}; font-size: 8pt;'
-                             f' color: {self.t["ink"]};')
-            self.sup_lay.addWidget(lb)
-            cb = QComboBox()
-            for _, label in KIND_LABEL:
-                cb.addItem(label)
-            cb.setCurrentIndex(kinds.index(sp.get('kind', 'roller')))
-            cb.setFixedWidth(112)
-            cb.currentIndexChanged.connect(
-                lambda k, idx=i: self._set_kind(idx, k))
-            self.sup_lay.addWidget(cb)
-            if i < len(sups) - 1:
-                sep = QFrame()
-                sep.setFrameShape(QFrame.Shape.VLine)
-                sep.setStyleSheet(f'color: {self.t["accent_line"]};')
-                self.sup_lay.addWidget(sep)
-        self.sup_lay.addStretch()
-        b = QToolButton()
-        b.setText('Đặt lại mặc định')
-        b.clicked.connect(self._reset)
-        self.sup_lay.addWidget(b)
-
-    def _set_kind(self, idx, k):
-        if 0 <= idx < len(self.view.supports):
-            self.view.supports[idx]['kind'] = KIND_LABEL[k][0]
-            self.view.update()
-            self._on_sup_changed(self.view.supports)
 
     def _reset(self):
         self.view.set_supports([])
         self._on_sup_changed([])
+

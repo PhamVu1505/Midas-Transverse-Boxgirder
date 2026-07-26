@@ -74,6 +74,57 @@ def icon(name: str, tone: str = 'ink', size: int = 18, theme: dict = None) -> QI
     return ic
 
 
+# Ký hiệu gối — dùng chung cho nút bấm và chú giải, vẽ giống hệt trên canvas
+# nên nút bấm chính là hình mà người dùng sẽ thấy trong mô hình.
+# Ý tưởng lấy từ Fast Restraints của SAP2000: 4 nút icon thay cho danh sách chữ.
+_SUPPORT_SVG = {
+    'pin': ('<path d="M12 5 L19 17 L5 17 Z" fill="{c}"/>'
+            '<path d="M3 17 H21" stroke="{c}" stroke-width="1.6"/>'
+            '<path d="M5 17 l-2 3 M9 17 l-2 3 M13 17 l-2 3 M17 17 l-2 3 M21 17 l-2 3"'
+            ' stroke="{c}" stroke-width="1.3"/>'),
+    'roller': ('<path d="M12 4 L18.5 14 L5.5 14 Z" fill="none" stroke="{c}"'
+               ' stroke-width="1.6"/>'
+               '<circle cx="8.6" cy="16.6" r="2.4" fill="none" stroke="{c}"'
+               ' stroke-width="1.4"/>'
+               '<circle cx="15.4" cy="16.6" r="2.4" fill="none" stroke="{c}"'
+               ' stroke-width="1.4"/>'
+               '<path d="M3 20 H21" stroke="{c}" stroke-width="1.6"/>'),
+    'fixed': ('<rect x="4" y="5" width="16" height="7" fill="{c}"/>'
+              '<path d="M2 12 H22" stroke="{c}" stroke-width="1.6"/>'
+              '<path d="M4 12 l-2 3 M8 12 l-2 3 M12 12 l-2 3 M16 12 l-2 3'
+              ' M20 12 l-2 3 M24 12 l-2 3" stroke="{c}" stroke-width="1.3"/>'),
+    'none': ('<circle cx="12" cy="12" r="7" fill="none" stroke="{c}"'
+             ' stroke-width="1.5" stroke-dasharray="3 2"/>'),
+}
+SUPPORT_NAME = {'pin': 'Gối cố định', 'roller': 'Gối di động',
+                'fixed': 'Ngàm', 'none': 'Bỏ gối'}
+SUPPORT_CODE = {'pin': '111000', 'roller': '011000', 'fixed': '111111'}
+
+
+def support_icon(kind: str, tone: str = 'ink', size: int = 24,
+                 theme: dict = None) -> QIcon:
+    """Icon ký hiệu gối, vẽ giống hệt trên canvas."""
+    t = theme or LIGHT
+    key = ('sup:' + kind, tone, size)
+    if key in _cache:
+        return _cache[key]
+    ic = QIcon()
+    body = _SUPPORT_SVG.get(kind)
+    if _HAS_SVG and body:
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
+               f'width="{size}" height="{size}">'
+               + body.format(c=t.get(tone, t['ink'])) + '</svg>')
+        pm = QPixmap(size, size)
+        pm.fill(Qt.GlobalColor.transparent)
+        pr = QPainter(pm)
+        pr.setRenderHint(QPainter.RenderHint.Antialiasing)
+        QSvgRenderer(QByteArray(svg.encode())).render(pr)
+        pr.end()
+        ic = QIcon(pm)
+    _cache[key] = ic
+    return ic
+
+
 def available() -> bool:
     """True nếu vẽ được icon (có QtSvg)."""
     return _HAS_SVG
