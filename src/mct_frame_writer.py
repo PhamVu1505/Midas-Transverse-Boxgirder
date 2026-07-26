@@ -472,7 +472,16 @@ def write_mct(frame: dict, section_name: str = 'Section',
     blocks.append('*ENDDATA')
 
     # ── Topology info (for result extraction) ──
+    _x_lo = min(p[0] for p in frame['outpoly_mct'])
+    _H = frame['H']
     topology = {
+        # hình học biên để khung xem vẽ được mặt cắt mà không phải đọc lại DXF
+        'geometry': {
+            'H': frame['H'],
+            'section_type': 'single',
+            'outpoly': [[round(a, 4), round(b, 4)] for a, b in frame['outpoly_mct']],
+            'inpolys': [[[round(a, 4), round(b, 4)] for a, b in frame['inpoly_mct']]],
+        },
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,
@@ -498,6 +507,12 @@ def write_mct(frame: dict, section_name: str = 'Section',
                 'name': t.name, 'location': t.location, 'index': t.index,
                 'elem_list': t.elem_list, 'first_elem': t.first_elem,
                 'profile_points': t.profile_points,
+                # profile_points là (x tính từ mép trái, y = chiều sâu dưới mặt
+                # cầu, bán kính bo). Xuất sẵn toạ độ MCT để khung xem khỏi phải
+                # biết quy ước này.
+                'path_mct': [[round(float(pp[0]) + _x_lo, 4),
+                              round(_H + float(pp[1]), 4)]
+                             for pp in t.profile_points],
             }
             for t in tendons
         ],
@@ -880,8 +895,17 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
         _write_anal_ctrl_block(blocks)
     blocks.append('*ENDDATA')
 
+    _x_lo = min(p[0] for p in frame['outpoly_mct'])
+    _H = frame['H']
     topology = {
         'section_type': 'twin_box',
+        'geometry': {
+            'H': frame['H'],
+            'section_type': 'twin_box',
+            'outpoly': [[round(a, 4), round(b, 4)] for a, b in frame['outpoly_mct']],
+            'inpolys': [[[round(a, 4), round(b, 4)] for a, b in frame['inpoly_mct']],
+                        [[round(a, 4), round(b, 4)] for a, b in frame['inpoly_right_mct']]],
+        },
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,
@@ -912,6 +936,12 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                 'name': t.name, 'location': t.location, 'index': t.index,
                 'elem_list': t.elem_list, 'first_elem': t.first_elem,
                 'profile_points': t.profile_points,
+                # profile_points là (x tính từ mép trái, y = chiều sâu dưới mặt
+                # cầu, bán kính bo). Xuất sẵn toạ độ MCT để khung xem khỏi phải
+                # biết quy ước này.
+                'path_mct': [[round(float(pp[0]) + _x_lo, 4),
+                              round(_H + float(pp[1]), 4)]
+                             for pp in t.profile_points],
             }
             for t in tendons
         ],

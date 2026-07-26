@@ -88,6 +88,19 @@ Vỏ ứng dụng theo lối phần mềm kỹ thuật (midas / CSI / LUSAS): me
 - `tools/make_assets.py` đóng gói logo TEDI + logo app thành `gui/assets.py` (base64 nhúng) — PyInstaller không cần khai báo `datas`.
 - Tách nền trắng phải dùng **min(RGB)**, không phải max: đỏ thuần (255,0,0) có max=255 nên bị coi là trắng và biến mất.
 
+### Khung xem mặt cắt (v1.3.0 — Giai đoạn 3)
+`gui/frame_view.py` vẽ thẳng từ `topo.json`, tức **đúng mô hình đã ghi ra MCT**, không phải hình dựng lại. Zoom/pan/fit, bật tắt lớp, rê chuột tra node.
+
+| Chế độ | Dùng để |
+|--------|---------|
+| **Model** | Hình dạng và cách chia phần tử; vạch cắt tại mỗi node để đếm được bằng mắt |
+| **Section shape** | Mỗi phần tử là dải vuốt côn theo chiều dày hai đầu, đúng offset **CT** (bản mặt treo xuống) / **CB** (bản đáy nhô lên) / **CC** (bụng đối xứng ±t/2), chồng lên biên bê tông thật → lệch chỗ nào lộ ra ngay |
+| **Parts** | Tô theo bộ phận, dùng khi nghi frame builder gán sai |
+
+- `topo.json` có thêm khối `geometry` (outpoly/inpolys/H/section_type) để khỏi đọc lại DXF.
+- **`tendons[].path_mct`**: `profile_points` là `(x tính từ mép trái, y = chiều sâu dưới mặt cầu, bán kính bo)` — vẽ thẳng `p[0],p[1]` sẽ ra đường nằm ngang ở đáy. Writer xuất sẵn `path_mct` theo toạ độ MCT.
+- `FrameView.MARGIN` là lề **pixel**: đường kích thước H và ký hiệu gối vẽ ngoài bao hình học nên phải chừa chỗ khi fit.
+
 ## Lệnh thường dùng
 ```bash
 python run_gui.py

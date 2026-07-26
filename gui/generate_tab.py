@@ -8,12 +8,13 @@ import os
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLineEdit, QLabel, QFileDialog, QSplitter,
-                             QCheckBox, QFrame)
+                             QCheckBox, QFrame, QToolButton, QButtonGroup)
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from src.project import Project
 from .worker import GenerateWorker
 from .widgets import LogView
+from .frame_view import FrameView, DEFAULT_LAYERS, MODEL, SHAPE, PARTS
 from .theme import LIGHT, FONT_MONO
 
 
@@ -27,7 +28,6 @@ class GenerateTab(QWidget):
         self.project = project if project is not None else Project()
         self.t = theme or LIGHT
         self.worker = None
-        self._svg_widget = None
         self._total = self._done = 0
         self._init_ui()
 
@@ -86,22 +86,90 @@ class GenerateTab(QWidget):
         line.setStyleSheet(f'color: {self.t["border_soft"]};')
         layout.addWidget(line)
 
-        # Log + xem hình
+        # Log + khung xem mặt cắt
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.log_area = LogView(theme=self.t)
         splitter.addWidget(self.log_area)
-        try:
-            from PyQt6.QtSvgWidgets import QSvgWidget
-            self._svg_widget = QSvgWidget()
-            splitter.addWidget(self._svg_widget)
-        except ImportError:
-            lbl = QLabel('Chưa xem được hình mặt cắt\n(thiếu gói PyQt6-QSvgWidgets)')
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            splitter.addWidget(lbl)
-        splitter.setSizes([560, 420])
+        splitter.addWidget(self._build_viewer())
+        splitter.setSizes([470, 640])
+        splitter.setStretchFactor(1, 1)
         layout.addWidget(splitter, 1)
 
         self.refresh()
+
+    def _build_viewer(self):
+        box = QWidget()
+        v = QVBoxLayout(box)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+
+        bar = QWidget()
+        bar.setStyleSheet(f'background: {self.t["panel_alt"]};'
+                          f' border-bottom: 1px solid {self.t["border"]};')
+        h = QHBoxLayout(bar)
+        h.setContentsMargins(6, 4, 6, 4)
+        h.setSpacing(3)
+
+        self.mode_group = QButtonGroup(self)
+        SHAPE_TIP = ('Mặt cắt Midas sẽ dựng — dải vuốt côn theo offset CT/CB/CC, '
+                     'chồng lên biên bê tông thật để thấy chỗ lệch')
+        for key, label, tip in ((MODEL, 'Model', 'Khung và cách chia phần tử'),
+                                (SHAPE, 'Section shape', SHAPE_TIP),
+                                (PARTS, 'Parts', 'Tô theo bộ phận — soi frame builder')):
+            b = QToolButton()
+            b.setText(label)
+            b.setCheckable(True)
+            b.setToolTip(tip)
+            b.setChecked(key == MODEL)
+            b.clicked.connect(lambda _=False, k=key: self.view.set_mode(k))
+            self.mode_group.addButton(b)
+            h.addWidget(b)
+
+        h.addSpacing(10)
+        for name, label in (('nodes', 'Node'), ('ids', 'Số node'),
+                            ('eids', 'Số phần tử'), ('supports', 'Gối'),
+                            ('pt', 'PT'), ('dims', 'Kích thước'), ('grid', 'Lưới')):
+            c = QCheckBox(label)
+            c.setChecked(DEFAULT_LAYERS.get(name, True))
+            c.setStyleSheet('font-size: 8pt;')
+            c.toggled.connect(lambda on, n=name: self.view.set_layer(n, on))
+            h.addWidget(c)
+
+        h.addStretch()
+        for label, tip, fn in (('−', 'Thu nhỏ', lambda: self.view.zoom_by(1 / 1.25)),
+                               ('+', 'Phóng to', lambda: self.view.zoom_by(1.25)),
+                               ('⤢', 'Vừa khung (F)', lambda: self.view.fit())):
+            b = QToolButton()
+            b.setText(label)
+            b.setToolTip(tip)
+            b.setFixedWidth(26)
+            b.clicked.connect(fn)
+            h.addWidget(b)
+        v.addWidget(bar)
+
+        self.view = FrameView(theme=self.t)
+        self.view.node_hovered.connect(self._on_hover)
+        v.addWidget(self.view, 1)
+
+        self.lb_query = QLabel('Rê chuột lên mặt cắt để tra node')
+        self.lb_query.setStyleSheet(
+            f'color: {self.t["ink_2"]}; font-family: {FONT_MONO}; font-size: 8pt;'
+            f' padding: 5px 10px; background: {self.t["panel_alt"]};'
+            f' border-top: 1px solid {self.t["border"]};')
+        v.addWidget(self.lb_query)
+        return box
+
+    def _on_hover(self, nid, info):
+        if nid < 0:
+            self.lb_query.setText(
+                f'X {info["x"]:.3f}   Z {info["z"]:.3f}' if info
+                else 'Rê chuột lên mặt cắt để tra node')
+            return
+        els = ', '.join(str(e) for e in info['elems']) or '—'
+        self.lb_query.setText(
+            f'Node {nid}   X {info["x"]:.4f}   Z {info["z"]:.4f}   '
+            f't {info["t"]:.4f} m   {info["part"]} · offset {info["offset"]}   '
+            f'phần tử {els}')
 
     # ─────────────────────────────────────────
     # API công khai cho menu/toolbar/panel
@@ -135,13 +203,20 @@ class GenerateTab(QWidget):
         self.btn_generate.setEnabled(n > 0 and self.worker is None)
 
     def show_section(self, name):
-        """Panel chọn mặt cắt nào thì xem hình mặt cắt đó."""
+        """Nạp mô hình ĐÃ GHI RA MCT của mặt cắt đang chọn."""
         sec = self.project.find(name)
-        if not sec or not self._svg_widget:
+        if not sec:
             return
-        svg = os.path.join(self.project.output_dir, name, f'{name}_frame.svg')
-        if os.path.exists(svg):
-            self._svg_widget.load(svg)
+        topo = sec.topo or os.path.join(
+            self.project.output_dir, name, f'{name}_topo.json')
+        if os.path.exists(topo) and self.view.load_topo(topo):
+            self.view.set_supports(getattr(sec, 'supports', None) or [])
+            st = self.view.stats()
+            self.status_bar.showMessage(
+                f'{name}: {st["type"]} · {st["nodes"]} node · {st["elems"]} phần tử'
+                f' · H {st["H"]:.3f} m · B {st["B"]:.3f} m')
+        else:
+            self.view.clear()
 
     # ─────────────────────────────────────────
     def _browse_excel(self):
@@ -211,8 +286,7 @@ class GenerateTab(QWidget):
         self._done += 1
         self.progress_changed.emit(self._done, self._total)
         self.status_bar.showMessage(f'Đã tạo: {name}')
-        if self._svg_widget and svg_path and os.path.exists(svg_path):
-            self._svg_widget.load(svg_path)
+        self.show_section(name)
 
     def _on_finished(self, count):
         self.worker = None
