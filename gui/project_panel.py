@@ -13,7 +13,8 @@ from PyQt6.QtGui import QColor, QBrush, QFont, QAction
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget,
                              QTreeWidgetItem, QLabel, QPushButton, QMenu,
                              QFileDialog, QAbstractItemView, QHeaderView,
-                             QCheckBox, QLineEdit, QToolButton)
+                             QCheckBox, QLineEdit, QToolButton, QScrollArea,
+                             QFrame, QSizePolicy)
 
 from src.project import (Project, STATUS_LABEL, NEW, GENERATED, ASSIGNED,
                          CHECKED, ERROR)
@@ -47,7 +48,21 @@ class ProjectPanel(QWidget):
 
     # ─────────────────────────────────────────
     def _build(self):
-        lay = QVBoxLayout(self)
+        # Toàn bộ panel nằm trong vùng cuộn: cửa sổ thấp vẫn với tới được mục
+        # Thiết lập và Lớp hiển thị ở dưới cùng.
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        host = QWidget()
+        outer.addWidget(scroll)
+        scroll.setWidget(host)
+
+        lay = QVBoxLayout(host)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
@@ -68,13 +83,20 @@ class ProjectPanel(QWidget):
         self.tree.customContextMenuRequested.connect(self._menu)
         self.tree.itemSelectionChanged.connect(self._on_select)
         self.tree.setStyleSheet('QTreeWidget { border: 0; }')
-        self.tree.setMinimumHeight(172)
+        # Khống chế vùng: cây không nở vô hạn đẩy các mục dưới ra khỏi màn hình,
+        # quá số hàng này thì tự hiện thanh cuộn của chính nó.
+        self.tree.setMinimumHeight(150)
+        self.tree.setMaximumHeight(300)
+        self.tree.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.tree.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         h = self.tree.header()
         h.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.tree.setColumnWidth(0, 22)
-        lay.addWidget(self.tree, 1)
+        lay.addWidget(self.tree)
 
         self.lb_sum = QLabel('')
         self.lb_sum.setStyleSheet(
@@ -117,6 +139,7 @@ class ProjectPanel(QWidget):
         row = QHBoxLayout()
         row.setContentsMargins(8, 6, 8, 8)
         row.setSpacing(6)
+        lay.addStretch()
         b_add = QPushButton('Thêm DXF…')
         b_add.clicked.connect(self.add_dxf_dialog)
         row.addWidget(b_add)
@@ -156,8 +179,8 @@ class ProjectPanel(QWidget):
         ed.setStyleSheet(f'font-family: {FONT_MONO}; font-size: 8pt;')
         h.addWidget(ed, 1)
         b = QToolButton()
-        b.setText('…')
-        b.setFixedWidth(24)
+        b.setText('...')
+        b.setFixedSize(30, 24)
         b.setToolTip('Chọn ' + label.lower())
         b.clicked.connect(on_pick)
         h.addWidget(b)

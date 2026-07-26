@@ -558,13 +558,8 @@ class MainWindow(QMainWindow):
         box.exec()
 
     def open_guide(self):
-        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        for rel in ('docs/USER-GUIDE.txt', 'README.md'):
-            p = os.path.join(base, rel)
-            if os.path.exists(p):
-                webbrowser.open(p)
-                return
-        QMessageBox.information(self, 'Hướng dẫn', 'Chưa có tài liệu đi kèm.')
+        from .help_dialog import HelpDialog
+        HelpDialog(self.t, self).exec()
 
     def about(self):
         d = QDialog(self)
@@ -584,9 +579,10 @@ class MainWindow(QMainWindow):
             f'<div style="font-size:14pt;font-weight:600">{APP_NAME}</div>'
             f'<div style="color:{self.t["ink_2"]};font-size:10pt">{VERSION}</div>'
             f'<div style="height:8px"></div>'
-            f'<div>Phân tích khung ngang dầm hộp BTCT dự ứng lực.</div>'
-            f'<div style="color:{self.t["ink_2"]}">Cầu Lạch Tray — '
-            f'Cao tốc Hà Nội – Hải Phòng (EX-10)</div>'
+            f'<div>Phân tích khung ngang dầm hộp bê tông cốt thép '
+            f'dự ứng lực.</div>'
+            f'<div style="color:{self.t["ink_2"]}">Tự động hóa từ mặt cắt DXF '
+            f'đến bảng kiểm toán, dùng cho mọi dự án.</div>'
             f'<div style="height:10px"></div>'
             f'<div style="color:{self.t["ink_2"]};font-size:9pt">DXF → MCT → '
             f'Midas/Civil → Beam Force → Bảng kiểm toán</div>')
