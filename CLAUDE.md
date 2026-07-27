@@ -91,6 +91,7 @@ Gối **lưu theo toạ độ X**, không theo ID node: đổi `target_len` hay 
 Vỏ ứng dụng theo lối phần mềm kỹ thuật (midas / CSI / LUSAS): menu bar, toolbar có icon, thanh bước quy trình, status bar (đơn vị · số mặt cắt · tiến độ · phiên bản).
 
 - `gui/theme.py` — **toàn bộ** token màu/cỡ chữ/mật độ + QSS. Không đặt `setStyleSheet` rải rác trong tab nữa.
+- Ba bảng màu (Sáng / Tối / Tương phản cao) dùng **chung một bộ khóa token** — xem mục *Tùy chọn* bên dưới.
 - `gui/icons.py` — icon SVG nội tuyến, tô theo token; không cần bundle file ảnh.
 - `gui/widgets/log_view.py` — log phân cấp màu (info/ok/cảnh báo/lỗi), tự đoán mức từ nội dung.
 - `gui/widgets/step_bar.py` — 5 bước; bước ③ chạy Midas vẽ **nét đứt + chữ nghiêng** vì nằm ngoài app.
@@ -138,8 +139,31 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 | **Parts** | Tô theo bộ phận, dùng khi nghi frame builder gán sai |
 
 - `topo.json` có thêm khối `geometry` (outpoly/inpolys/H/section_type) để khỏi đọc lại DXF.
-- **`tendons[].path_mct`**: `profile_points` là `(x tính từ mép trái, y = chiều sâu dưới mặt cầu, bán kính bo)` — vẽ thẳng `p[0],p[1]` sẽ ra đường nằm ngang ở đáy. Writer xuất sẵn `path_mct` theo toạ độ MCT.
+- **`tendons[].path_mct` phải sinh thẳng từ toạ độ DXF, không dựng ngược từ `profile_points`.** `profile_points` là **element-local và mỗi vị trí cáp một quy ước**: TOP đo lệch so với mặt bản trên, BOT so với mặt bản đáy, WEB thì thành phần đầu là khoảng cách **đứng** còn thành phần sau là lệch ngang so với tim bụng. Dùng một công thức chung (`pp[0]+x_lo`, `H+pp[1]`) thì cáp đáy bị ném lên **trên đỉnh dầm** và cáp bụng thành đường nằm ngang. `_build_tendons()` xuất `path_mct` bằng đúng phép biến đổi của `frame_builder` (`x−x_center`, `y−y_bot_dxf`).
+- Cung bo của cáp: `dxf_reader.tessellate_bulge()` rời rạc hoá bulge để **vẽ**; phần ghi MCT vẫn đi đường inverse-fillet (Midas nhận đỉnh góc + RADIUS, không nhận cung).
 - `FrameView.MARGIN` là lề **pixel**: đường kích thước H và ký hiệu gối vẽ ngoài bao hình học nên phải chừa chỗ khi fit.
+
+### Xem trước từ DXF (v1.3.1)
+`src/preview.py::preview_topo(dxf)` dựng `topo` rút gọn (chỉ `geometry` + `tendons` + `preview: True`) để nhìn thấy mặt cắt và cáp **ngay khi thêm DXF**, chưa cần sinh MCT — lỗi bản vẽ (thiếu layer, sai đơn vị, cáp lệch chỗ) lộ ra ở đầu quy trình thay vì ở cuối.
+
+- Cố tình **không** gọi `build_frame`: xem trước phải chạy được cả với DXF mà frame builder bó tay — đó chính là lúc cần nhìn nhất. Thiếu INPOLY cũng vẫn vẽ được biên ngoài.
+- Phải dùng **đúng phép biến đổi của `build_frame`** (gốc X tại tim OUTPOLY, gốc Z tại đáy), nếu không cáp sẽ nhảy chỗ ngay khi bấm Tạo MCT. `tests/test_regression.py::test_preview_matches_generated` khoá điều này.
+- Mọi lớp vẽ của `FrameView` chịu được danh sách node/phần tử rỗng; `m['preview']` bật dải nhắc "XEM TRƯỚC TỪ DXF".
+- Thêm DXF xong tự chọn mặt cắt vừa thêm → thấy hình luôn. Kéo thả `.dxf`, thư mục chứa `.dxf`, hoặc `.mtbproj` vào bất kỳ đâu trong cửa sổ đều được (`MainWindow.dropEvent` + `ProjectPanel.dropEvent`).
+
+### Tùy chọn giao diện (v1.3.1)
+`src`… không đụng tới; toàn bộ nằm ở `gui/prefs.py` (`Prefs` + `PreferencesDialog`) và `gui/theme.py`. Mở bằng nút ⚙ cuối toolbar (mũi tên = đổi nhanh bảng màu), `Công cụ → Tùy chọn`, hoặc `Ctrl+,`. Ba trang: **Giao diện** (bảng màu · màu nhấn · mật độ · cỡ chữ · phông, có ô xem thử sống) · **Khung xem** (lớp bật sẵn, chế độ mặc định) · **Mặc định** (thư mục kết quả, template, mở lại project, tự chọn mặt cắt vừa thêm).
+
+- **Mặc định lần chạy đầu = y hệt v1.3.0** (Sáng · Xanh kỹ thuật · mật độ Vừa · 10pt). QSS sinh với `Prefs()` **không đổi một dòng nào** so với bản cũ — chỉ thêm quy tắc `QSlider`/`QRadioButton` cho hộp thoại Tùy chọn. Sắc thái nhấn của bản cũ (`#E3EDF7`, `#A9C6E3`, `#17538B`) chọn bằng mắt chứ không phải pha tuyến tính nên **ghim cứng** trong `_LEGACY_LIGHT_BLUE`, chỉ áp cho đúng cặp mặc định. `tests/test_theme.py` khoá lại.
+- Ba token `grp_*` từng là **mã chết** (bảng Results tự viết cứng `QColor(255,230,230)`…), nay đã nối dây và mang đúng mã màu **đã hiển thị** ở bản cũ, không phải giá trị token cũ.
+- **Widget chỉ được đọc token, không viết mã màu thẳng.** Mã màu cứng đứng yên khi đổi theme và chỉ lộ ra khi đã sang bản Tối — đã dọn `PART_HUE`, `GROUP_COLORS`, `POINT_COLORS`, `#667085`, `#17538B`, `#B42318`.
+- **`MainWindow._push_theme()` là chỗ phân phát duy nhất.** QSS của `QApplication` lo phần lớn, nhưng không với tới hai thứ: style nội tuyến trong panel, và widget tự vẽ bằng QPainter (`FrameView`, `StepBar`, `CheckPointDiagram`). Panel nào cần thì có `apply_theme(t)`; thêm panel mới mà quên nối vào `_push_theme` là nó đứng nguyên màu cũ.
+- `make_theme(theme, accent)` **suy ra** `accent_soft/line/hover/on_accent`; nền nhấn nhạt pha về phía **nền của theme**, không pha về trắng. `on_accent` chọn đen/trắng theo độ sáng màu nhấn.
+- Bảng gốc `LIGHT`/`DARK`/`CONTRAST` được bơm sẵn màu nhấn mặc định lúc import — rất nhiều widget nhận `theme=None` rồi lui về `LIGHT`, bảng thiếu `accent` là KeyError.
+- Cache icon phải gồm **màu thật** trong khóa, không thì đổi theme xong icon vẫn lấy bản cũ.
+- `LogView` giữ `_lines` thô để **vẽ lại** khi đổi theme: màu nằm trong `QTextCharFormat` đã chèn, không vẽ lại thì log cũ là chữ đen trên nền than.
+- `run_gui.py` áp theme đã lưu **trước** khi dựng `MainWindow` — dựng sáng rồi mới đổi tối thì thấy một nháy trắng.
+- `'scroll'` là token riêng: bản Tương phản cao có `border` đen thuần, dùng nó cho tay nắm thanh cuộn thì thành vệt đen sì chạy dọc panel.
 
 ### Tài liệu hướng dẫn
 `docs/USER-GUIDE.txt` **sinh tự động** từ `gui/help_dialog._topics()` — đừng sửa tay. Sửa nội dung trong app rồi chạy `python tools/make_user_guide.py`. Installer đóng gói file .txt này và tạo lối tắt "User Guide" ở Start Menu, nên hai bản phải luôn khớp.
@@ -153,27 +177,34 @@ installer\build.bat
 ```
 
 ## Current Sprint
-**Goal:** v1.3.0 — thiết kế lại GUI theo lối phần mềm kỹ thuật (midas / CSI / LUSAS / spColumn).
+**Goal:** v1.3.1 — sửa toạ độ vẽ cáp DƯL, xem trước từ DXF, kéo thả, hộp thoại Tùy chọn giao diện.
 
-**Trạng thái:** Xong Giai đoạn 1–4 + logo + `input_reader`. 16 commit trên `feature/t13-twin-box`, **chưa push**, chưa merge `master`.
+**Trạng thái:** Code xong, `pytest tests -q` **26/26 pass**. 17 commit cũ trên `feature/t13-twin-box` (chưa push) + **toàn bộ việc session này CHƯA COMMIT**.
+
+Đã làm trong session này (xem mục *Xem trước từ DXF* và *Tùy chọn giao diện* ở trên):
+1. **`path_mct` sai công thức** — cáp BOT bị vẽ trên đỉnh dầm (z=6.856 khi H=6.628), cáp WEB thành đường nằm ngang. Nay sinh thẳng từ toạ độ DXF + `tessellate_bulge()`. **Khối MCT không đổi một byte.**
+2. **`src/preview.py`** — xem trước hình học + cáp ngay khi thêm DXF, chưa cần tạo MCT.
+3. **Kéo thả** `.dxf` / thư mục / `.mtbproj` vào bất kỳ đâu trong cửa sổ.
+4. **`gui/prefs.py`** — hộp thoại Tùy chọn 3 trang + 3 bảng màu, đổi tức thì. Mặc định lần đầu giống hệt v1.3.0 (QSS diff = 0 dòng đổi).
 
 **Next Action cụ thể:**
-1. Chạy `python run_gui.py` → chọn template → tạo MCT cho mặt cắt có cáp → **import vào Midas kiểm tra khối `*TDN-*`** (mới sửa ở `e0ce04c`, chưa xác minh trên phần mềm thật).
-2. Nếu cáp vẫn không ra: mở **Công cụ → Kiểm tra template số liệu**, soi nhóm *Cáp DƯL* (`fpu`, `Ep`, `Ap`, `duct_dia`, `Pj`) — thiếu khóa hiện đỏ.
-3. Hai tab **Results table** và **MCT source** chưa chạy thử với Beam Force thật — cần một file kết quả Midas để kiểm.
-4. Trước khi build: bump `installer/setup.iss` từ 1.2.0 → 1.3.0 (xem `reference_version_bump_locations`).
+1. `python run_gui.py` → thả một DXF **có cáp bụng / cáp đáy thật** vào → xem cáp có đúng chỗ không. Dữ liệu mẫu trong repo chỉ có `PT-TOP-1`, nên BOT/WEB mới chỉ kiểm bằng cáp giả lập trong `tests/test_regression.py::test_tendon_path_mct`.
+2. Cùng lượt đó **import vào Midas kiểm khối `*TDN-*`** — việc còn treo từ `e0ce04c`, vẫn chưa xác minh trên phần mềm thật.
+3. Thử `Ctrl+,` và đổi sang bản Tối, soi xem còn chỗ nào giữ màu cũ. Registry có thể còn theme tối từ lúc test → ⚙ → **Khôi phục mặc định**.
+4. Hai tab **Results table** và **MCT source** vẫn chưa chạy với Beam Force thật — cần một file kết quả Midas.
+5. Trước khi build: bump `installer/setup.iss` 1.2.0 → **1.3.1** và `README.md` (2 chỗ). `gui/main_window.py:VERSION` và `docs/USER-GUIDE.txt` hiện là v1.3.0 → cũng phải bump. Xem `reference_version_bump_locations`.
 
-**Blocker:** không có. Người dùng đã xác nhận MCT import vào Midas hết lỗi `(null)`.
+**Blocker:** không có.
 
 **Chưa làm (đã bàn, để sau):** đổi số hiệu node/phần tử (cần lớp ánh xạ ID và phải đồng bộ với `result_reader` vì Beam Force tra theo ID); mặt cắt ≥3 hộp.
 
 ## Session Log
+- 2026-07-27: Hộp thoại **Tùy chọn** (3 trang, 3 bảng màu, đổi tức thì) + khoá mặc định lần đầu giống hệt v1.3.0 (`tests/test_theme.py`).
+- 2026-07-27: Sửa **`path_mct`** vẽ cáp sai chỗ (BOT lên đỉnh dầm, WEB nằm ngang); `src/preview.py` xem trước từ DXF; kéo thả DXF/thư mục/`.mtbproj`.
 - 2026-07-27: Cáp DƯL tách hình học khỏi vật liệu (vẫn hiện khi chưa có template, kèm cảnh báo); mở rộng nhận diện layer cáp; nút "..." hết tàng hình.
 - 2026-07-26: Sửa lỗi Midas `(null)` (STLDCASE/LOADCOMB ghi vô điều kiện); dựng lại bố cục đúng mockup; sửa gối kiểu Fast Restraints; cửa sổ Hướng dẫn tiếng Việt.
 - 2026-07-26: GĐ3 khung xem tương tác (zoom/pan/fit, 3 chế độ, truy vấn node) + GĐ3b sửa gối xuyên suốt.
 - 2026-07-26: GĐ2 project model `.mtbproj`, cây mặt cắt, bỏ `_match_pairs`; logo app mới + logo TEDI.
 - 2026-07-26: GĐ1 vỏ giao diện — theme token + QSS, menu/toolbar, thanh bước, log phân cấp màu.
-- 2026-07-26: `input_reader` — số liệu đọc từ sheet INPUT khóa–giá trị, bỏ đọc ô cứng; 7/7 MCT giống hệt.
-- 2026-07-25: Đồng bộ constraint single-box (khóa Dy), thêm `tests/test_regression.py`.
 
 Lịch sử đầy đủ: `git log --oneline`.

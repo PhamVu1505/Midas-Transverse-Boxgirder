@@ -16,8 +16,9 @@ MỤC LỤC
   5. Tạo file MCT
   6. Gối
   7. Đọc kết quả
-  8. Phím tắt
-  9. Xử lý sự cố
+  8. Tùy chọn giao diện
+  9. Phím tắt
+  10. Xử lý sự cố
 
 ==============================================================================
 1. TỔNG QUAN
@@ -69,6 +70,15 @@ phía dưới, nên lệch chỗ nào thấy ngay.
 
 Parts — tô màu theo bộ phận, dùng khi cần kiểm tra chương trình có phân loại
 đúng bản mặt / bụng / bản đáy hay không.
+
+Xem trước từ DXF
+
+Mặt cắt vừa thêm mà chưa tạo MCT vẫn hiện hình: chương trình đọc thẳng biên bê
+tông và đường cáp DƯL từ DXF rồi vẽ ra, kèm dải nhắc XEM TRƯỚC TỪ DXF ở góc
+trên. Lúc này chưa có node và phần tử vì chưa chia lưới.
+
+Nhờ vậy bản vẽ sai (thiếu layer, sai đơn vị, cáp đặt lệch chỗ) lộ ra ngay khi
+nạp file, không phải chạy hết một lượt tạo MCT mới biết.
 
 Thao tác trên hình
 
@@ -140,7 +150,9 @@ CÁC BƯỚC
 --------
 
 Bước 1 — Thêm mặt cắt Bấm Thêm DXF trên thanh công cụ, hoặc Tệp → Thêm cả thư
-mục DXF để nạp một lượt.
+mục DXF để nạp một lượt. Nhanh nhất là kéo file .dxf (hoặc cả thư mục) từ
+Windows Explorer thả vào cửa sổ — thả file .mtbproj thì mở luôn project đó.
+Thêm xong mặt cắt hiện hình ngay để kiểm tra bản vẽ.
 
 Bước 2 — Chọn template Xem mục Template số liệu.
 
@@ -220,7 +232,42 @@ bản mặt, E–F trên bản đáy, G–H trên bụng. Sơ đồ bên cạnh 
 từng điểm.
 
 ==============================================================================
-8. PHÍM TẮT
+8. TÙY CHỌN GIAO DIỆN
+==============================================================================
+
+TÙY CHỌN
+--------
+
+Mở bằng nút ⚙ cuối thanh công cụ, hoặc Công cụ → Tùy chọn (Ctrl+,). Bấm mũi
+tên cạnh nút bánh răng để đổi nhanh bảng màu mà không cần mở hộp thoại. Thiết
+lập áp dụng ngay, không phải khởi động lại, và được nhớ cho lần mở sau.
+
+Giao diện
+
+  Bảng màu        Sáng — mặc định, nền xám lệch xanh kiểu phần mềm kỹ thuật.
+                  Tối — nền xám than, dùng khi làm việc lâu hoặc phòng thiếu
+                  sáng. Tương phản cao — nền trắng, chữ đen thuần, viền đậm;
+                  hợp khi trình chiếu hoặc chụp màn hình đưa vào báo cáo.
+  Màu nhấn        Màu của nút chính, dòng đang chọn và các chi tiết nhấn.
+  Mật độ          Chặt cho màn hình nhỏ, Thoáng cho màn hình lớn.
+  Cỡ chữ · Phông  8–14 pt. Ô Xem thử ngay bên dưới đổi theo tức thì.
+
+Khung xem
+
+Chọn những lớp bật sẵn mỗi khi mở một mặt cắt, và chế độ xem mặc định lúc khởi
+động. Trong lúc làm việc vẫn bật tắt được ở mục Lớp hiển thị panel Project.
+
+Mặc định
+
+Thư mục kết quả và template số liệu dùng cho project mới — project đã lưu giữ
+thiết lập riêng của nó. Cùng chỗ này tắt được việc mở lại project gần nhất khi
+khởi động và việc tự chọn mặt cắt vừa thêm.
+
+Khôi phục mặc định đưa mọi mục về ban đầu nhưng giữ nguyên hai đường dẫn thư
+mục kết quả và template.
+
+==============================================================================
+9. PHÍM TẮT
 ==============================================================================
 
 PHÍM TẮT
@@ -237,10 +284,11 @@ PHÍM TẮT
   F6            Xử lý Beam Force
   F             Vừa khung nhìn
   Ctrl+L        Xoá nhật ký
+  Ctrl+,        Tùy chọn giao diện
   F1            Mở hướng dẫn này
 
 ==============================================================================
-9. XỬ LÝ SỰ CỐ
+10. XỬ LÝ SỰ CỐ
 ==============================================================================
 
 CÁC LỖI HAY GẶP
