@@ -26,7 +26,8 @@ from src.dxf_reader import (_get_polyline_vertices, read_inpolys,
                             read_pt_cables, section_type_from_inpolys)
 from src.frame_builder import build_frame
 from src.load_reader import read_loads
-from src.mct_frame_writer import write_mct
+from src.mct_frame_writer import (_validate_load_references,
+                                  _write_load_combinations, write_mct)
 from src.pt_property_reader import read_pt_properties
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -276,11 +277,61 @@ def test_preview_matches_generated():
             assert abs(xa - xb) < 1e-3 and abs(za - zb) < 1e-3, tp['name']
 
 
+def test_load_combinations_resolve():
+    """Mọi số hạng trong *LOADCOMB phải trỏ tới thứ đã được định nghĩa.
+
+    Midas báo "The specified load name ((null)) does not exist" khi tổ hợp trỏ
+    tới trường hợp tải không tồn tại — đã xảy ra thật vì *LOADCOMB ghi vô điều
+    kiện còn mv1/mv2 chỉ ghi khi có template. Khoá cả bốn nhánh: có/không
+    template × có/không cáp DƯL, cho cả single và twin box.
+    """
+    for dxf_rel, name in (('data/LT/S1.dxf', 'S1'),
+                          ('data/TP_BL/S1_V2.dxf', 'S1_V2')):
+        msp = ezdxf.readfile(os.path.join(ROOT, dxf_rel)).modelspace()
+        outpoly = _get_polyline_vertices(msp, 'OUTPOLY')
+        inpolys = read_inpolys(msp)
+        stype = section_type_from_inpolys(inpolys)
+        frame = build_frame(outpoly,
+                            inpolys if stype == 'twin_box' else inpolys[0])
+        cables = read_pt_cables(msp)
+        for use_excel in (True, False):
+            for use_pt in (True, False):
+                props = read_pt_properties(EXCEL) if (use_pt and use_excel) else None
+                _, topo = write_mct(frame, name, EXCEL if use_excel else None,
+                                    pt_cables=cables if use_pt else None,
+                                    pt_props=props, include_pt=use_pt)
+                w = topo['combo_warnings']
+                assert not w, (f'{name} (excel={use_excel}, pt={use_pt}): '
+                               f'tổ hợp mồ côi — {w}')
+
+
+def test_combo_validator_catches_orphan():
+    """Bộ kiểm phải BẮT được lỗi, không phải luôn trả rỗng.
+
+    Dựng lại đúng lỗi lịch sử: *LOADCOMB đầy đủ nhưng thiếu *MVLDCASE.
+    """
+    blocks = ['*STLDCASE    ; Static Load Cases', '   Self Weight, DC, ', '']
+    _write_load_combinations(blocks, has_pt=False)
+    problems = _validate_load_references(blocks)
+    assert any('mv1' in p for p in problems), \
+        f'không bắt được mv1 mồ côi: {problems}'
+
+    # has_pt=True mà không có *STAGE thì mọi số hạng CS đều vô đích
+    blocks2 = ['*STLDCASE', '   Self Weight, DC, ', '',
+               '*MVLDCASE', '   NAME=mv1, 0', '   NAME=mv2, 0', '']
+    _write_load_combinations(blocks2, has_pt=True)
+    problems2 = _validate_load_references(blocks2)
+    assert any('*STAGE' in p for p in problems2), \
+        f'không bắt được CS thiếu *STAGE: {problems2}'
+
+
 if __name__ == '__main__':
     failed = 0
     for fn, label in ((test_custom_supports, 'gối tuỳ đặt'),
                       (test_tendon_path_mct, 'toạ độ vẽ cáp DƯL'),
-                      (test_preview_matches_generated, 'xem trước khớp MCT')):
+                      (test_preview_matches_generated, 'xem trước khớp MCT'),
+                      (test_load_combinations_resolve, 'tổ hợp không mồ côi'),
+                      (test_combo_validator_catches_orphan, 'bộ kiểm bắt được lỗi')):
         try:
             fn()
             print(f'PASS  {label}')

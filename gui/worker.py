@@ -115,6 +115,10 @@ class GenerateWorker(QThread):
 
                 for w in topo.get('pt_warnings', []):
                     self.log.emit(f'[{name}] WARNING: {w}')
+                # Tổ hợp trỏ tới trường hợp tải không tồn tại → Midas báo
+                # "load name ((null)) does not exist" lúc import. Nói ở đây.
+                for w in topo.get('combo_warnings', []):
+                    self.log.emit(f'[{name}] LỖI TỔ HỢP: {w}')
 
                 n_elem = len(topo['elements'])
                 n_node = sum(len(topo.get(k, []))

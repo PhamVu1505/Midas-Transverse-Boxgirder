@@ -550,6 +550,8 @@ def write_mct(frame: dict, section_name: str = 'Section',
     # ── ENDDATA ──
     blocks.append('*ENDDATA')
 
+    combo_warnings = _validate_load_references(blocks)
+
     # ── Topology info (for result extraction) ──
     topology = {
         # hình học biên để khung xem vẽ được mặt cắt mà không phải đọc lại DXF
@@ -561,6 +563,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
         },
         'supports': eff_supports,
         'pt_warnings': pt_warnings,
+        'combo_warnings': combo_warnings,
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,
@@ -1005,6 +1008,8 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
         _write_anal_ctrl_block(blocks)
     blocks.append('*ENDDATA')
 
+    combo_warnings = _validate_load_references(blocks)
+
     topology = {
         'section_type': 'twin_box',
         'geometry': {
@@ -1016,6 +1021,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
         },
         'supports': eff_supports,
         'pt_warnings': pt_warnings,
+        'combo_warnings': combo_warnings,
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,
@@ -1357,120 +1363,236 @@ def _write_moving_load(blocks, ld, top_nodes, top_ids,
     blocks.append('')
 
 
+# ─────────────────────────────────────────────────────
+# Load combinations
+# ─────────────────────────────────────────────────────
+# Tổ hợp khai báo bằng DỮ LIỆU, không phải chuỗi cứng. Bản cũ là 90 dòng
+# `blocks.append(...)` trong đó MỖI tổ hợp viết hai lần — một cho nhánh có cáp
+# DƯL, một cho nhánh không. Sửa một hệ số mà quên nhánh kia thì hai nhánh lệch
+# nhau âm thầm, và không có gì bắt được.
+#
+# Mỗi số hạng là (ANAL, LCNAME, FACT), thêm cờ PT nghĩa là "chỉ có mặt khi đã
+# thật sự ghi cáp DƯL":
+#   ST = trường hợp tải tĩnh (*STLDCASE)      CB = tổ hợp khác (*LOADCOMB)
+#   MV = hoạt tải di động (*MVLDCASE)
+#   CS = kết quả phân tích giai đoạn thi công — CHỈ tồn tại khi có *STAGE,
+#        nên mọi số hạng CS đều phải mang cờ PT.
+#
+# iTYPE: 0 = cộng các số hạng, 1 = lấy bao (envelope).
+#
+# 'wrap_*' chỉ là cách ngắt dòng, chép y bản cũ. Midas không quan tâm ngắt
+# dòng ở đâu; giữ nguyên để chứng minh được refactor không đổi một byte MCT
+# nào — khối *LOADCOMB chưa từng được xác minh trên Midas thật, nên không đổi
+# nội dung và định dạng cùng lúc.
+PT = 'pt-only'
+
+_COMBOS = [
+    # ── Tổ hợp trung gian ──
+    dict(name='DW', itype=0, desc='',
+         terms=[('ST', 'Barrier', 1), ('ST', 'Pavement', 1),
+                ('ST', 'Median Strip', 1)],
+         wrap_pt=[3], wrap_plain=[3]),
+    dict(name='TG', itype=1, desc='',
+         terms=[('ST', 'TpG(+)', 1), ('ST', 'TpG(-)', 1)],
+         wrap_pt=[2], wrap_plain=[2]),
+    dict(name='mv_all', itype=0, desc='add lane',
+         terms=[('MV', 'mv1', 1), ('MV', 'mv2', 1)],
+         wrap_pt=[2], wrap_plain=[2]),
+
+    # ── Service (AASHTO: Service I / II / III) ──
+    dict(name='LCB1', itype=0, desc='service 1 for stress',
+         terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1), ('CB', 'mv_all', 1),
+                ('ST', 'WS', 0.3), ('ST', 'WL', 1),
+                ('CS', 'Creep Secondary', 1, PT),
+                ('CS', 'Shrinkage Secondary', 1, PT),
+                ('CB', 'TG', 0.5),
+                ('CS', 'Tendon Primary', 1, PT),
+                ('CS', 'Tendon Secondary', 1, PT),
+                ('ST', 'System Temperature', 1)],
+         wrap_pt=[5, 3, 2, 1], wrap_plain=[5, 2]),
+    dict(name='LCB2', itype=0, desc='service 2 for stress',
+         terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1),
+                ('CB', 'mv_all', 1.3),
+                ('CS', 'Creep Secondary', 1, PT),
+                ('CS', 'Shrinkage Secondary', 1, PT),
+                ('ST', 'System Temperature', 1),
+                ('CS', 'Tendon Primary', 1, PT),
+                ('CS', 'Tendon Secondary', 1, PT)],
+         wrap_pt=[4, 2, 2], wrap_plain=[3, 1]),
+    dict(name='LCB3', itype=0, desc='service 3 for stress',
+         terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1),
+                ('CB', 'mv_all', 0.8),
+                ('CS', 'Creep Secondary', 1, PT),
+                ('CS', 'Shrinkage Secondary', 1, PT),
+                ('ST', 'System Temperature', 1),
+                ('CS', 'Tendon Primary', 1, PT),
+                ('CS', 'Tendon Secondary', 1, PT),
+                ('CB', 'TG', 0.5)],
+         wrap_pt=[4, 2, 3], wrap_plain=[3, 2]),
+
+    # ── Strength (AASHTO: Strength I … V) ──
+    # Strength: chỉ lấy Tendon Secondary — nội lực primary đã nằm trong sức
+    # kháng của tiết diện có cáp. Creep/Shrinkage Secondary hạ về 0.5.
+    dict(name='LCB4', itype=0, desc='strength 1',
+         terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
+                ('CB', 'mv_all', 1.75),
+                ('CS', 'Creep Secondary', 0.5, PT),
+                ('CS', 'Shrinkage Secondary', 0.5, PT),
+                ('ST', 'System Temperature', 0.5),
+                ('CS', 'Tendon Secondary', 1, PT)],
+         wrap_pt=[3, 2, 2], wrap_plain=[3, 1]),
+    dict(name='LCB5', itype=0, desc='strength 2',
+         terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
+                ('CB', 'mv_all', 1.35),
+                ('CS', 'Creep Secondary', 0.5, PT),
+                ('CS', 'Shrinkage Secondary', 0.5, PT),
+                ('ST', 'System Temperature', 0.5),
+                ('CS', 'Tendon Secondary', 1, PT)],
+         wrap_pt=[3, 2, 2], wrap_plain=[3, 1]),
+    dict(name='LCB6', itype=0, desc='strength 3',
+         terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
+                ('ST', 'WS', 1.4),
+                ('CS', 'Creep Secondary', 0.5, PT),
+                ('CS', 'Shrinkage Secondary', 0.5, PT),
+                ('ST', 'System Temperature', 0.5),
+                ('CS', 'Tendon Secondary', 1, PT)],
+         wrap_pt=[3, 2, 2], wrap_plain=[3, 1]),
+    dict(name='LCB7', itype=0, desc='strength 4',
+         terms=[('ST', 'Self Weight', 1.5), ('CB', 'DW', 1.5),
+                ('CS', 'Creep Secondary', 0.5, PT),
+                ('CS', 'Shrinkage Secondary', 0.5, PT),
+                ('ST', 'System Temperature', 0.5),
+                ('CS', 'Tendon Secondary', 1, PT)],
+         wrap_pt=[3, 2, 1], wrap_plain=[3]),
+    dict(name='LCB8', itype=0, desc='strength 5',
+         terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
+                ('CB', 'mv_all', 1.35), ('ST', 'WS', 0.4), ('ST', 'WL', 1),
+                ('CS', 'Creep Secondary', 1, PT),
+                ('CS', 'Shrinkage Secondary', 1, PT),
+                ('CS', 'Tendon Secondary', 1, PT),
+                ('ST', 'System Temperature', 1)],
+         wrap_pt=[4, 3, 2], wrap_plain=[4, 2]),
+
+    # ── Bao ──
+    # ser_all cố tình bỏ LCB2: Service II của AASHTO dành cho kết cấu thép
+    # (trượt bu lông), không áp cho BTCT. LCB2 vẫn khai báo để tra tay.
+    dict(name='ser_all', itype=1, desc='service all for stress',
+         terms=[('CB', 'LCB1', 1), ('CB', 'LCB3', 1)],
+         wrap_pt=[2], wrap_plain=[2]),
+    dict(name='str_all', itype=1, desc='strength all',
+         terms=[('CB', 'LCB4', 1), ('CB', 'LCB5', 1), ('CB', 'LCB6', 1),
+                ('CB', 'LCB7', 1), ('CB', 'LCB8', 1)],
+         wrap_pt=[5], wrap_plain=[5]),
+
+    # ── Service để kiểm nứt ──
+    # Khác LCB1/LCB3 ở chỗ KHÔNG lấy Tendon Primary. Khi không có cáp DƯL thì
+    # hai tổ hợp này trùng y nguyên LCB1/LCB3 (xem ghi chú trong CLAUDE.md).
+    # Đánh số nhảy 8 → 14 là do chép từ file mẫu LT-MB-S01.mct, giữ nguyên để
+    # đối chiếu được với hồ sơ cũ.
+    dict(name='LCB14', itype=0, desc='service 1 for crack',
+         terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1), ('CB', 'mv_all', 1),
+                ('ST', 'WS', 0.3), ('ST', 'WL', 1),
+                ('CS', 'Creep Secondary', 1, PT),
+                ('CS', 'Shrinkage Secondary', 1, PT),
+                ('CB', 'TG', 0.5),
+                ('CS', 'Tendon Secondary', 1, PT),
+                ('ST', 'System Temperature', 1)],
+         wrap_pt=[5, 3, 2], wrap_plain=[5, 2]),
+    dict(name='LCB15', itype=0, desc='service 3 for crack',
+         terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1),
+                ('CB', 'mv_all', 0.8),
+                ('CS', 'Creep Secondary', 1, PT),
+                ('CS', 'Shrinkage Secondary', 1, PT),
+                ('ST', 'System Temperature', 1),
+                ('CS', 'Tendon Secondary', 1, PT),
+                ('CB', 'TG', 0.5)],
+         wrap_pt=[4, 2, 2], wrap_plain=[3, 2]),
+    dict(name='z_crack', itype=1, desc='service all for crack',
+         terms=[('CB', 'LCB14', 1), ('CB', 'LCB15', 1)],
+         wrap_pt=[2], wrap_plain=[2]),
+]
+
+# Kết quả chỉ sinh ra khi có phân tích giai đoạn thi công (*STAGE).
+_CS_RESULTS = {'Tendon Primary', 'Tendon Secondary',
+               'Creep Primary', 'Creep Secondary',
+               'Shrinkage Primary', 'Shrinkage Secondary'}
+
+
 def _write_load_combinations(blocks, has_pt=False):
-    """Ghi load combinations (AASHTO LRFD).
+    """Ghi *LOADCOMB — tổ hợp tải trọng theo AASHTO LRFD / TCVN 11823.
 
-    Khi has_pt=True, các tổ hợp Service/Strength/Crack bổ sung nội lực do
-    cáp DƯL và biến dạng dài hạn (Tendon Primary/Secondary, Creep Secondary,
-    Shrinkage Secondary) — theo cấu trúc file mẫu LT-MB-S01.mct (dòng 1120-1166).
+    has_pt=True thì các tổ hợp bổ sung nội lực do cáp DƯL và biến dạng dài hạn
+    (Tendon Primary/Secondary, Creep/Shrinkage Secondary) — theo cấu trúc file
+    mẫu LT-MB-S01.mct. Bảng hệ số nằm trong `_COMBOS`.
     """
-
     blocks.append('*LOADCOMB    ; Combinations')
     blocks.append('; NAME=NAME, KIND, ACTIVE, bES, iTYPE, DESC, iSERV-TYPE, nLCOMTYPE, nSEISTYPE   ; line 1')
     blocks.append(';      ANAL1, LCNAME1, FACT1, ...                                               ; from line 2')
 
-    # Intermediate combinations
-    blocks.append('   NAME=DW, GEN, ACTIVE, 0, 0, , 0, 0, 0')
-    blocks.append('        ST, Barrier, 1, ST, Pavement, 1, ST, Median Strip, 1')
-    blocks.append('   NAME=TG, GEN, ACTIVE, 0, 1, , 0, 0, 0')
-    blocks.append('        ST, TpG(+), 1, ST, TpG(-), 1')
-    blocks.append('   NAME=mv_all, GEN, ACTIVE, 0, 0, add lane, 0, 0, 0')
-    blocks.append('        MV, mv1, 1, MV, mv2, 1')
+    for c in _COMBOS:
+        terms = [t for t in c['terms'] if has_pt or len(t) < 4]
+        wrap = c['wrap_pt'] if has_pt else c['wrap_plain']
+        if sum(wrap) != len(terms):
+            raise ValueError(f'{c["name"]}: wrap {wrap} không khớp '
+                             f'{len(terms)} số hạng')
 
-    # Service combinations
-    if has_pt:
-        # Service: Primary + Secondary của Tendon, chỉ Secondary của Creep/Shrinkage
-        blocks.append('   NAME=LCB1, GEN, ACTIVE, 0, 0, service 1 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
-        blocks.append('        CS, Creep Secondary, 1, CS, Shrinkage Secondary, 1, CB, TG, 0.5')
-        blocks.append('        CS, Tendon Primary, 1, CS, Tendon Secondary, 1')
-        blocks.append('        ST, System Temperature, 1')
-        blocks.append('   NAME=LCB2, GEN, ACTIVE, 0, 0, service 2 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1.3, CS, Creep Secondary, 1')
-        blocks.append('        CS, Shrinkage Secondary, 1, ST, System Temperature, 1')
-        blocks.append('        CS, Tendon Primary, 1, CS, Tendon Secondary, 1')
-        blocks.append('   NAME=LCB3, GEN, ACTIVE, 0, 0, service 3 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8, CS, Creep Secondary, 1')
-        blocks.append('        CS, Shrinkage Secondary, 1, ST, System Temperature, 1')
-        blocks.append('        CS, Tendon Primary, 1, CS, Tendon Secondary, 1, CB, TG, 0.5')
-    else:
-        blocks.append('   NAME=LCB1, GEN, ACTIVE, 0, 0, service 1 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
-        blocks.append('        CB, TG, 0.5, ST, System Temperature, 1')
-        blocks.append('   NAME=LCB2, GEN, ACTIVE, 0, 0, service 2 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1.3')
-        blocks.append('        ST, System Temperature, 1')
-        blocks.append('   NAME=LCB3, GEN, ACTIVE, 0, 0, service 3 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8')
-        blocks.append('        ST, System Temperature, 1, CB, TG, 0.5')
+        blocks.append(f'   NAME={c["name"]}, GEN, ACTIVE, 0, {c["itype"]}, '
+                      f'{c["desc"]}, 0, 0, 0')
+        i = 0
+        for n in wrap:
+            chunk, i = terms[i:i + n], i + n
+            blocks.append('        ' + ', '.join(
+                f'{anal}, {name}, {fact:g}' for anal, name, fact, *_ in chunk))
 
-    # Strength combinations
-    if has_pt:
-        # Strength: chỉ Tendon Secondary (primary đã tính trong cáp resistance)
-        # Creep/Shrinkage Secondary giảm xuống factor 0.5 (LCB4-7) hoặc 1 (LCB8)
-        blocks.append('   NAME=LCB4, GEN, ACTIVE, 0, 0, strength 1, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.75')
-        blocks.append('        CS, Creep Secondary, 0.5, CS, Shrinkage Secondary, 0.5')
-        blocks.append('        ST, System Temperature, 0.5, CS, Tendon Secondary, 1')
-        blocks.append('   NAME=LCB5, GEN, ACTIVE, 0, 0, strength 2, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35')
-        blocks.append('        CS, Creep Secondary, 0.5, CS, Shrinkage Secondary, 0.5')
-        blocks.append('        ST, System Temperature, 0.5, CS, Tendon Secondary, 1')
-        blocks.append('   NAME=LCB6, GEN, ACTIVE, 0, 0, strength 3, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, ST, WS, 1.4')
-        blocks.append('        CS, Creep Secondary, 0.5, CS, Shrinkage Secondary, 0.5')
-        blocks.append('        ST, System Temperature, 0.5, CS, Tendon Secondary, 1')
-        blocks.append('   NAME=LCB7, GEN, ACTIVE, 0, 0, strength 4, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.5, CB, DW, 1.5, CS, Creep Secondary, 0.5')
-        blocks.append('        CS, Shrinkage Secondary, 0.5, ST, System Temperature, 0.5')
-        blocks.append('        CS, Tendon Secondary, 1')
-        blocks.append('   NAME=LCB8, GEN, ACTIVE, 0, 0, strength 5, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35, ST, WS, 0.4')
-        blocks.append('        ST, WL, 1, CS, Creep Secondary, 1, CS, Shrinkage Secondary, 1')
-        blocks.append('        CS, Tendon Secondary, 1, ST, System Temperature, 1')
-    else:
-        blocks.append('   NAME=LCB4, GEN, ACTIVE, 0, 0, strength 1, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.75')
-        blocks.append('        ST, System Temperature, 0.5')
-        blocks.append('   NAME=LCB5, GEN, ACTIVE, 0, 0, strength 2, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35')
-        blocks.append('        ST, System Temperature, 0.5')
-        blocks.append('   NAME=LCB6, GEN, ACTIVE, 0, 0, strength 3, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, ST, WS, 1.4')
-        blocks.append('        ST, System Temperature, 0.5')
-        blocks.append('   NAME=LCB7, GEN, ACTIVE, 0, 0, strength 4, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.5, CB, DW, 1.5, ST, System Temperature, 0.5')
-        blocks.append('   NAME=LCB8, GEN, ACTIVE, 0, 0, strength 5, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35, ST, WS, 0.4')
-        blocks.append('        ST, WL, 1, ST, System Temperature, 1')
-
-    # Envelope combinations
-    blocks.append('   NAME=ser_all, GEN, ACTIVE, 0, 1, service all for stress, 0, 0, 0')
-    blocks.append('        CB, LCB1, 1, CB, LCB3, 1')
-    blocks.append('   NAME=str_all, GEN, ACTIVE, 0, 1, strength all, 0, 0, 0')
-    blocks.append('        CB, LCB4, 1, CB, LCB5, 1, CB, LCB6, 1, CB, LCB7, 1, CB, LCB8, 1')
-
-    # Crack service combinations
-    if has_pt:
-        # Crack: chỉ Tendon Secondary (theo file mẫu LCB14/LCB15)
-        blocks.append('   NAME=LCB14, GEN, ACTIVE, 0, 0, service 1 for crack, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
-        blocks.append('        CS, Creep Secondary, 1, CS, Shrinkage Secondary, 1, CB, TG, 0.5')
-        blocks.append('        CS, Tendon Secondary, 1, ST, System Temperature, 1')
-        blocks.append('   NAME=LCB15, GEN, ACTIVE, 0, 0, service 3 for crack, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8, CS, Creep Secondary, 1')
-        blocks.append('        CS, Shrinkage Secondary, 1, ST, System Temperature, 1')
-        blocks.append('        CS, Tendon Secondary, 1, CB, TG, 0.5')
-    else:
-        blocks.append('   NAME=LCB14, GEN, ACTIVE, 0, 0, service 1 for crack, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
-        blocks.append('        CB, TG, 0.5, ST, System Temperature, 1')
-        blocks.append('   NAME=LCB15, GEN, ACTIVE, 0, 0, service 3 for crack, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8')
-        blocks.append('        ST, System Temperature, 1, CB, TG, 0.5')
-    blocks.append('   NAME=z_crack, GEN, ACTIVE, 0, 1, service all for crack, 0, 0, 0')
-    blocks.append('        CB, LCB14, 1, CB, LCB15, 1')
     blocks.append('')
+
+
+def _validate_load_references(blocks):
+    """Soi *LOADCOMB: số hạng nào trỏ tới thứ chưa hề được định nghĩa?
+
+    Midas báo "The specified load name ((null)) does not exist" khi tổ hợp trỏ
+    tới trường hợp tải không tồn tại — đã xảy ra thật vì *LOADCOMB ghi vô điều
+    kiện còn mv1/mv2 chỉ ghi khi có template. Kiểm ở đây thì thấy ngay lúc sinh
+    file, không phải thấy sau khi import vào Midas.
+
+    Returns: danh sách mô tả sự cố, rỗng nghĩa là mọi tham chiếu đều có đích.
+    """
+    st, mv, cb = set(), set(), set()
+    has_stage = any(b.startswith('*STAGE') for b in blocks)
+    problems, section, cur = [], None, None
+
+    for raw in blocks:
+        if raw.startswith('*'):
+            section = raw.split()[0].lstrip('*')
+            continue
+        line = raw.strip()
+        if not line or line.startswith(';'):
+            continue
+
+        if section == 'STLDCASE':
+            st.add(line.split(',')[0].strip())
+        elif section == 'MVLDCASE' and line.startswith('NAME='):
+            mv.add(line.split('=', 1)[1].split(',')[0].strip())
+        elif section == 'LOADCOMB':
+            if line.startswith('NAME='):
+                cur = line.split('=', 1)[1].split(',')[0].strip()
+                cb.add(cur)
+                continue
+            f = [x.strip() for x in line.split(',')]
+            for i in range(0, len(f) - 2, 3):
+                anal, name = f[i], f[i + 1]
+                if anal == 'ST' and name not in st:
+                    problems.append(f'{cur}: ST "{name}" chưa có trong *STLDCASE')
+                elif anal == 'MV' and name not in mv:
+                    problems.append(f'{cur}: MV "{name}" chưa có trong *MVLDCASE')
+                elif anal == 'CB' and (name not in cb or name == cur):
+                    problems.append(f'{cur}: CB "{name}" chưa được định nghĩa trước đó')
+                elif anal == 'CS':
+                    if not has_stage:
+                        problems.append(f'{cur}: CS "{name}" cần *STAGE mà file không có')
+                    elif name not in _CS_RESULTS:
+                        problems.append(f'{cur}: CS "{name}" không phải kết quả giai đoạn thi công')
+    return problems
 
 
 # ─────────────────────────────────────────────────────
