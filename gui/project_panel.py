@@ -43,8 +43,17 @@ class ProjectPanel(QWidget):
         super().__init__(parent)
         self.t = theme or LIGHT
         self.project = project if project is not None else Project()
+        self.select_on_add = True      # tùy chọn: tự chọn mặt cắt vừa thêm
+        self.setAcceptDrops(True)
         self._build()
+        self._restyle()
         self.refresh()
+
+    def set_layer_states(self, layers: dict):
+        """Đặt trạng thái bật/tắt các lớp (từ Tùy chọn) và phát tín hiệu."""
+        for key, c in self.layer_boxes.items():
+            if key in layers:
+                c.setChecked(bool(layers[key]))
 
     # ─────────────────────────────────────────
     def _build(self):
@@ -66,12 +75,10 @@ class ProjectPanel(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
+        # Nhãn cần tô lại khi đổi theme — giữ tham chiếu, đừng để chúng lạc.
+        self._heads = []
         head = QLabel('MẶT CẮT')
-        head.setStyleSheet(
-            f'color: {self.t["ink_2"]}; font-size: 8pt; font-weight: 600;'
-            f' letter-spacing: 1px; padding: 9px 12px 6px;'
-            f' border-bottom: 1px solid {self.t["border_soft"]};'
-            f' background: {self.t["panel"]};')
+        self._heads.append((head, 'top'))
         lay.addWidget(head)
 
         self.tree = QTreeWidget()
@@ -99,9 +106,6 @@ class ProjectPanel(QWidget):
         lay.addWidget(self.tree)
 
         self.lb_sum = QLabel('')
-        self.lb_sum.setStyleSheet(
-            f'color: {self.t["ink_3"]}; font-family: {FONT_MONO}; font-size: 8pt;'
-            f' padding: 6px 12px; border-top: 1px solid {self.t["border_soft"]};')
         self.lb_sum.setWordWrap(True)
         lay.addWidget(self.lb_sum)
 
@@ -124,6 +128,7 @@ class ProjectPanel(QWidget):
         lv = QVBoxLayout(box)
         lv.setContentsMargins(10, 4, 10, 6)
         lv.setSpacing(1)
+        self.layer_boxes = {}
         for key, label in (('concrete', 'Bê tông'), ('elements', 'Phần tử'),
                            ('nodes', 'Node'), ('ids', 'Số hiệu node'),
                            ('eids', 'Số hiệu phần tử'), ('supports', 'Gối'),
@@ -134,6 +139,7 @@ class ProjectPanel(QWidget):
             c.setStyleSheet('font-size: 9pt;')
             c.toggled.connect(lambda on, k=key: self.layer_toggled.emit(k, on))
             lv.addWidget(c)
+            self.layer_boxes[key] = c
         lay.addWidget(box)
 
         row = QHBoxLayout()
@@ -151,14 +157,30 @@ class ProjectPanel(QWidget):
 
     def _sec_head(self, lay, text):
         lb = QLabel(text)
-        lb.setStyleSheet(
-            f'color: {self.t["ink_2"]}; font-size: 8pt; font-weight: 600;'
-            f' letter-spacing: 1px; padding: 9px 12px 5px;'
-            f' border-top: 1px solid {self.t["border_soft"]};'
-            f' border-bottom: 1px solid {self.t["border_soft"]};'
-            f' background: {self.t["panel"]};')
+        self._heads.append((lb, 'mid'))
         lay.addWidget(lb)
         return lb
+
+    def _restyle(self):
+        """Áp lại toàn bộ style nội tuyến theo `self.t`."""
+        t = self.t
+        for lb, where in self._heads:
+            lb.setStyleSheet(
+                f'color: {t["ink_2"]}; font-size: 8pt; font-weight: 600;'
+                f' letter-spacing: 1px;'
+                f' padding: 9px 12px {6 if where == "top" else 5}px;'
+                + ('' if where == 'top' else
+                   f' border-top: 1px solid {t["border_soft"]};')
+                + f' border-bottom: 1px solid {t["border_soft"]};'
+                  f' background: {t["panel"]};')
+        self.lb_sum.setStyleSheet(
+            f'color: {t["ink_3"]}; font-family: {FONT_MONO}; font-size: 8pt;'
+            f' padding: 6px 12px; border-top: 1px solid {t["border_soft"]};')
+
+    def apply_theme(self, theme: dict):
+        self.t = theme
+        self._restyle()
+        self.refresh()          # chấm trạng thái trong cây lấy màu từ theme
 
     @staticmethod
     def _set_path(ed, text):
@@ -311,10 +333,59 @@ class ProjectPanel(QWidget):
             self.add_dxf(sorted(glob.glob(os.path.join(folder, '*.dxf'))))
 
     def add_dxf(self, paths):
+        last = None
         for p in paths:
-            self.project.add_dxf(p)
+            last = self.project.add_dxf(p)
         self.refresh()
         self.project_changed.emit()
+        # Chọn luôn mặt cắt vừa thêm: khung xem dựng ngay bản xem trước từ DXF,
+        # nên thêm file xong là thấy hình chứ không phải một ô trống.
+        if last is not None and self.select_on_add:
+            self.select(last.name)
+
+    def select(self, name: str):
+        for i in range(self.tree.topLevelItemCount()):
+            it = self.tree.topLevelItem(i)
+            if it.data(0, Qt.ItemDataRole.UserRole) == name:
+                self.tree.setCurrentItem(it)
+                self.tree.scrollToItem(it)
+                return True
+        return False
+
+    # ─────────────────────────────────────────
+    # Kéo thả từ Explorer
+    # ─────────────────────────────────────────
+    @staticmethod
+    def _dropped_dxf(mime) -> list:
+        """Danh sách .dxf trong dữ liệu thả — thả cả thư mục thì quét bên trong."""
+        import glob
+        out = []
+        for url in mime.urls():
+            if not url.isLocalFile():
+                continue
+            p = url.toLocalFile()
+            if os.path.isdir(p):
+                out += sorted(glob.glob(os.path.join(p, '*.dxf')))
+            elif p.lower().endswith('.dxf'):
+                out.append(p)
+        return out
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls() and self._dropped_dxf(e.mimeData()):
+            e.acceptProposedAction()
+        else:
+            e.ignore()
+
+    def dragMoveEvent(self, e):
+        self.dragEnterEvent(e)
+
+    def dropEvent(self, e):
+        files = self._dropped_dxf(e.mimeData())
+        if files:
+            self.add_dxf(files)
+            e.acceptProposedAction()
+        else:
+            e.ignore()
 
     def _remove_selected(self):
         for n in self.selected_names():

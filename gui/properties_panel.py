@@ -65,6 +65,13 @@ class PropertiesPanel(QWidget):
         return area, lb
 
     # ─────────────────────────────────────────
+    def apply_theme(self, theme: dict):
+        # Nội dung là HTML sinh lại mỗi lần refresh — màu nằm trong chuỗi HTML,
+        # nên dựng lại nội dung là đủ, không cần đụng stylesheet.
+        self.t = theme
+        self.sup_editor.apply_theme(theme)
+        self.refresh()
+
     def set_project(self, project):
         self.project = project
         self.refresh()
@@ -198,7 +205,8 @@ class PropertiesPanel(QWidget):
             h.append(self._grp(title))
             for k, label, unit in keys:
                 if k not in d:
-                    h.append(self._row(label, '<span style="color:#B42318">thiếu</span>'))
+                    h.append(self._row(
+                        label, f'<span style="color:{self.t["err"]}">thiếu</span>'))
                     continue
                 v = d[k]
                 txt = f'{v:.6g}' + (f' {unit}' if unit else '')

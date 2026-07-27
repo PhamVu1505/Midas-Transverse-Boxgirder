@@ -35,6 +35,11 @@ _P = {
     'clear':    'M4 4l8 8 M12 4l-8 8',
     'info':     'M8 1.8a6.2 6.2 0 1 0 0 12.4A6.2 6.2 0 0 0 8 1.8z M8 7.2v4 M8 4.9v.1',
     'fit':      'M2 5.5v-3h3 M14 5.5v-3h-3 M2 10.5v3h3 M14 10.5v3h-3',
+    # bánh răng: vòng trong + 8 răng, vẽ bằng nét nên hợp tông với bộ còn lại
+    'gear':     'M8 5.9a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2z'
+                ' M8 1.9v1.6 M8 12.5v1.6 M1.9 8h1.6 M12.5 8h1.6'
+                ' M3.7 3.7l1.1 1.1 M11.2 11.2l1.1 1.1'
+                ' M12.3 3.7l-1.1 1.1 M4.8 11.2l-1.1 1.1',
 }
 
 _cache = {}
@@ -49,7 +54,9 @@ def icon(name: str, tone: str = 'ink', size: int = 18, theme: dict = None) -> QI
         size: cạnh pixmap (px)
     """
     t = theme or LIGHT
-    key = (name, tone, size)
+    # Khóa cache phải gồm màu THẬT đang dùng: thiếu nó thì đổi theme xong icon
+    # vẫn lấy bản cũ trong cache và nằm chình ình màu mực đen trên nền than.
+    key = (name, tone, size, t.get(tone, t['ink']))
     if key in _cache:
         return _cache[key]
 
@@ -105,7 +112,7 @@ def support_icon(kind: str, tone: str = 'ink', size: int = 24,
                  theme: dict = None) -> QIcon:
     """Icon ký hiệu gối, vẽ giống hệt trên canvas."""
     t = theme or LIGHT
-    key = ('sup:' + kind, tone, size)
+    key = ('sup:' + kind, tone, size, t.get(tone, t['ink']))
     if key in _cache:
         return _cache[key]
     ic = QIcon()

@@ -48,6 +48,10 @@ class StepBar(QWidget):
         self.state = [IDLE] * len(self.steps)
         self.update()
 
+    def apply_theme(self, theme: dict):
+        self.t = theme
+        self.update()
+
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)

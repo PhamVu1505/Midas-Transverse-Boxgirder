@@ -34,8 +34,10 @@ OFFSET = {'top': 'CT', 'bot': 'CB',
           'web_left': 'CC', 'web_center': 'CC', 'web_right': 'CC'}
 PART_LABEL = {'top': 'Bản mặt', 'bot': 'Bản đáy', 'web_left': 'Bụng trái',
               'web_center': 'Vách giữa', 'web_right': 'Bụng phải'}
-PART_HUE = {'top': '#B42318', 'bot': '#1B5E9E', 'web_left': '#15803D',
-            'web_center': '#7A5AF8', 'web_right': '#15803D'}
+# Bộ phận → token màu trong bảng theme (không phải mã màu cứng: bản Tối cần
+# sắc sáng hơn hẳn, xem gui/theme.py).
+PART_TOKEN = {'top': 'part_top', 'bot': 'part_bot', 'web_left': 'part_web',
+              'web_center': 'part_wc', 'web_right': 'part_web'}
 
 DEFAULT_LAYERS = {
     'concrete': True, 'elements': True, 'nodes': True, 'supports': True,
@@ -130,8 +132,12 @@ class FrameView(QWidget):
             'out': g['outpoly'], 'inn': g.get('inpolys', []),
             'H': g['H'], 'type': g.get('section_type', 'single'),
             'bot_ids': [int(i) for i in topo.get('bot_ids', [])],
-            # path_mct do writer xuất sẵn theo toạ độ MCT; profile_points là
-            # (x từ mép trái, y sâu dưới mặt cầu, bán kính bo) — không vẽ thẳng được
+            # Bản xem trước dựng thẳng từ DXF (src/preview.py): có hình học và
+            # cáp nhưng chưa có node/phần tử. Mọi lớp vẽ đều chịu được danh sách
+            # rỗng, chỉ cần nói rõ cho người dùng biết đây chưa phải mô hình MCT.
+            'preview': bool(topo.get('preview')),
+            # path_mct do writer xuất sẵn theo toạ độ MCT TOÀN CỤC; profile_points
+            # là element-local, mỗi vị trí cáp một quy ước — không vẽ thẳng được
             'tendons': [{'name': t.get('name', ''),
                          'pts': [[float(a), float(b)] for a, b in t.get('path_mct', [])]}
                         for t in topo.get('tendons', [])],
@@ -178,6 +184,14 @@ class FrameView(QWidget):
     def _emit_supports(self):
         self.supports.sort(key=lambda s: s['x'])
         self.supports_changed.emit([dict(s) for s in self.supports])
+
+    def part_color(self, part: str) -> str:
+        """Màu của một bộ phận theo theme đang dùng."""
+        return self.t.get(PART_TOKEN.get(part, ''), self.t['ink'])
+
+    def apply_theme(self, theme: dict):
+        self.t = theme
+        self.update()
 
     def set_mode(self, mode):
         self.mode = mode
@@ -257,7 +271,7 @@ class FrameView(QWidget):
             p.setPen(QPen(QColor(self.t['ink_3'])))
             f = QFont(); f.setPointSize(9); p.setFont(f)
             p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
-                       'Chưa có mô hình — chọn một mặt cắt đã tạo MCT')
+                       'Chưa có mô hình — thêm DXF (kéo thả được) rồi chọn ở cây mặt cắt')
             return
 
         if not self._fitted:
@@ -286,7 +300,25 @@ class FrameView(QWidget):
         if self.edit_supports:
             self._draw_bot_hints(p)
         self._draw_marks(p)
+        if m['preview']:
+            self._draw_preview_banner(p)
         p.end()
+
+    def _draw_preview_banner(self, p):
+        """Nhắc rõ: đang xem hình DXF, chưa phải mô hình đã ghi ra MCT."""
+        txt = 'XEM TRƯỚC TỪ DXF — chưa chia phần tử, chưa tạo MCT'
+        f = QFont(); f.setPointSize(8); f.setBold(True)
+        p.setFont(f)
+        w = QFontMetrics(f).horizontalAdvance(txt) + 18
+        ml, mt, _, _ = self.MARGIN
+        r = QRectF(ml, mt, w, 21)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(QColor(self.t['warn'])))
+        p.setOpacity(0.14)
+        p.drawRoundedRect(r, 3, 3)
+        p.setOpacity(1.0)
+        p.setPen(QPen(QColor(self.t['warn'])))
+        p.drawText(r, Qt.AlignmentFlag.AlignCenter, txt)
 
     def _draw_bot_hints(self, p):
         pen = QPen(QColor(self.t['accent']), 1)
@@ -391,8 +423,7 @@ class FrameView(QWidget):
             A, B = m['nodes'].get(e['a']), m['nodes'].get(e['b'])
             if not A or not B:
                 continue
-            col = PART_HUE.get(A['part'], self.t['ink']) if self.mode == PARTS \
-                else self.t['ink']
+            col = self.part_color(A['part']) if self.mode == PARTS else self.t['ink']
             pen = QPen(QColor(col), 2.4)
             pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             p.setPen(pen)

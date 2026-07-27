@@ -81,6 +81,14 @@ xứng). Biên bê tông thật từ DXF vẽ nét đứt phía dưới, nên l�
 <p><b>Parts</b> — tô màu theo bộ phận, dùng khi cần kiểm tra chương trình có
 phân loại đúng bản mặt / bụng / bản đáy hay không.</p>
 
+<h3 style="color:{ink}">Xem trước từ DXF</h3>
+<p>Mặt cắt vừa thêm mà <i>chưa tạo MCT</i> vẫn hiện hình: chương trình đọc thẳng
+biên bê tông và đường cáp DƯL từ DXF rồi vẽ ra, kèm dải nhắc
+<span style="color:{warn}"><b>XEM TRƯỚC TỪ DXF</b></span> ở góc trên. Lúc này
+chưa có node và phần tử vì chưa chia lưới.</p>
+<p>Nhờ vậy bản vẽ sai (thiếu layer, sai đơn vị, cáp đặt lệch chỗ) lộ ra ngay khi
+nạp file, không phải chạy hết một lượt tạo MCT mới biết.</p>
+
 <h3 style="color:{ink}">Thao tác trên hình</h3>
 <p>Lăn chuột để phóng to thu nhỏ · kéo chuột để di chuyển · phím <b>F</b> hoặc
 nút <b>⤢</b> để vừa khung · rê chuột lên node để xem toạ độ và chiều dày.</p>
@@ -141,7 +149,9 @@ thức bị dán thành số cứng.</p>
 <h2 style="color:{ink}">Các bước</h2>
 {step(1, 'Thêm mặt cắt',
       'Bấm <b>Thêm DXF</b> trên thanh công cụ, hoặc <b>Tệp → Thêm cả thư mục '
-      'DXF</b> để nạp một lượt.')}
+      'DXF</b> để nạp một lượt. Nhanh nhất là <b>kéo file .dxf (hoặc cả thư '
+      'mục) từ Windows Explorer thả vào cửa sổ</b> — thả file .mtbproj thì mở '
+      'luôn project đó. Thêm xong mặt cắt hiện hình ngay để kiểm tra bản vẽ.')}
 {step(2, 'Chọn template', 'Xem mục <i>Template số liệu</i>.')}
 {step(3, 'Đặt thư mục kết quả',
       'Ô <b>Thư mục kết quả</b> trong panel Project. Mỗi mặt cắt sẽ có một thư '
@@ -212,6 +222,42 @@ nên sửa lại DXF hay đổi kích thước phần tử thì gối vẫn nằ
 cạnh bảng chỉ rõ vị trí từng điểm.</p>
 '''),
 
+        ('Tùy chọn giao diện', f'''
+<h2 style="color:{ink}">Tùy chọn</h2>
+<p>Mở bằng nút <b>⚙</b> cuối thanh công cụ, hoặc <b>Công cụ → Tùy chọn</b>
+(<code>Ctrl+,</code>). Bấm <b>mũi tên</b> cạnh nút bánh răng để đổi nhanh bảng
+màu mà không cần mở hộp thoại. Thiết lập áp dụng ngay, không phải khởi động lại,
+và được nhớ cho lần mở sau.</p>
+
+<h3 style="color:{ink}">Giao diện</h3>
+<table cellpadding="7" cellspacing="0" width="100%">
+<tr style="background:{soft}"><td width="120"><b>Bảng màu</b></td>
+    <td><b>Sáng</b> — mặc định, nền xám lệch xanh kiểu phần mềm kỹ thuật.<br>
+        <b>Tối</b> — nền xám than, dùng khi làm việc lâu hoặc phòng thiếu sáng.<br>
+        <b>Tương phản cao</b> — nền trắng, chữ đen thuần, viền đậm; hợp khi
+        trình chiếu hoặc chụp màn hình đưa vào báo cáo.</td></tr>
+<tr><td><b>Màu nhấn</b></td>
+    <td>Màu của nút chính, dòng đang chọn và các chi tiết nhấn.</td></tr>
+<tr style="background:{soft}"><td><b>Mật độ</b></td>
+    <td><b>Chặt</b> cho màn hình nhỏ, <b>Thoáng</b> cho màn hình lớn.</td></tr>
+<tr><td><b>Cỡ chữ · Phông</b></td>
+    <td>8–14 pt. Ô <i>Xem thử</i> ngay bên dưới đổi theo tức thì.</td></tr>
+</table>
+
+<h3 style="color:{ink}">Khung xem</h3>
+<p>Chọn những lớp <b>bật sẵn</b> mỗi khi mở một mặt cắt, và chế độ xem mặc định
+lúc khởi động. Trong lúc làm việc vẫn bật tắt được ở mục <b>Lớp hiển thị</b>
+panel Project.</p>
+
+<h3 style="color:{ink}">Mặc định</h3>
+<p>Thư mục kết quả và template số liệu dùng cho <b>project mới</b> — project đã
+lưu giữ thiết lập riêng của nó. Cùng chỗ này tắt được việc mở lại project gần
+nhất khi khởi động và việc tự chọn mặt cắt vừa thêm.</p>
+
+<p style="color:{ink2}"><b>Khôi phục mặc định</b> đưa mọi mục về ban đầu nhưng
+<i>giữ nguyên</i> hai đường dẫn thư mục kết quả và template.</p>
+'''),
+
         ('Phím tắt', f'''
 <h2 style="color:{ink}">Phím tắt</h2>
 <table cellpadding="7" cellspacing="0" width="100%" >
@@ -229,7 +275,8 @@ cạnh bảng chỉ rõ vị trí từng điểm.</p>
 <tr style="background:{soft}"><td><code>F6</code></td><td>Xử lý Beam Force</td></tr>
 <tr><td><code>F</code></td><td>Vừa khung nhìn</td></tr>
 <tr style="background:{soft}"><td><code>Ctrl+L</code></td><td>Xoá nhật ký</td></tr>
-<tr><td><code>F1</code></td><td>Mở hướng dẫn này</td></tr>
+<tr><td><code>Ctrl+,</code></td><td>Tùy chọn giao diện</td></tr>
+<tr style="background:{soft}"><td><code>F1</code></td><td>Mở hướng dẫn này</td></tr>
 </table>
 '''),
 

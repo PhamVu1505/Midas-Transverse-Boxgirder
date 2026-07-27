@@ -30,12 +30,32 @@ class LogView(QPlainTextEdit):
         self.setUndoRedoEnabled(False)
         self.setMaximumBlockCount(5000)
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self._size = dict(SIZE)
+        self._restyle()
+        self._counts = {'info': 0, 'ok': 0, 'warn': 0, 'err': 0}
+        # Giữ lại nội dung thô để vẽ lại được khi đổi theme. Màu chữ nằm trong
+        # QTextCharFormat đã chèn vào tài liệu: không vẽ lại thì sang bản Tối
+        # toàn bộ log cũ là chữ mực đen trên nền than — mất trắng.
+        self._lines = []
+
+    def _restyle(self):
         self.setStyleSheet(
             f'QPlainTextEdit {{ font-family: {FONT_MONO};'
-            f' font-size: {SIZE["font_mono"]}pt;'
+            f' font-size: {self._size["font_mono"]}pt;'
             f' background: {self.t["panel"]};'
             f' border: 1px solid {self.t["border"]}; }}')
-        self._counts = {'info': 0, 'ok': 0, 'warn': 0, 'err': 0}
+
+    def apply_theme(self, theme: dict, size: dict = None):
+        self.t = theme
+        if size:
+            self._size = size
+        self._restyle()
+        lines, counts = list(self._lines), dict(self._counts)
+        super().clear()
+        self._lines = []
+        for ts, msg, level in lines:
+            self._write(ts, msg, level)
+        self._lines, self._counts = lines, counts
 
     # ── API ──
     def info(self, msg):    self._add(msg, 'info')
@@ -64,6 +84,7 @@ class LogView(QPlainTextEdit):
     def clear(self):
         super().clear()
         self._counts = {'info': 0, 'ok': 0, 'warn': 0, 'err': 0}
+        self._lines = []
 
     def summary(self) -> str:
         c = self._counts
@@ -77,6 +98,10 @@ class LogView(QPlainTextEdit):
     # ── nội bộ ──
     def _add(self, msg, level):
         self._counts[level] = self._counts.get(level, 0) + 1
+        self._write(time.strftime('%H:%M:%S'), str(msg), level)
+
+    def _write(self, ts, msg, level):
+        self._lines.append((ts, msg, level))
         mark = {'info': 'i', 'ok': '+', 'warn': '!', 'err': 'x'}[level]
         col = {'info': self.t['ink_2'], 'ok': self.t['ok'],
                'warn': self.t['warn'], 'err': self.t['err']}[level]
@@ -95,8 +120,8 @@ class LogView(QPlainTextEdit):
         if self.document().blockCount() > 1 or self.toPlainText():
             cur.insertBlock()
         cur.insertText(f'{mark} ', f_mark)
-        cur.insertText(time.strftime('%H:%M:%S') + '  ', f_time)
-        cur.insertText(str(msg), f_body)
+        cur.insertText(ts + '  ', f_time)
+        cur.insertText(msg, f_body)
 
         self.setTextCursor(cur)
         self.ensureCursorVisible()

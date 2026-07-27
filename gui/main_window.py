@@ -5,7 +5,7 @@ import webbrowser
 
 from PyQt6.QtCore import Qt, QSize, QSettings
 from PyQt6.QtGui import QAction, QKeySequence
-from PyQt6.QtWidgets import (QMainWindow, QTabBar, QStackedWidget,
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QTabBar, QStackedWidget,
                              QStatusBar, QLabel, QPlainTextEdit,
                              QProgressBar, QWidget, QVBoxLayout, QToolBar,
                              QMessageBox, QFrame, QDockWidget, QFileDialog,
@@ -21,7 +21,8 @@ from .viewer_panel import ViewerPanel
 from .frame_view import MODEL, SHAPE, PARTS
 from .widgets import LogView
 from .icons import icon
-from .theme import LIGHT, FONT_MONO
+from .theme import LIGHT, FONT_MONO, THEMES, apply_theme
+from .prefs import Prefs, PreferencesDialog
 from .widgets import StepBar, ACTIVE, DONE
 from . import assets
 
@@ -34,11 +35,16 @@ MAX_RECENT = 8
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.t = LIGHT
         self.settings = QSettings(ORG, APP)
+        self.prefs = Prefs.load(self.settings)
+        self.t = self.prefs.tokens()
+        self.sizes = self.prefs.sizes()
         self.project = Project()
+        self.project.output_dir = self.prefs.output_dir or 'output'
+        self.project.template = self.prefs.template
 
         self.setWindowIcon(assets.app_icon())
+        self.setAcceptDrops(True)
         self.resize(1320, 860)
         self.setMinimumSize(1040, 680)
 
@@ -49,6 +55,12 @@ class MainWindow(QMainWindow):
         self._build_toolbar()
         self._connect()
 
+        # QSS của app đã áp trước lúc dựng cửa sổ (run_gui), nhưng style nội
+        # tuyến và các widget vẽ tay thì chỉ có đường này mới với tới.
+        self._push_theme()
+        self.panel.set_layer_states(self.prefs.layers)
+        self.panel.select_on_add = self.prefs.select_on_add
+        self._select_start_mode()
         self._restore_settings()
         self._update_title()
         self.status_msg('Sẵn sàng')
@@ -94,8 +106,7 @@ class MainWindow(QMainWindow):
                                 'chuột phải để xóa')
         self.btn_sup.toggled.connect(self._toggle_supports)
         bl.addWidget(self.btn_sup)
-        bar.setStyleSheet(f'background: {self.t["panel_alt"]};'
-                          f' border-bottom: 1px solid {self.t["border"]};')
+        self.mode_bar = bar
         lay.addWidget(bar)
 
         self.viewer = ViewerPanel(self.t)
@@ -103,8 +114,6 @@ class MainWindow(QMainWindow):
         self.mct_view = QPlainTextEdit()
         self.mct_view.setReadOnly(True)
         self.mct_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.mct_view.setStyleSheet(
-            f'font-family: {FONT_MONO}; font-size: 9pt; border: 0;')
 
         self.stack = QStackedWidget()
         for w in (self.viewer, self.res_tab, self.mct_view):
@@ -179,6 +188,8 @@ class MainWindow(QMainWindow):
     def _build_status(self):
         self.status = QStatusBar()
         self.setStatusBar(self.status)
+        self._seps = []
+        self._msg_level = 'ok'
 
         self.lb_msg = QLabel('Sẵn sàng')
         self.lb_msg.setStyleSheet(f'color: {self.t["ok"]}; font-weight: 600;')
@@ -211,9 +222,10 @@ class MainWindow(QMainWindow):
         self.status.addPermanentWidget(self.lb_units)
 
         self.status.addPermanentWidget(self._sep())
-        lb_ver = QLabel(VERSION)
-        lb_ver.setStyleSheet(f'font-family: {FONT_MONO}; color: {self.t["ink_3"]};')
-        self.status.addPermanentWidget(lb_ver)
+        self.lb_ver = QLabel(VERSION)
+        self.lb_ver.setStyleSheet(
+            f'font-family: {FONT_MONO}; color: {self.t["ink_3"]};')
+        self.status.addPermanentWidget(self.lb_ver)
 
         self.status.messageChanged.connect(
             lambda s: self.lb_detail.setText(s) if s else None)
@@ -223,12 +235,19 @@ class MainWindow(QMainWindow):
         f.setFrameShape(QFrame.Shape.VLine)
         f.setStyleSheet(f'color: {self.t["border"]};')
         f.setFixedHeight(14)
+        self._seps.append(f)
         return f
+
+    _act_icons = None
 
     def _act(self, text, slot, shortcut=None, ic=None, tip=None):
         a = QAction(text, self)
+        if self._act_icons is None:
+            self._act_icons = []
         if ic:
             a.setIcon(icon(ic, theme=self.t))
+            # Icon là pixmap tô sẵn màu — đổi theme phải vẽ lại, nhớ đường về.
+            self._act_icons.append((a, ic))
         if shortcut:
             a.setShortcut(QKeySequence(shortcut))
         if tip:
@@ -286,11 +305,29 @@ class MainWindow(QMainWindow):
             m.addAction(a)
         m.addSeparator()
         m.addAction(self._act('&Vừa khung', lambda: self.gen_tab.view.fit(), 'F'))
+        m.addSeparator()
+
+        # Đổi nhanh bảng màu ngay trong menu Xem, cùng chỗ với bật/tắt panel —
+        # midas Civil cũng để Display Option cạnh Toolbars chứ không chôn hết
+        # vào Preferences.
+        self.theme_menu = m.addMenu('&Bảng màu')
+        self._theme_acts = {}
+        for key, (label, _tbl) in THEMES.items():
+            a = QAction(label, self)
+            a.setCheckable(True)
+            a.triggered.connect(lambda _=False, k=key: self.set_theme(k))
+            self.theme_menu.addAction(a)
+            self._theme_acts[key] = a
+        self._sync_theme_menu()
 
         m = mb.addMenu('&Công cụ')
         m.addAction(self._act('Kiểm tra &template số liệu…', self.check_template,
                               None, 'info',
                               'Đọc thử Excel, liệt kê 40 khóa và đối chiếu ô gốc'))
+        m.addSeparator()
+        self.a_prefs = self._act('&Tùy chọn…', self.open_prefs, 'Ctrl+,', 'gear',
+                                 'Giao diện, khung xem và giá trị mặc định')
+        m.addAction(self.a_prefs)
 
         m = mb.addMenu('Trợ &giúp')
         m.addAction(self._act('&Hướng dẫn sử dụng', self.open_guide, 'F1'))
@@ -299,7 +336,7 @@ class MainWindow(QMainWindow):
         self._refresh_recent()
 
     def _build_toolbar(self):
-        tb = QToolBar('Chính')
+        tb = self.tb = QToolBar('Chính')
         tb.setObjectName('mainToolbar')
         tb.setMovable(False)
         tb.setIconSize(QSize(17, 17))
@@ -319,6 +356,24 @@ class MainWindow(QMainWindow):
                              spacer.sizePolicy().verticalPolicy().Preferred)
         tb.addWidget(spacer)
 
+        # Nút bánh răng cuối thanh: bấm mở Tùy chọn, giữ/mũi tên xổ menu đổi
+        # nhanh bảng màu. Kiểu nút chia đôi này lấy từ thanh công cụ của midas
+        # và SAP2000 — thao tác hay dùng đi thẳng, phần còn lại nằm trong menu.
+        self.btn_prefs = QToolButton()
+        self.btn_prefs.setIcon(icon('gear', theme=self.t))
+        # Chỉ icon: thanh công cụ đã kín chỗ vì nhãn tiếng Việt dài, thêm chữ
+        # nữa là nút bị đẩy khuất khỏi mép phải trên màn hình hẹp.
+        self.btn_prefs.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.btn_prefs.setToolTip('Tùy chọn (Ctrl+,) — bấm mũi tên để đổi '
+                                  'nhanh bảng màu')
+        self.btn_prefs.setPopupMode(
+            QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.btn_prefs.setMenu(self.theme_menu)
+        self.btn_prefs.clicked.connect(self.open_prefs)
+        tb.addWidget(self.btn_prefs)
+        self._act_icons.append((self.btn_prefs, 'gear'))
+        tb.addSeparator()
+
         # Dấu hiệu TEDI ở mép phải — badge đơn vị, không phải nút bấm
         badge = QLabel()
         badge.setPixmap(assets.tedi_mark(22))
@@ -326,14 +381,7 @@ class MainWindow(QMainWindow):
         badge.setStyleSheet('padding: 0 10px 0 4px;')
         tb.addWidget(badge)
 
-        w = tb.widgetForAction(self.a_gen)
-        if w:
-            w.setStyleSheet(
-                f'QToolButton {{ background: {self.t["accent"]};'
-                f' color: {self.t["on_accent"]}; font-weight: 600;'
-                f' border: 1px solid {self.t["accent"]};'
-                f' border-radius: 3px; padding: 5px 12px; }}'
-                f'QToolButton:hover {{ background: #17538B; }}')
+        self._restyle_chrome()
 
     def _connect(self):
         self.panel.section_selected.connect(self.gen_tab.show_section)
@@ -507,6 +555,135 @@ class MainWindow(QMainWindow):
         self.recent_menu.addAction(a)
 
     # ─────────────────────────────────────────
+    # Giao diện / Tùy chọn
+    # ─────────────────────────────────────────
+    # Đổi theme không khởi động lại: QSS của QApplication lo phần lớn widget,
+    # nhưng KHÔNG với tới hai thứ — style nội tuyến (`setStyleSheet` trong panel)
+    # và widget tự vẽ bằng QPainter (khung xem, thanh bước, sơ đồ điểm kiểm).
+    # `_push_theme()` là chỗ duy nhất phân phát; panel nào cần thì có
+    # `apply_theme()`. Thêm panel mới mà quên nối vào đây thì nó đứng nguyên
+    # màu cũ — nên danh sách để tập trung một chỗ cho dễ soát.
+    def _push_theme(self):
+        app = QApplication.instance()
+        if app is not None:
+            apply_theme(app, self.t, self.sizes, self.prefs.font_family)
+        self.steps.apply_theme(self.t)
+        self.viewer.apply_theme(self.t)
+        self.panel.apply_theme(self.t)
+        self.props.apply_theme(self.t)
+        self.res_tab.apply_theme(self.t, self.sizes)
+        self.log.apply_theme(self.t, self.sizes)
+        self._restyle_chrome()
+
+    def _restyle_chrome(self):
+        """Style nội tuyến của chính cửa sổ (thanh tab, status bar, nút Tạo MCT)."""
+        t = self.t
+        self.mode_bar.setStyleSheet(f'background: {t["panel_alt"]};'
+                                    f' border-bottom: 1px solid {t["border"]};')
+        self.mct_view.setStyleSheet(
+            f'font-family: {FONT_MONO}; font-size: {self.sizes["font_mono"]}pt;'
+            f' border: 0;')
+        mono = f'font-family: {FONT_MONO}; color: {t["ink_2"]};'
+        self.lb_count.setStyleSheet(mono)
+        self.lb_units.setStyleSheet(mono)
+        for lb in (self.lb_cursor, self.lb_ver):
+            lb.setStyleSheet(f'font-family: {FONT_MONO}; color: {t["ink_3"]};')
+        for f in self._seps:
+            f.setStyleSheet(f'color: {t["border"]};')
+        self.status_msg(self.lb_msg.text(), self._msg_level)
+
+        for a, ic in self._act_icons:
+            a.setIcon(icon(ic, theme=t))
+        w = self.tb.widgetForAction(self.a_gen) if hasattr(self, 'tb') else None
+        if w:
+            w.setStyleSheet(
+                f'QToolButton {{ background: {t["accent"]};'
+                f' color: {t["on_accent"]}; font-weight: 600;'
+                f' border: 1px solid {t["accent"]};'
+                f' border-radius: 3px; padding: 5px 12px; }}'
+                f'QToolButton:hover {{ background: {t["accent_hover"]}; }}')
+
+    def _select_start_mode(self):
+        want = {'model': 0, 'shape': 1, 'parts': 2}.get(self.prefs.start_mode, 0)
+        self.tabbar.setCurrentIndex(want)
+        self._on_view_tab(want)
+
+    def open_prefs(self):
+        d = PreferencesDialog(self.prefs, self)
+        if d.exec() != QDialog.DialogCode.Accepted:
+            return
+        old = self.prefs
+        self.prefs = d.result_prefs()
+        self.prefs.save(self.settings)
+        self.t = self.prefs.tokens()
+        self.sizes = self.prefs.sizes()
+        self._push_theme()
+        if self.prefs.layers != old.layers:
+            self.panel.set_layer_states(self.prefs.layers)
+        self.panel.select_on_add = self.prefs.select_on_add
+        self._sync_theme_menu()
+        self.status_msg('Đã áp dụng tùy chọn giao diện')
+
+    def set_theme(self, key: str):
+        """Đổi nhanh bảng màu từ menu Xem — vẫn ghi vào cùng một chỗ lưu."""
+        if key == self.prefs.theme:
+            return
+        self.prefs.theme = key
+        self.prefs.save(self.settings)
+        self.t = self.prefs.tokens()
+        self._push_theme()
+        self._sync_theme_menu()
+        self.status_msg(f'Bảng màu: {THEMES[key][0]}')
+
+    def _sync_theme_menu(self):
+        for key, a in self._theme_acts.items():
+            a.setChecked(key == self.prefs.theme)
+
+    # ─────────────────────────────────────────
+    # Kéo thả từ Explorer vào bất kỳ đâu trong cửa sổ
+    # ─────────────────────────────────────────
+    # Panel Project tự nhận drop cho riêng nó; ở đây bắt phần còn lại (khung
+    # xem, dock, thanh trạng thái) vì thả vào giữa màn hình mới là phản xạ tự
+    # nhiên. Nhận cả .mtbproj để mở project bằng cách thả file.
+    @staticmethod
+    def _dropped(mime):
+        import glob
+        dxf, proj = [], []
+        for url in mime.urls() if mime.hasUrls() else []:
+            if not url.isLocalFile():
+                continue
+            p = url.toLocalFile()
+            if os.path.isdir(p):
+                dxf += sorted(glob.glob(os.path.join(p, '*.dxf')))
+            elif p.lower().endswith('.dxf'):
+                dxf.append(p)
+            elif p.lower().endswith(FILE_EXT):
+                proj.append(p)
+        return dxf, proj
+
+    def dragEnterEvent(self, e):
+        dxf, proj = self._dropped(e.mimeData())
+        if dxf or proj:
+            e.acceptProposedAction()
+        else:
+            e.ignore()
+
+    def dragMoveEvent(self, e):
+        self.dragEnterEvent(e)
+
+    def dropEvent(self, e):
+        dxf, proj = self._dropped(e.mimeData())
+        if proj:
+            self.open_project(proj[0])
+        elif dxf:
+            self.panel.add_dxf(dxf)
+            self.status_msg(f'Đã thêm {len(dxf)} mặt cắt từ DXF thả vào')
+        else:
+            e.ignore()
+            return
+        e.acceptProposedAction()
+
+    # ─────────────────────────────────────────
     # Hành động
     # ─────────────────────────────────────────
     def panel_add_dxf(self):
@@ -631,6 +808,7 @@ class MainWindow(QMainWindow):
     def status_msg(self, text, level='ok'):
         col = {'ok': self.t['ok'], 'warn': self.t['warn'],
                'err': self.t['err'], 'busy': self.t['accent']}[level]
+        self._msg_level = level
         self.lb_msg.setText(text)
         self.lb_msg.setStyleSheet(f'color: {col}; font-weight: 600;')
 
@@ -675,7 +853,7 @@ class MainWindow(QMainWindow):
         if s:
             self.restoreState(s)
         last = self.settings.value('lastProject', '')
-        if last and os.path.exists(last):
+        if self.prefs.reopen_last and last and os.path.exists(last):
             try:
                 p = Project.load(last)
                 p.refresh_status()

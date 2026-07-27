@@ -11,7 +11,7 @@ import os
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from src.project import Project
+from src.project import Project, NEW
 from .worker import GenerateWorker
 
 
@@ -57,14 +57,18 @@ class GenerateController(QObject):
 
     # ─────────────────────────────────────────
     def show_section(self, name):
-        """Nạp mô hình ĐÃ GHI RA MCT của mặt cắt đang chọn."""
+        """Nạp mô hình ĐÃ GHI RA MCT; chưa có thì xem trước thẳng từ DXF."""
         sec = self.project.find(name)
         if not sec or not self.view:
             return
         self._current = name
-        topo = sec.topo or os.path.join(
-            self.project.output_dir, name, f'{name}_topo.json')
-        if os.path.exists(topo) and self.view.load_topo(topo):
+        # Chỉ đoán đường dẫn topo khi mặt cắt ĐÃ từng sinh MCT. Mặt cắt mới thêm
+        # mà đoán bừa `output/<tên>/<tên>_topo.json` thì rất dễ vớ phải file cũ
+        # của lần chạy trước với cùng tên — hiện mô hình của một DXF khác mà
+        # không ai biết. Chưa sinh thì đi đường xem trước từ chính DXF.
+        topo = sec.topo or ('' if sec.status == NEW else os.path.join(
+            self.project.output_dir, name, f'{name}_topo.json'))
+        if topo and os.path.exists(topo) and self.view.load_topo(topo):
             # load_topo đã nạp bộ gối GHI TRONG MCT; chỉ ghi đè khi người dùng
             # thực sự đặt gối riêng cho mặt cắt này
             if sec.supports:
@@ -75,9 +79,42 @@ class GenerateController(QObject):
                 f'{name}: {st["type"]} · {st["nodes"]} node · {st["elems"]} phần tử'
                 f' · H {st["H"]:.3f} m · B {st["B"]:.3f} m')
         else:
-            self.view.clear()
-            self.status_bar.showMessage(f'{name}: chưa tạo MCT')
+            self._show_preview(name, sec)
         self.section_shown.emit(name)
+
+    def _show_preview(self, name, sec):
+        """Xem trước hình học + cáp đọc thẳng từ DXF, chưa cần sinh MCT.
+
+        Biên bê tông và đường cáp vốn nằm sẵn trong DXF — bắt người dùng chạy
+        hết một lượt tạo MCT rồi mới được nhìn thì lỗi bản vẽ (thiếu layer, sai
+        đơn vị, cáp lệch chỗ) đến cuối quy trình mới lộ.
+        """
+        from src.preview import preview_topo
+        if not sec.dxf or not os.path.exists(sec.dxf):
+            self.view.clear()
+            self.status_bar.showMessage(f'{name}: không tìm thấy DXF {sec.dxf}')
+            return
+        try:
+            topo = preview_topo(sec.dxf)
+        except Exception as e:
+            self.view.clear()
+            self.status_bar.showMessage(f'{name}: DXF đọc không được — {e}')
+            if self.log_area:
+                self.log_area.error(f'{name}: không xem trước được DXF — {e}')
+            return
+
+        self.view.set_topo(topo)
+        if sec.supports:
+            self.view.set_supports(sec.supports)
+        self.viewer.rebuild_sup_bar()
+        g = topo['geometry']
+        n_pt = len(topo['tendons'])
+        self.status_bar.showMessage(
+            f'{name}: xem trước từ DXF · {g["section_type"]} · H {g["H"]:.3f} m'
+            f' · {n_pt} cáp DƯL · chưa tạo MCT')
+        if self.log_area:
+            for layer, why in (topo.get('pt_suspect') or {}).items():
+                self.log_area.warning(f'{name}: layer {layer!r} — {why}')
 
     def on_supports_changed(self, supports):
         if self._current:

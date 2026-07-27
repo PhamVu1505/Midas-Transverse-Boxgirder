@@ -40,9 +40,6 @@ class ViewerPanel(QWidget):
         tl = QHBoxLayout(self.tools)
         tl.setContentsMargins(3, 3, 3, 3)
         tl.setSpacing(2)
-        self.tools.setStyleSheet(
-            f'background: {self.t["panel"]};'
-            f' border: 1px solid {self.t["border"]}; border-radius: 3px;')
         for label, tip, fn in (('−', 'Thu nhỏ', lambda: self.view.zoom_by(1 / 1.25)),
                                ('+', 'Phóng to', lambda: self.view.zoom_by(1.25)),
                                ('⤢', 'Vừa khung (F)', lambda: self.view.fit())):
@@ -56,10 +53,6 @@ class ViewerPanel(QWidget):
 
         self.legend = QLabel(stage)
         self.legend.setTextFormat(Qt.TextFormat.RichText)
-        self.legend.setStyleSheet(
-            f'background: {self.t["panel"]};'
-            f' border: 1px solid {self.t["border"]}; border-radius: 3px;'
-            f' padding: 7px 9px; font-size: 8pt; color: {self.t["ink_2"]};')
         self.legend.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         lay.addWidget(stage, 1)
         self._stage = stage
@@ -67,15 +60,36 @@ class ViewerPanel(QWidget):
 
         # ── dòng truy vấn ──
         self.query = QLabel('Rê chuột lên mặt cắt để tra node')
-        self.query.setStyleSheet(
-            f'color: {self.t["ink_2"]}; font-family: {FONT_MONO}; font-size: 8pt;'
-            f' padding: 5px 10px; background: {self.t["panel_alt"]};'
-            f' border-top: 1px solid {self.t["border"]};')
         lay.addWidget(self.query)
 
+        self._mode = MODEL
+        self._restyle()
         self.view.node_hovered.connect(self._on_hover)
         self.view.supports_changed.connect(self._on_sup_changed)
         self.set_mode(MODEL)
+
+    # ─────────────────────────────────────────
+    def _restyle(self):
+        t = self.t
+        self.tools.setStyleSheet(
+            f'background: {t["panel"]};'
+            f' border: 1px solid {t["border"]}; border-radius: 3px;')
+        self.legend.setStyleSheet(
+            f'background: {t["panel"]};'
+            f' border: 1px solid {t["border"]}; border-radius: 3px;'
+            f' padding: 7px 9px; font-size: 8pt; color: {t["ink_2"]};')
+        self.query.setStyleSheet(
+            f'color: {t["ink_2"]}; font-family: {FONT_MONO}; font-size: 8pt;'
+            f' padding: 5px 10px; background: {t["panel_alt"]};'
+            f' border-top: 1px solid {t["border"]};')
+
+    def apply_theme(self, theme: dict):
+        self.t = theme
+        self.view.apply_theme(theme)
+        self._restyle()
+        # Chú giải Parts nhắc lại đúng màu đang tô trên hình — dựng lại theo
+        # theme mới, nếu không nó chỉ vào những màu không còn tồn tại.
+        self.set_mode(self._mode)
 
     # ─────────────────────────────────────────
     def eventFilter(self, obj, ev):
@@ -100,16 +114,23 @@ class ViewerPanel(QWidget):
                 'nét đứt đậm — trục phần tử (đường node)<br>'
                 '<b>CT</b> bản mặt treo xuống &nbsp; '
                 '<b>CB</b> bản đáy nhô lên &nbsp; <b>CC</b> bụng ±t/2'),
-        PARTS: ('<b>Tô theo bộ phận</b> — soi frame builder<br>'
-                '<span style="color:#B42318">▬</span> bản mặt &nbsp;'
-                '<span style="color:#1B5E9E">▬</span> bản đáy &nbsp;'
-                '<span style="color:#15803D">▬</span> bụng ngoài &nbsp;'
-                '<span style="color:#7A5AF8">▬</span> vách giữa'),
     }
 
+    def _legend_parts(self) -> str:
+        """Chú giải Parts lấy màu từ chính khung xem — hai bên không thể lệch."""
+        v = self.view
+        return ('<b>Tô theo bộ phận</b> — soi frame builder<br>'
+                + ' &nbsp;'.join(
+                    f'<span style="color:{v.part_color(part)}">▬</span> {label}'
+                    for part, label in (('top', 'bản mặt'), ('bot', 'bản đáy'),
+                                        ('web_left', 'bụng ngoài'),
+                                        ('web_center', 'vách giữa'))))
+
     def set_mode(self, mode):
+        self._mode = mode
         self.view.set_mode(mode)
-        self.legend.setText(self.LEGEND.get(mode, ''))
+        self.legend.setText(self._legend_parts() if mode == PARTS
+                            else self.LEGEND.get(mode, ''))
         self._place_overlays()
 
     def set_edit_supports(self, on):

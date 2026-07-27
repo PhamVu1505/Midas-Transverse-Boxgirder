@@ -20,11 +20,13 @@ LABELS = ['Center +', 'Haunch M-', 'Haunch M+', 'Out Side',
           'Center', 'Haunch', 'Mid->upper', 'Mid->lower']
 GROUPS = ['Top slab', '', '', '', 'Bottom slab', '', 'Web', '']
 
-GROUP_COLORS = {
-    'Top slab': QColor(255, 230, 230),
-    'Bottom slab': QColor(230, 240, 255),
-    'Web': QColor(230, 255, 230),
-}
+# Nền nhóm hàng lấy từ token: bảng Tối cần nền tối, nếu giữ pastel sáng thì
+# chữ (màu mực sáng của theme) biến mất trên đó.
+GROUP_TOKEN = {'Top slab': 'grp_top', 'Bottom slab': 'grp_bot', 'Web': 'grp_web'}
+
+
+def group_color(group: str, t: dict) -> QColor:
+    return QColor(t.get(GROUP_TOKEN.get(group, ''), t['panel']))
 
 DATA_ROWS = [
     ('Depth h (mm)', 'h', '{:.0f}'),
@@ -36,24 +38,39 @@ DATA_ROWS = [
     ('  -> element', 'Mser_ref', '{}'),
 ]
 
-POINT_COLORS = {
-    'A': QColor(220, 50, 50),
-    'B': QColor(200, 80, 80),
-    'C': QColor(180, 60, 60),
-    'D': QColor(160, 40, 40),
-    'E': QColor(50, 80, 200),
-    'F': QColor(70, 100, 220),
-    'G': QColor(40, 160, 60),
-    'H': QColor(60, 140, 80),
+# Điểm kiểm toán tô theo bộ phận: A–D bản mặt, E–F bản đáy, G–H bụng. Lấy màu
+# bộ phận của theme rồi biến thiên độ sáng cho phân biệt từng điểm trong nhóm.
+POINT_TOKEN = {'A': ('part_top', 0), 'B': ('part_top', 1), 'C': ('part_top', 2),
+               'D': ('part_top', 3), 'E': ('part_bot', 0), 'F': ('part_bot', 2),
+               'G': ('part_web', 0), 'H': ('part_web', 2)}
+
+# Bản Sáng là giao diện mặc định lúc chạy lần đầu nên giữ nguyên mã màu v1.3.0
+# thay vì lấy giá trị suy ra — công thức cho ra tông gạch, bản cũ là đỏ tươi.
+POINT_LEGACY_LIGHT = {
+    'A': '#DC3232', 'B': '#C85050', 'C': '#B43C3C', 'D': '#A02828',
+    'E': '#3250C8', 'F': '#4664DC', 'G': '#28A03C', 'H': '#3C8C50',
 }
+
+
+def point_color(pt: str, t: dict) -> QColor:
+    if t.get('_id') == 'light':
+        return QColor(POINT_LEGACY_LIGHT[pt])
+    token, step = POINT_TOKEN.get(pt, ('ink', 0))
+    c = QColor(t.get(token, t['ink']))
+    return c if not step else c.lighter(100 + step * 12)
 
 
 class CheckPointDiagram(QWidget):
     """Simple schematic of box girder cross-section with check points A-H."""
 
-    def __init__(self):
+    def __init__(self, theme=None):
         super().__init__()
+        self.t = theme or LIGHT
         self.setMinimumSize(320, 220)
+
+    def apply_theme(self, theme: dict):
+        self.t = theme
+        self.update()
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -113,11 +130,11 @@ class CheckPointDiagram(QWidget):
             QPointF(px(ix_L), py(iy_bot - 0.02)),
         ])
 
-        p.setPen(QPen(QColor(80, 80, 80), 1.5))
-        p.setBrush(QBrush(QColor(220, 220, 220)))
+        p.setPen(QPen(QColor(self.t['dia_edge']), 1.5))
+        p.setBrush(QBrush(QColor(self.t['dia_fill'])))
         p.drawPolygon(outer)
 
-        p.setBrush(QBrush(QColor(255, 255, 255)))
+        p.setBrush(QBrush(QColor(self.t['panel'])))
         p.drawPolygon(inner)
 
         font = QFont('Arial', 9, QFont.Weight.Bold)
@@ -139,7 +156,7 @@ class CheckPointDiagram(QWidget):
         for pt, (rx, ry, lox, loy) in points_pos.items():
             cx = px(rx)
             cy = py(ry)
-            color = POINT_COLORS[pt]
+            color = point_color(pt, self.t)
 
             p.setPen(QPen(color, 2))
             p.setBrush(QBrush(color))
@@ -152,7 +169,7 @@ class CheckPointDiagram(QWidget):
 
         ly = h - 12
         p.setFont(QFont('Arial', 7))
-        p.setPen(QPen(QColor(100, 100, 100)))
+        p.setPen(QPen(QColor(self.t['dia_note'])))
         legend = 'A-D: Top slab | E-F: Bottom slab | G-H: Web'
         p.drawText(mx, ly, legend)
 
@@ -195,7 +212,8 @@ class ResultsTab(QWidget):
 
         row_btn = QHBoxLayout()
         self.lb_ready = QLabel('')
-        self.lb_ready.setStyleSheet('color: #667085; font-size: 8pt;')
+        self.lb_ready.setStyleSheet(
+            f'color: {self.t["ink_2"]}; font-size: 8pt;')
         row_btn.addWidget(self.lb_ready)
         row_btn.addStretch()
         btn_bf = QPushButton('Gán Beam Force…')
@@ -229,14 +247,14 @@ class ResultsTab(QWidget):
         self._style_table_headers()
         splitter.addWidget(self.table)
 
-        self.diagram = CheckPointDiagram()
+        self.diagram = CheckPointDiagram(self.t)
         splitter.addWidget(self.diagram)
 
         splitter.setSizes([550, 320])
         layout.addWidget(splitter, 1)
 
         # Log
-        self.log_area = LogView()
+        self.log_area = LogView(theme=self.t)
         self.log_area.setMaximumHeight(130)
         layout.addWidget(self.log_area)
 
@@ -256,11 +274,21 @@ class ResultsTab(QWidget):
         for j in range(8):
             if GROUPS[j]:
                 current_group = GROUPS[j]
-            color = GROUP_COLORS.get(current_group, QColor(255, 255, 255))
+            color = group_color(current_group, self.t)
             for i in range(len(DATA_ROWS)):
                 item = QTableWidgetItem('')
                 item.setBackground(color)
                 self.table.setItem(i, j, item)
+
+    def apply_theme(self, theme: dict, size: dict = None):
+        self.t = theme
+        self.lb_ready.setStyleSheet(f'color: {theme["ink_2"]}; font-size: 8pt;')
+        self.diagram.apply_theme(theme)
+        self.log_area.apply_theme(theme, size)
+        # Nền nhóm nằm trong từng ô của bảng — phải đặt lại, QSS không với tới.
+        self._style_table_headers()
+        if self.all_results:
+            self._on_section_changed(self.section_combo.currentText())
 
     # API công khai cho menu/toolbar
     def process(self): self._process()
@@ -431,7 +459,7 @@ class ResultsTab(QWidget):
         for j, pt in enumerate(POINTS):
             if GROUPS[j]:
                 current_group = GROUPS[j]
-            color = GROUP_COLORS.get(current_group, QColor(255, 255, 255))
+            color = group_color(current_group, self.t)
 
             for i, (label, key, fmt) in enumerate(DATA_ROWS):
                 val = check_points[pt][key]

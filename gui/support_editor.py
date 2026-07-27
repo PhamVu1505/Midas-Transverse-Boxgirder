@@ -38,6 +38,11 @@ class SupportEditor(QWidget):
         self.view = view
         self.rebuild()
 
+    def apply_theme(self, theme: dict):
+        # Mọi style ở đây sinh ra trong rebuild(), nên dựng lại là đủ.
+        self.t = theme
+        self.rebuild()
+
     # ─────────────────────────────────────────
     def _clear(self):
         while self._lay.count():
