@@ -152,4 +152,28 @@ python tools/make_user_guide.py                  # sinh lại docs/USER-GUIDE.tx
 installer\build.bat
 ```
 
-Lịch sử thay đổi: `git log --oneline`.
+## Current Sprint
+**Goal:** v1.3.0 — thiết kế lại GUI theo lối phần mềm kỹ thuật (midas / CSI / LUSAS / spColumn).
+
+**Trạng thái:** Xong Giai đoạn 1–4 + logo + `input_reader`. 16 commit trên `feature/t13-twin-box`, **chưa push**, chưa merge `master`.
+
+**Next Action cụ thể:**
+1. Chạy `python run_gui.py` → chọn template → tạo MCT cho mặt cắt có cáp → **import vào Midas kiểm tra khối `*TDN-*`** (mới sửa ở `e0ce04c`, chưa xác minh trên phần mềm thật).
+2. Nếu cáp vẫn không ra: mở **Công cụ → Kiểm tra template số liệu**, soi nhóm *Cáp DƯL* (`fpu`, `Ep`, `Ap`, `duct_dia`, `Pj`) — thiếu khóa hiện đỏ.
+3. Hai tab **Results table** và **MCT source** chưa chạy thử với Beam Force thật — cần một file kết quả Midas để kiểm.
+4. Trước khi build: bump `installer/setup.iss` từ 1.2.0 → 1.3.0 (xem `reference_version_bump_locations`).
+
+**Blocker:** không có. Người dùng đã xác nhận MCT import vào Midas hết lỗi `(null)`.
+
+**Chưa làm (đã bàn, để sau):** đổi số hiệu node/phần tử (cần lớp ánh xạ ID và phải đồng bộ với `result_reader` vì Beam Force tra theo ID); mặt cắt ≥3 hộp.
+
+## Session Log
+- 2026-07-27: Cáp DƯL tách hình học khỏi vật liệu (vẫn hiện khi chưa có template, kèm cảnh báo); mở rộng nhận diện layer cáp; nút "..." hết tàng hình.
+- 2026-07-26: Sửa lỗi Midas `(null)` (STLDCASE/LOADCOMB ghi vô điều kiện); dựng lại bố cục đúng mockup; sửa gối kiểu Fast Restraints; cửa sổ Hướng dẫn tiếng Việt.
+- 2026-07-26: GĐ3 khung xem tương tác (zoom/pan/fit, 3 chế độ, truy vấn node) + GĐ3b sửa gối xuyên suốt.
+- 2026-07-26: GĐ2 project model `.mtbproj`, cây mặt cắt, bỏ `_match_pairs`; logo app mới + logo TEDI.
+- 2026-07-26: GĐ1 vỏ giao diện — theme token + QSS, menu/toolbar, thanh bước, log phân cấp màu.
+- 2026-07-26: `input_reader` — số liệu đọc từ sheet INPUT khóa–giá trị, bỏ đọc ô cứng; 7/7 MCT giống hệt.
+- 2026-07-25: Đồng bộ constraint single-box (khóa Dy), thêm `tests/test_regression.py`.
+
+Lịch sử đầy đủ: `git log --oneline`.
