@@ -15,7 +15,7 @@ Tự động hóa toàn bộ quy trình phân tích khung ngang tại các mặt
 
 Kiến trúc chi tiết: xem `docs/ARCHITECTURE.md`.
 
-## Trạng thái hiện tại (v1.3.0)
+## Trạng thái hiện tại (v1.3.1)
 
 Toàn bộ pipeline đã hoàn thiện. **Tested**: S1, S7, S12, S16, S20, SLT, S1_V2 (Twin Box).
 
@@ -208,26 +208,31 @@ installer\build.bat
 ## Current Sprint
 **Goal:** v1.3.1 — sửa toạ độ vẽ cáp DƯL, xem trước từ DXF, kéo thả, hộp thoại Tùy chọn giao diện.
 
-**Trạng thái:** Code xong, `pytest tests -q` **26/26 pass**. 17 commit cũ trên `feature/t13-twin-box` (chưa push) + **toàn bộ việc session này CHƯA COMMIT**.
+**Trạng thái:** `pytest tests -q` **30/30 pass**. Phiên bản đã bump đủ 5 chỗ. **24 commit trên `feature/t13-twin-box` chưa push.**
 
-Đã làm trong session này (xem mục *Xem trước từ DXF* và *Tùy chọn giao diện* ở trên):
+Đã làm:
 1. **`path_mct` sai công thức** — cáp BOT bị vẽ trên đỉnh dầm (z=6.856 khi H=6.628), cáp WEB thành đường nằm ngang. Nay sinh thẳng từ toạ độ DXF + `tessellate_bulge()`. **Khối MCT không đổi một byte.**
 2. **`src/preview.py`** — xem trước hình học + cáp ngay khi thêm DXF, chưa cần tạo MCT.
 3. **Kéo thả** `.dxf` / thư mục / `.mtbproj` vào bất kỳ đâu trong cửa sổ.
 4. **`gui/prefs.py`** — hộp thoại Tùy chọn 3 trang + 3 bảng màu, đổi tức thì. Mặc định lần đầu giống hệt v1.3.0 (QSS diff = 0 dòng đổi).
+5. **Dọn tổ hợp tải trọng** — bảng `_COMBOS` khai báo bằng dữ liệu, tên theo TCVN 11823, bỏ `Sử dụng II` và tổ hợp nứt trùng lặp, thêm `_validate_load_references()`. Xem mục *Tổ hợp tải trọng*.
+6. **VCLASS chỉ chứa xe** — bỏ `lane` khỏi lớp, không đổi kết quả. Xem mục *Hoạt tải*.
+
+**Đã chạy Midas thật** với MCT sinh ra (`output/S1`, 2026-07-27): mô hình import sạch, phân tích xong, xuất được Beam Force. Kết luận trong mục *Hoạt tải*.
 
 **Next Action cụ thể:**
 1. `python run_gui.py` → thả một DXF **có cáp bụng / cáp đáy thật** vào → xem cáp có đúng chỗ không. Dữ liệu mẫu trong repo chỉ có `PT-TOP-1`, nên BOT/WEB mới chỉ kiểm bằng cáp giả lập trong `tests/test_regression.py::test_tendon_path_mct`.
-2. Cùng lượt đó **import vào Midas kiểm khối `*TDN-*`** — việc còn treo từ `e0ce04c`, vẫn chưa xác minh trên phần mềm thật.
-3. Thử `Ctrl+,` và đổi sang bản Tối, soi xem còn chỗ nào giữ màu cũ. Registry có thể còn theme tối từ lúc test → ⚙ → **Khôi phục mặc định**.
-4. Hai tab **Results table** và **MCT source** vẫn chưa chạy với Beam Force thật — cần một file kết quả Midas.
-5. Trước khi build: bump `installer/setup.iss` 1.2.0 → **1.3.1** và `README.md` (2 chỗ). `gui/main_window.py:VERSION` và `docs/USER-GUIDE.txt` hiện là v1.3.0 → cũng phải bump. Xem `reference_version_bump_locations`.
+2. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`. Lần chạy `output/S1` có `Prestress` trong kết quả nên khối cáp đã được nạp, nhưng chưa ai soi kỹ đường cáp và lực căng trong Midas.
+3. Hai tab **Results table** và **MCT source** giờ đã có `output/S1/Beam Force.xls` thật để chạy thử — trước đây thiếu.
+4. Lần import Midas tới, so `mv1(max)` tại phần tử 118 của S1: phải vẫn là **41.38** (chứng minh việc bỏ `lane` khỏi VCLASS không đổi kết quả).
+5. Thử `Ctrl+,` đổi sang bản Tối, soi chỗ nào còn giữ màu cũ. Registry có thể còn theme tối từ lúc test → ⚙ → **Khôi phục mặc định**.
 
 **Blocker:** không có.
 
 **Chưa làm (đã bàn, để sau):** đổi số hiệu node/phần tử (cần lớp ánh xạ ID và phải đồng bộ với `result_reader` vì Beam Force tra theo ID); mặt cắt ≥3 hộp.
 
 ## Session Log
+- 2026-07-27: **Dọn tổ hợp tải trọng** (bảng dữ liệu, tên TCVN 11823, bỏ tổ hợp trùng, bộ kiểm tham chieu) + **giải mã mạch tính hoạt tải trong Excel** + xác minh trên Midas thật (`output/S1`); bỏ `lane` khỏi VCLASS; bump v1.3.1.
 - 2026-07-27: Hộp thoại **Tùy chọn** (3 trang, 3 bảng màu, đổi tức thì) + khoá mặc định lần đầu giống hệt v1.3.0 (`tests/test_theme.py`).
 - 2026-07-27: Sửa **`path_mct`** vẽ cáp sai chỗ (BOT lên đỉnh dầm, WEB nằm ngang); `src/preview.py` xem trước từ DXF; kéo thả DXF/thư mục/`.mtbproj`.
 - 2026-07-27: Cáp DƯL tách hình học khỏi vật liệu (vẫn hiện khi chưa có template, kèm cảnh báo); mở rộng nhận diện layer cáp; nút "..." hết tàng hình.

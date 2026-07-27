@@ -14,7 +14,7 @@ DXF mặt cắt ──→ MCT file ──→ Midas/Civil ──→ Beam Force XL
 ## Cài đặt
 
 ### Cách 1: Installer (cho người dùng)
-Chạy `MidasTransverseBoxgirder_Setup_v1.2.0.exe` — không cần cài Python.
+Chạy `MidasTransverseBoxgirder_Setup_v1.3.1.exe` — không cần cài Python.
 
 ### Cách 2: Từ source code (cho developer)
 ```bash
@@ -119,7 +119,7 @@ Yêu cầu:
 - PyInstaller (`pip install pyinstaller`)
 - Inno Setup 6 (https://jrsoftware.org/isdl.php)
 
-Output: `dist\installer\MidasTransverseBoxgirder_Setup_v1.2.0.exe`
+Output: `dist\installer\MidasTransverseBoxgirder_Setup_v1.3.1.exe`
 
 ## Quy trình sử dụng
 

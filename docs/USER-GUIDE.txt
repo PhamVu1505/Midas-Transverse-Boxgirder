@@ -1,7 +1,7 @@
 ==============================================================================
   MIDAS TRANSVERSE BOXGIRDER — HƯỚNG DẪN SỬ DỤNG
   Phân tích khung ngang dầm hộp bê tông cốt thép dự ứng lực
-  Phiên bản: v1.3.0
+  Phiên bản: v1.3.1
 ==============================================================================
 
 Tài liệu này sinh tự động từ cửa sổ Hướng dẫn trong chương trình
