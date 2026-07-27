@@ -305,6 +305,50 @@ def test_load_combinations_resolve():
                                f'tổ hợp mồ côi — {w}')
 
 
+def _combo_names(mct_text):
+    """Tên các tổ hợp trong *LOADCOMB, theo thứ tự ghi."""
+    return [l.split('=', 1)[1].split(',')[0].strip()
+            for l in _block_lines(mct_text, '*LOADCOMB')
+            if l.strip().startswith('NAME=')]
+
+
+def test_combo_names_and_scope():
+    """Tên tổ hợp theo TCVN 11823, và tổ hợp kiểm nứt chỉ ghi khi có cáp DƯL.
+
+    Khoá bốn quyết định đã chốt:
+      - không còn tên LCB1…LCB15 (đánh số nhảy 8 → 14, chép từ file mẫu)
+      - không khai báo "Sử dụng II" — tổ hợp của kết cấu thép, BTCT không dùng,
+        trước đây có LCB2 nhưng không tổ hợp bao nào lấy
+      - tổ hợp kiểm nứt chỉ có khi có cáp DƯL: không cáp thì chúng trùng y
+        nguyên "Sử dụng I/III" nên Midas chạy hai lần cho cùng một con số
+      - ser_all/str_all giữ nguyên tên: `result_reader` tra bảng Beam Force
+        theo đúng chuỗi 'str_all(max)' / 'ser_all(min)'
+    """
+    msp = ezdxf.readfile(os.path.join(ROOT, 'data/LT/S1.dxf')).modelspace()
+    frame = build_frame(_get_polyline_vertices(msp, 'OUTPOLY'),
+                        read_inpolys(msp)[0])
+    cables = read_pt_cables(msp)
+
+    with_pt, _ = write_mct(frame, 'S1', EXCEL, pt_cables=cables,
+                           pt_props=read_pt_properties(EXCEL), include_pt=True)
+    no_pt, _ = write_mct(frame, 'S1', EXCEL, include_pt=False)
+
+    for txt, label in ((with_pt, 'có DƯL'), (no_pt, 'không DƯL')):
+        names = _combo_names(txt)
+        assert not [n for n in names if n.startswith('LCB')], \
+            f'{label}: còn tên LCB — {names}'
+        assert 'Su dung II' not in names, f'{label}: vẫn khai báo Sử dụng II'
+        for keep in ('ser_all', 'str_all'):
+            assert keep in names, f'{label}: mất {keep} — result_reader tra tên này'
+        for lvl in ('I', 'II', 'III', 'IV', 'V'):
+            assert f'Cuong do {lvl}' in names, f'{label}: thiếu Cường độ {lvl}'
+
+    crack = ['Su dung I (nut)', 'Su dung III (nut)', 'z_crack']
+    assert all(c in _combo_names(with_pt) for c in crack), 'có DƯL: thiếu tổ hợp nứt'
+    assert not any(c in _combo_names(no_pt) for c in crack), \
+        'không DƯL: tổ hợp nứt trùng "Sử dụng I/III" mà vẫn được ghi'
+
+
 def test_combo_validator_catches_orphan():
     """Bộ kiểm phải BẮT được lỗi, không phải luôn trả rỗng.
 
@@ -331,6 +375,7 @@ if __name__ == '__main__':
                       (test_tendon_path_mct, 'toạ độ vẽ cáp DƯL'),
                       (test_preview_matches_generated, 'xem trước khớp MCT'),
                       (test_load_combinations_resolve, 'tổ hợp không mồ côi'),
+                      (test_combo_names_and_scope, 'tên tổ hợp theo TCVN'),
                       (test_combo_validator_catches_orphan, 'bộ kiểm bắt được lỗi')):
         try:
             fn()

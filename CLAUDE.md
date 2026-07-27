@@ -70,6 +70,18 @@ Toàn bộ 40 khóa đọc từ **một sheet `INPUT`** bố cục khóa–giá 
 - **Khung xem phải đọc section thật từ `topo['sections']`**, không suy offset từ bộ phận của node: phần tử nối (connector) mang offset `CC` và chiều dày của **bụng**, trong khi node đầu của nó thuộc bản mặt (`CT`).
 - Chế độ Section shape **tô hợp nhất một lần** rồi mới vẽ viền — tô từng dải chồng nhau thì alpha cộng dồn, chỗ giao bản–bụng hóa đậm sì trông như lỗi.
 
+### Tổ hợp tải trọng (v1.3.1)
+`_COMBOS` trong `mct_frame_writer.py` khai báo tổ hợp bằng **dữ liệu**, không phải chuỗi cứng. Trước đây mỗi tổ hợp viết hai lần — một cho nhánh có cáp DƯL, một cho nhánh không — nên sửa một hệ số mà quên nhánh kia là hai nhánh lệch nhau âm thầm.
+
+- Số hạng là `(ANAL, LCNAME, FACT)`, thêm cờ `PT` nghĩa là chỉ có mặt khi đã ghi cáp. `pt_only=True` thì cả tổ hợp chỉ ghi khi có cáp.
+- **Tên theo TCVN 11823-3 Bảng 3.4.1-1** (`Cuong do I…V`, `Su dung I/III`), **viết không dấu**: tên đi vào model Midas rồi ra lại trong bảng Beam Force, mà MCT ghi UTF-8 còn Midas đọc theo codepage hệ thống.
+- **`ser_all` / `str_all` không được đổi tên** — `result_reader` tra bảng kết quả theo đúng chuỗi `str_all(max)` / `ser_all(min)`. Đổi là phải sửa cả hai đầu cùng lúc.
+- Không khai báo **"Sử dụng II"**: tổ hợp của kết cấu thép (trượt bu lông). Bản cũ có `LCB2` nhưng không tổ hợp bao nào lấy.
+- Tổ hợp **kiểm nứt** chỉ ghi khi có cáp: khác `Sử dụng I/III` duy nhất ở chỗ không lấy `Tendon Primary`, mà số hạng đó không tồn tại khi không có cáp → Midas chạy hai tổ hợp cho ra cùng một con số.
+- `_validate_load_references()` soi mọi số hạng xem có trỏ tới `ST/CB/MV/CS` đã định nghĩa hay chưa; số hạng `CS` còn đòi phải có `*STAGE`. Kết quả vào `topo['combo_warnings']`, log ra GUI và CLI. Đây đúng là lỗi đã xảy ra thật (`(null)`), nên `tests/test_regression.py` khoá **cả hai chiều**: không tổ hợp mồ côi, và bộ kiểm phải bắt được lỗi khi dựng lại lỗi cũ.
+
+**Còn treo:** `lane` vẫn là thành viên của `VCLASS all move N` trong khi `mv2` đã chất `lane` riêng, rồi `mv_all = mv1 + mv2` (cộng). Ý định là *mv1 = xe, mv2 = làn*; chỉ đúng nếu Midas coi VCLASS là **bao** các xe trong lớp. Chưa xác minh trên Midas.
+
 ### Sửa gối (v1.3.0 — Giai đoạn 3b)
 Gối **lưu theo toạ độ X**, không theo ID node: đổi `target_len` hay sửa DXF là ID node đổi hết, còn vị trí gối trên bản đáy thì không. `write_mct(..., supports=[{'x','kind'}])` mới quy về node đáy gần nhất lúc ghi.
 

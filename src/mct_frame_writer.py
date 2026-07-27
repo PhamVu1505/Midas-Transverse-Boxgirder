@@ -1380,10 +1380,16 @@ def _write_moving_load(blocks, ld, top_nodes, top_ids,
 #
 # iTYPE: 0 = cộng các số hạng, 1 = lấy bao (envelope).
 #
-# 'wrap_*' chỉ là cách ngắt dòng, chép y bản cũ. Midas không quan tâm ngắt
-# dòng ở đâu; giữ nguyên để chứng minh được refactor không đổi một byte MCT
-# nào — khối *LOADCOMB chưa từng được xác minh trên Midas thật, nên không đổi
-# nội dung và định dạng cùng lúc.
+# pt_only=True: cả tổ hợp chỉ ghi khi có cáp DƯL.
+#
+# TÊN tổ hợp theo TCVN 11823-3 Bảng 3.4.1-1 ("Cường độ I…V", "Sử dụng I…IV")
+# thay cho LCB1…LCB15 chép từ file mẫu. Viết KHÔNG DẤU: tên tổ hợp đi vào
+# model Midas rồi ra lại trong bảng Beam Force, mà MCT ghi UTF-8 còn Midas đọc
+# theo codepage hệ thống — dấu tiếng Việt có thể thành ký tự lỗi. DESC giữ
+# nguyên chuỗi tiếng Anh cũ để còn đối chiếu được với LT-MB-S01.mct.
+#
+# 'wrap_*' chỉ là cách ngắt dòng, chép y bản cũ để phần không đổi nội dung thì
+# cũng không đổi byte. Midas không quan tâm ngắt dòng ở đâu.
 PT = 'pt-only'
 
 _COMBOS = [
@@ -1399,8 +1405,11 @@ _COMBOS = [
          terms=[('MV', 'mv1', 1), ('MV', 'mv2', 1)],
          wrap_pt=[2], wrap_plain=[2]),
 
-    # ── Service (AASHTO: Service I / II / III) ──
-    dict(name='LCB1', itype=0, desc='service 1 for stress',
+    # ── Sử dụng (TCVN 11823-3: Sử dụng I / III) ──
+    # Không khai báo "Sử dụng II": tổ hợp đó dành cho kết cấu thép (trượt bu
+    # lông), không áp cho BTCT — trước đây có LCB2 nhưng không bao nào dùng,
+    # chỉ làm rác bảng kết quả Midas.
+    dict(name='Su dung I', itype=0, desc='service 1 for stress',
          terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1), ('CB', 'mv_all', 1),
                 ('ST', 'WS', 0.3), ('ST', 'WL', 1),
                 ('CS', 'Creep Secondary', 1, PT),
@@ -1410,16 +1419,7 @@ _COMBOS = [
                 ('CS', 'Tendon Secondary', 1, PT),
                 ('ST', 'System Temperature', 1)],
          wrap_pt=[5, 3, 2, 1], wrap_plain=[5, 2]),
-    dict(name='LCB2', itype=0, desc='service 2 for stress',
-         terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1),
-                ('CB', 'mv_all', 1.3),
-                ('CS', 'Creep Secondary', 1, PT),
-                ('CS', 'Shrinkage Secondary', 1, PT),
-                ('ST', 'System Temperature', 1),
-                ('CS', 'Tendon Primary', 1, PT),
-                ('CS', 'Tendon Secondary', 1, PT)],
-         wrap_pt=[4, 2, 2], wrap_plain=[3, 1]),
-    dict(name='LCB3', itype=0, desc='service 3 for stress',
+    dict(name='Su dung III', itype=0, desc='service 3 for stress',
          terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1),
                 ('CB', 'mv_all', 0.8),
                 ('CS', 'Creep Secondary', 1, PT),
@@ -1433,7 +1433,7 @@ _COMBOS = [
     # ── Strength (AASHTO: Strength I … V) ──
     # Strength: chỉ lấy Tendon Secondary — nội lực primary đã nằm trong sức
     # kháng của tiết diện có cáp. Creep/Shrinkage Secondary hạ về 0.5.
-    dict(name='LCB4', itype=0, desc='strength 1',
+    dict(name='Cuong do I', itype=0, desc='strength 1',
          terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
                 ('CB', 'mv_all', 1.75),
                 ('CS', 'Creep Secondary', 0.5, PT),
@@ -1441,7 +1441,7 @@ _COMBOS = [
                 ('ST', 'System Temperature', 0.5),
                 ('CS', 'Tendon Secondary', 1, PT)],
          wrap_pt=[3, 2, 2], wrap_plain=[3, 1]),
-    dict(name='LCB5', itype=0, desc='strength 2',
+    dict(name='Cuong do II', itype=0, desc='strength 2',
          terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
                 ('CB', 'mv_all', 1.35),
                 ('CS', 'Creep Secondary', 0.5, PT),
@@ -1449,7 +1449,7 @@ _COMBOS = [
                 ('ST', 'System Temperature', 0.5),
                 ('CS', 'Tendon Secondary', 1, PT)],
          wrap_pt=[3, 2, 2], wrap_plain=[3, 1]),
-    dict(name='LCB6', itype=0, desc='strength 3',
+    dict(name='Cuong do III', itype=0, desc='strength 3',
          terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
                 ('ST', 'WS', 1.4),
                 ('CS', 'Creep Secondary', 0.5, PT),
@@ -1457,14 +1457,14 @@ _COMBOS = [
                 ('ST', 'System Temperature', 0.5),
                 ('CS', 'Tendon Secondary', 1, PT)],
          wrap_pt=[3, 2, 2], wrap_plain=[3, 1]),
-    dict(name='LCB7', itype=0, desc='strength 4',
+    dict(name='Cuong do IV', itype=0, desc='strength 4',
          terms=[('ST', 'Self Weight', 1.5), ('CB', 'DW', 1.5),
                 ('CS', 'Creep Secondary', 0.5, PT),
                 ('CS', 'Shrinkage Secondary', 0.5, PT),
                 ('ST', 'System Temperature', 0.5),
                 ('CS', 'Tendon Secondary', 1, PT)],
          wrap_pt=[3, 2, 1], wrap_plain=[3]),
-    dict(name='LCB8', itype=0, desc='strength 5',
+    dict(name='Cuong do V', itype=0, desc='strength 5',
          terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
                 ('CB', 'mv_all', 1.35), ('ST', 'WS', 0.4), ('ST', 'WL', 1),
                 ('CS', 'Creep Secondary', 1, PT),
@@ -1474,22 +1474,24 @@ _COMBOS = [
          wrap_pt=[4, 3, 2], wrap_plain=[4, 2]),
 
     # ── Bao ──
-    # ser_all cố tình bỏ LCB2: Service II của AASHTO dành cho kết cấu thép
-    # (trượt bu lông), không áp cho BTCT. LCB2 vẫn khai báo để tra tay.
+    # Tên 'ser_all' / 'str_all' KHÔNG đổi theo TCVN: `result_reader` tra bảng
+    # Beam Force theo đúng chuỗi 'str_all(max)' / 'ser_all(min)'. Đổi tên ở đây
+    # là vỡ khâu đọc kết quả, phải sửa cả hai đầu cùng lúc.
     dict(name='ser_all', itype=1, desc='service all for stress',
-         terms=[('CB', 'LCB1', 1), ('CB', 'LCB3', 1)],
+         terms=[('CB', 'Su dung I', 1), ('CB', 'Su dung III', 1)],
          wrap_pt=[2], wrap_plain=[2]),
     dict(name='str_all', itype=1, desc='strength all',
-         terms=[('CB', 'LCB4', 1), ('CB', 'LCB5', 1), ('CB', 'LCB6', 1),
-                ('CB', 'LCB7', 1), ('CB', 'LCB8', 1)],
-         wrap_pt=[5], wrap_plain=[5]),
+         terms=[('CB', 'Cuong do I', 1), ('CB', 'Cuong do II', 1),
+                ('CB', 'Cuong do III', 1), ('CB', 'Cuong do IV', 1),
+                ('CB', 'Cuong do V', 1)],
+         wrap_pt=[3, 2], wrap_plain=[3, 2]),
 
-    # ── Service để kiểm nứt ──
-    # Khác LCB1/LCB3 ở chỗ KHÔNG lấy Tendon Primary. Khi không có cáp DƯL thì
-    # hai tổ hợp này trùng y nguyên LCB1/LCB3 (xem ghi chú trong CLAUDE.md).
-    # Đánh số nhảy 8 → 14 là do chép từ file mẫu LT-MB-S01.mct, giữ nguyên để
-    # đối chiếu được với hồ sơ cũ.
-    dict(name='LCB14', itype=0, desc='service 1 for crack',
+    # ── Sử dụng để kiểm nứt — CHỈ khi có cáp DƯL ──
+    # Khác "Sử dụng I/III" duy nhất ở chỗ KHÔNG lấy Tendon Primary. Không có
+    # cáp thì số hạng đó vốn không tồn tại, nên hai tổ hợp này trùng y nguyên
+    # "Sử dụng I/III" và z_crack là bản sao của ser_all — Midas chạy hai tổ hợp
+    # cho ra cùng một con số. Vì vậy pt_only.
+    dict(name='Su dung I (nut)', itype=0, pt_only=True, desc='service 1 for crack',
          terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1), ('CB', 'mv_all', 1),
                 ('ST', 'WS', 0.3), ('ST', 'WL', 1),
                 ('CS', 'Creep Secondary', 1, PT),
@@ -1497,8 +1499,8 @@ _COMBOS = [
                 ('CB', 'TG', 0.5),
                 ('CS', 'Tendon Secondary', 1, PT),
                 ('ST', 'System Temperature', 1)],
-         wrap_pt=[5, 3, 2], wrap_plain=[5, 2]),
-    dict(name='LCB15', itype=0, desc='service 3 for crack',
+         wrap_pt=[5, 3, 2]),
+    dict(name='Su dung III (nut)', itype=0, pt_only=True, desc='service 3 for crack',
          terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1),
                 ('CB', 'mv_all', 0.8),
                 ('CS', 'Creep Secondary', 1, PT),
@@ -1506,10 +1508,10 @@ _COMBOS = [
                 ('ST', 'System Temperature', 1),
                 ('CS', 'Tendon Secondary', 1, PT),
                 ('CB', 'TG', 0.5)],
-         wrap_pt=[4, 2, 2], wrap_plain=[3, 2]),
-    dict(name='z_crack', itype=1, desc='service all for crack',
-         terms=[('CB', 'LCB14', 1), ('CB', 'LCB15', 1)],
-         wrap_pt=[2], wrap_plain=[2]),
+         wrap_pt=[4, 2, 2]),
+    dict(name='z_crack', itype=1, pt_only=True, desc='service all for crack',
+         terms=[('CB', 'Su dung I (nut)', 1), ('CB', 'Su dung III (nut)', 1)],
+         wrap_pt=[2]),
 ]
 
 # Kết quả chỉ sinh ra khi có phân tích giai đoạn thi công (*STAGE).
@@ -1530,6 +1532,8 @@ def _write_load_combinations(blocks, has_pt=False):
     blocks.append(';      ANAL1, LCNAME1, FACT1, ...                                               ; from line 2')
 
     for c in _COMBOS:
+        if c.get('pt_only') and not has_pt:
+            continue
         terms = [t for t in c['terms'] if has_pt or len(t) < 4]
         wrap = c['wrap_pt'] if has_pt else c['wrap_plain']
         if sum(wrap) != len(terms):

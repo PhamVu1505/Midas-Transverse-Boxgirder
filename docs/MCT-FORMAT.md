@@ -169,14 +169,26 @@ mv_truck, 1, 0, 0, 0, 0, 0, ALL, 0, 0
 ### *LOADCOMB
 ```
 *LOADCOMB
-NAME=LCB1, GEN, ACTIVE, 0, 0, service 1 for stress, 0, 0, 0
+NAME=Su dung I, GEN, ACTIVE, 0, 0, service 1 for stress, 0, 0, 0
 ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3
 , ST, WL, 1, CB, TG, 0.5, ST, System Temperature, 1
 ```
 - GEN = General combination
 - ST = Static load case reference
 - CB = Combination reference
+- CS = kết quả phân tích giai đoạn thi công (chỉ có khi file có `*STAGE`)
+- MV = moving load case reference
+- Trường thứ 5 (`iTYPE`): 0 = cộng các số hạng, 1 = lấy bao
 - Number after name = load factor
+
+Tên tổ hợp theo **TCVN 11823-3 Bảng 3.4.1-1** (`Cuong do I…V`, `Su dung I/III`),
+viết không dấu vì tên đi vào model Midas rồi ra lại trong bảng Beam Force.
+Hai tổ hợp bao `ser_all` / `str_all` giữ nguyên tên tiếng Anh — `result_reader`
+tra bảng kết quả theo đúng chuỗi `str_all(max)` / `ser_all(min)`.
+
+Bảng tổ hợp khai báo bằng dữ liệu trong `src/mct_frame_writer.py::_COMBOS`;
+`_validate_load_references()` soi mọi số hạng xem có trỏ tới thứ đã định nghĩa
+hay không (Midas báo `The specified load name ((null)) does not exist` nếu không).
 
 ## Section numbering convention
 
