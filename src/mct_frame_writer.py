@@ -1326,15 +1326,25 @@ def _write_moving_load(blocks, ld, top_nodes, top_ids,
     blocks.append('; NAME=NAME                  ; line 1')
     blocks.append(';      VLOAD1, VLOAD2, ...   ; from line 2')
 
-    # all move N: lane + tandemN_(+M) + tandemN_(-M) + truckN_(+M) + truckN_(-M)
+    # VCLASS chỉ chứa XE. Midas lấy BAO các xe trong lớp — chọn cái bất lợi
+    # nhất rồi bỏ phần còn lại (xác minh trên S1.MOUT: mỗi tổ hợp con chất
+    # đúng một lớp lên một làn). Trước đây `lane` là thành viên của lớp, làm
+    # ý định "mv1 = xe, mv2 = làn, mv_all = xe + làn" thành mờ mịt: nhìn vào
+    # thì tưởng tải làn bị cộng hai lần.
+    #
+    # Bỏ `lane` khỏi lớp KHÔNG đổi kết quả — xe trội hơn tải làn 8-36 lần ở
+    # mọi phần tử (đo trên Beam Force của S1) nên nó chưa bao giờ được chọn.
+    # Ngưỡng để tải làn thắng trên cánh hẫng là chiều dài ~17 m, không mặt cắt
+    # nào tới. Tải làn vẫn được chất đầy đủ qua `mv2`.
+    # all move N: tandemN_(+M) + tandemN_(-M) + truckN_(+M) + truckN_(-M)
     for n in range(1, n_int + 1):
         blocks.append(f'   NAME=all move {n}')
-        blocks.append(f'        lane, tandem{n}_(+M), tandem{n}_(-M), truck{n}_(+M), truck{n}_(-M)')
+        blocks.append(f'        tandem{n}_(+M), tandem{n}_(-M), truck{n}_(+M), truck{n}_(-M)')
 
-    # cantilever N: lane + tandemN_can + truckN_can
+    # cantilever N: tandemN_can + truckN_can
     for n in range(1, n_cant + 1):
         blocks.append(f'   NAME=cantilever{n}')
-        blocks.append(f'        lane, tandem{n}_can, truck{n}_can')
+        blocks.append(f'        tandem{n}_can, truck{n}_can')
 
     blocks.append('')
 

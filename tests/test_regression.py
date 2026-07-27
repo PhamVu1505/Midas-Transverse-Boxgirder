@@ -349,6 +349,33 @@ def test_combo_names_and_scope():
         'không DƯL: tổ hợp nứt trùng "Sử dụng I/III" mà vẫn được ghi'
 
 
+def test_vclass_contains_only_vehicles():
+    """VCLASS chỉ chứa xe; tải làn chỉ vào qua mv2.
+
+    Ý định là mv1 = xe, mv2 = làn, mv_all = mv1 + mv2 (xác minh trên Midas:
+    mv_all(max) 44.96 = mv1 41.38 + mv2 3.59 tại phần tử 118 của S1). Trước
+    đây `lane` còn là thành viên của VCLASS nên nhìn vào tưởng tải làn bị cộng
+    hai lần. Bỏ khỏi lớp không đổi kết quả — Midas lấy bao trong lớp mà xe trội
+    hơn tải làn 8-36 lần — nhưng phải giữ nguyên tải làn ở *VEHICLE và mv2.
+    """
+    msp = ezdxf.readfile(os.path.join(ROOT, 'data/LT/S1.dxf')).modelspace()
+    frame = build_frame(_get_polyline_vertices(msp, 'OUTPOLY'),
+                        read_inpolys(msp)[0])
+    txt, _ = write_mct(frame, 'S1', EXCEL)
+
+    for line in _block_lines(txt, '*VCLASS'):
+        s = line.strip()
+        if not s or s.startswith(';') or s.startswith('NAME='):
+            continue
+        members = [m.strip() for m in s.split(',')]
+        assert 'lane' not in members, f'VCLASS còn chứa tải làn: {members}'
+        assert members, 'VCLASS rỗng'
+
+    assert 'NAME=lane,' in txt, 'mất định nghĩa tải làn ở *VEHICLE'
+    assert sum(1 for l in txt.split('\n') if 'VL, lane,' in l) == 4, \
+        'mv2 phải giữ đủ 4 dòng chất tải làn'
+
+
 def test_combo_validator_catches_orphan():
     """Bộ kiểm phải BẮT được lỗi, không phải luôn trả rỗng.
 
@@ -376,6 +403,7 @@ if __name__ == '__main__':
                       (test_preview_matches_generated, 'xem trước khớp MCT'),
                       (test_load_combinations_resolve, 'tổ hợp không mồ côi'),
                       (test_combo_names_and_scope, 'tên tổ hợp theo TCVN'),
+                      (test_vclass_contains_only_vehicles, 'VCLASS chỉ chứa xe'),
                       (test_combo_validator_catches_orphan, 'bộ kiểm bắt được lỗi')):
         try:
             fn()

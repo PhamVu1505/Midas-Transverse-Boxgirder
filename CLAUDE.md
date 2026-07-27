@@ -80,7 +80,24 @@ Toàn bộ 40 khóa đọc từ **một sheet `INPUT`** bố cục khóa–giá 
 - Tổ hợp **kiểm nứt** chỉ ghi khi có cáp: khác `Sử dụng I/III` duy nhất ở chỗ không lấy `Tendon Primary`, mà số hạng đó không tồn tại khi không có cáp → Midas chạy hai tổ hợp cho ra cùng một con số.
 - `_validate_load_references()` soi mọi số hạng xem có trỏ tới `ST/CB/MV/CS` đã định nghĩa hay chưa; số hạng `CS` còn đòi phải có `*STAGE`. Kết quả vào `topo['combo_warnings']`, log ra GUI và CLI. Đây đúng là lỗi đã xảy ra thật (`(null)`), nên `tests/test_regression.py` khoá **cả hai chiều**: không tổ hợp mồ côi, và bộ kiểm phải bắt được lỗi khi dựng lại lỗi cũ.
 
-**Còn treo:** `lane` vẫn là thành viên của `VCLASS all move N` trong khi `mv2` đã chất `lane` riêng, rồi `mv_all = mv1 + mv2` (cộng). Ý định là *mv1 = xe, mv2 = làn*; chỉ đúng nếu Midas coi VCLASS là **bao** các xe trong lớp. Chưa xác minh trên Midas.
+### Hoạt tải: mạch tính trong Excel (đã giải, 2026-07-27)
+Sheet `Load` mục 2.3 dùng **phương pháp dải tương đương**. Mọi con số trong `*VEHICLE` tái lập được từ công thức quy phạm, lệch 0.0000 — đừng sửa tay, sửa ở Excel.
+
+- Bề rộng dải: cánh hẫng `E = 1140 + 0.833X`, giữa `+M` `E = 660 + 0.55S`, giữa `−M` `E = 1220 + 0.25S` (`S` = khoảng cách sườn, `X` = từ tải đến gối).
+- **`E_tandem = (E_truck + 1200)/2`** — chỗ này Excel không ghi công thức, phải truy ngược. Là cách xử lý hai trục cách nhau 1.2 m: tổng bề rộng phân bố `E_truck + 1200`, chia đôi cho mỗi trục.
+- Tải bánh vào lát 1 m = `P(1+IM)/E`, `P` = nửa trục (72.5 kN xe tải / 55 kN xe hai trục), `IM = 0.33`.
+- Hệ số làn `m` (1.2/1.0/0.85/0.65) áp cho **bánh xe**; Excel **không** nhân `m` vào tải làn (giữ 3.1) còn MCT thì có — khác biệt đã biết, để nguyên theo hướng thiên về an toàn.
+
+**Đã xác minh trên Midas thật** (`output/S1`, chạy 2026-07-27):
+- VCLASS là **bao**, không phải cộng — `S1.MOUT` cho thấy mỗi tổ hợp con chất đúng một lớp lên một làn. `mv_all(max) 44.96 = mv1 41.38 + mv2 3.59` tại phần tử 118.
+- Tên tổ hợp không dấu đi qua Midas nguyên vẹn (`Cuong do I(max)`, `Su dung III (nut)(min)`); `str_all`/`ser_all` còn nên `result_reader` không vỡ.
+- `Cường độ III/IV` không có hậu tố `(max)` vì không chứa hoạt tải — đúng.
+
+**Hai chỗ biết là chưa tối ưu, VuPQ chọn GIỮ NGUYÊN vì thiên về an toàn** — đừng "sửa" mà không hỏi lại:
+1. Bốn xe trong `all move N` cùng hình học, chỉ khác độ lớn, nên xe nặng nhất (`tandem_(−M)`) thắng ở mọi vị trí; ba xe kia không bao giờ được chọn. Hệ quả: mô men **dương** giữa bản mặt đang tính bằng dải `−M`, dư ~34%. Muốn đúng phải tách `(+M)`/`(−M)` thành hai moving load case và sửa cả `result_reader`.
+2. Bốn dòng `VL, lane` của `mv2` cùng trỏ một xe lên một làn nên đè nhau; `S1.MOUT` cho thấy làn giữa nhận hệ số **0.65** thay vì 1.20. Ngoài ra quy phạm cho lát cắt ngang có thể không yêu cầu tải làn (AASHTO 3.6.1.3.3) — chưa đối chiếu được bản TCVN in.
+
+`lane` đã được bỏ khỏi `VCLASS` (chỉ để lại xe) — **không đổi kết quả**, xe trội hơn tải làn 8–36 lần ở mọi phần tử. Tải làn vẫn vào đủ qua `mv2`.
 
 ### Sửa gối (v1.3.0 — Giai đoạn 3b)
 Gối **lưu theo toạ độ X**, không theo ID node: đổi `target_len` hay sửa DXF là ID node đổi hết, còn vị trí gối trên bản đáy thì không. `write_mct(..., supports=[{'x','kind'}])` mới quy về node đáy gần nhất lúc ghi.
