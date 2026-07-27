@@ -63,6 +63,12 @@ class Tendon:
     elem_list: str = ''                            # "101to124"
     first_elem: int = 0                            # ELEMENT routing line ref
 
+    # Đường cáp trong hệ MCT TOÀN CỤC (x tính từ tim, z tính từ đáy), đã rời rạc
+    # hoá cung bulge. Dành cho khung xem: dựng ngược từ `profile_points` không ra
+    # được vì mỗi vị trí cáp có quy ước element-local riêng (TOP đo từ mặt bản,
+    # BOT đo từ mặt bản đáy, WEB đo theo phương đứng).
+    path_mct: List[Tuple[float, float]] = field(default_factory=list)
+
 
 @dataclass
 class TendonProperty:

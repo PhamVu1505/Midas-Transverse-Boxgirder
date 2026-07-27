@@ -10,6 +10,7 @@ Minimal MCT: UNIT, STRUCTYPE, MATERIAL, NODE, ELEMENT, SECTION, GROUP, CONSTRAIN
 """
 
 import os
+from .dxf_reader import tessellate_bulge
 from .geometry import Tendon, TendonProperty
 from .material_reader import read_material, write_material_mct
 from .load_reader import read_loads
@@ -550,8 +551,6 @@ def write_mct(frame: dict, section_name: str = 'Section',
     blocks.append('*ENDDATA')
 
     # ── Topology info (for result extraction) ──
-    _x_lo = min(p[0] for p in frame['outpoly_mct'])
-    _H = frame['H']
     topology = {
         # hình học biên để khung xem vẽ được mặt cắt mà không phải đọc lại DXF
         'geometry': {
@@ -587,12 +586,11 @@ def write_mct(frame: dict, section_name: str = 'Section',
                 'name': t.name, 'location': t.location, 'index': t.index,
                 'elem_list': t.elem_list, 'first_elem': t.first_elem,
                 'profile_points': t.profile_points,
-                # profile_points là (x tính từ mép trái, y = chiều sâu dưới mặt
-                # cầu, bán kính bo). Xuất sẵn toạ độ MCT để khung xem khỏi phải
-                # biết quy ước này.
-                'path_mct': [[round(float(pp[0]) + _x_lo, 4),
-                              round(_H + float(pp[1]), 4)]
-                             for pp in t.profile_points],
+                # profile_points là toạ độ ELEMENT-LOCAL và mỗi vị trí cáp một
+                # quy ước khác nhau (TOP/BOT đo lệch so với mặt bản, WEB thì
+                # thành phần đầu là khoảng cách ĐỨNG) — không dựng ngược ra toạ
+                # độ toàn cục được. path_mct lấy thẳng từ DXF lúc build_tendons.
+                'path_mct': [[a, b] for a, b in t.path_mct],
             }
             for t in tendons
         ],
@@ -1007,8 +1005,6 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
         _write_anal_ctrl_block(blocks)
     blocks.append('*ENDDATA')
 
-    _x_lo = min(p[0] for p in frame['outpoly_mct'])
-    _H = frame['H']
     topology = {
         'section_type': 'twin_box',
         'geometry': {
@@ -1050,12 +1046,11 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                 'name': t.name, 'location': t.location, 'index': t.index,
                 'elem_list': t.elem_list, 'first_elem': t.first_elem,
                 'profile_points': t.profile_points,
-                # profile_points là (x tính từ mép trái, y = chiều sâu dưới mặt
-                # cầu, bán kính bo). Xuất sẵn toạ độ MCT để khung xem khỏi phải
-                # biết quy ước này.
-                'path_mct': [[round(float(pp[0]) + _x_lo, 4),
-                              round(_H + float(pp[1]), 4)]
-                             for pp in t.profile_points],
+                # profile_points là toạ độ ELEMENT-LOCAL và mỗi vị trí cáp một
+                # quy ước khác nhau (TOP/BOT đo lệch so với mặt bản, WEB thì
+                # thành phần đầu là khoảng cách ĐỨNG) — không dựng ngược ra toạ
+                # độ toàn cục được. path_mct lấy thẳng từ DXF lúc build_tendons.
+                'path_mct': [[a, b] for a, b in t.path_mct],
             }
             for t in tendons
         ],
@@ -1649,6 +1644,13 @@ def _build_tendons(pt_cables, frame,
         # R = fillet radius. Hai đầu cuối luôn R=0. Output: list (x_dxf, y_dxf, R).
         fillet_pts = _polyline_to_fillet_vertices(orig)
 
+        # Đường vẽ cho khung xem: lấy thẳng toạ độ DXF (đã rời rạc hoá cung) rồi
+        # đổi sang MCT toàn cục bằng đúng phép biến đổi của frame_builder. Dựng
+        # ngược từ profile_points không được — element-local mỗi vị trí một kiểu.
+        # float() tường minh: đỉnh DXF là numpy.float64, json.dump không nuốt được.
+        path_mct = [(round(float(x) - x_center, 4), round(float(y) - y_bot_dxf, 4))
+                    for x, y in tessellate_bulge(orig)]
+
         # Decide whether to reverse so cable direction matches element I→J:
         #   TOP/BOT: I→J = increasing X (left → right)
         #   WEB-L/WEB-R: I→J = top → bottom (decreasing Z, here decreasing Y_dxf)
@@ -1723,6 +1725,7 @@ def _build_tendons(pt_cables, frame,
             profile_points=profile,
             elem_list=elem_list,
             first_elem=first_elem,
+            path_mct=path_mct,
         ))
 
     return tendons

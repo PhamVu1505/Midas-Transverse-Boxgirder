@@ -10,6 +10,7 @@ Hệ tọa độ DXF: X ngang, Y đứng (Y max tại top, Y min tại bottom)
 Ánh xạ MCT: MCT_X = DXF_X - x_center, MCT_Z = H + DXF_Y
 """
 
+import math
 import os
 import re
 import ezdxf
@@ -131,6 +132,50 @@ def _pt_points(e):
         return [(round(v.dxf.location.x, 6), round(v.dxf.location.y, 6),
                  round(getattr(v.dxf, 'bulge', 0.0), 6)) for v in e.vertices]
     return None
+
+
+def tessellate_bulge(pts_xyb: list, seg_deg: float = 6.0) -> list:
+    """Rời rạc hoá polyline có bulge thành list (x, y) — cung tròn thành đoạn.
+
+    Cáp DƯL bẻ góc bằng cung tròn (bulge), nên nếu chỉ nối thẳng các đỉnh thì
+    hình vẽ cắt góc so với đường cáp thật. Dùng cho KHUNG XEM; phần ghi MCT vẫn
+    đi đường inverse-fillet vì Midas nhận đỉnh góc + RADIUS chứ không nhận cung.
+
+    Args:
+        pts_xyb: [(x, y, bulge), ...] — bulge của đỉnh i là độ cong cạnh i→i+1.
+        seg_deg: góc tối đa mỗi đoạn xấp xỉ (độ).
+    """
+    if not pts_xyb:
+        return []
+    out = [(float(pts_xyb[0][0]), float(pts_xyb[0][1]))]
+    step = math.radians(max(1.0, seg_deg))
+    for i in range(len(pts_xyb) - 1):
+        x0, y0 = float(pts_xyb[i][0]), float(pts_xyb[i][1])
+        x1, y1 = float(pts_xyb[i + 1][0]), float(pts_xyb[i + 1][1])
+        b = float(pts_xyb[i][2]) if len(pts_xyb[i]) > 2 else 0.0
+        dx, dy = x1 - x0, y1 - y0
+        chord = math.hypot(dx, dy)
+        if abs(b) < 1e-6 or chord < 1e-9:
+            out.append((x1, y1))
+            continue
+        # bulge = tan(θ/4) với θ = góc chắn cung (dương = ngược chiều kim đồng hồ)
+        theta = 4.0 * math.atan(b)
+        half = theta / 2.0
+        if abs(math.sin(half)) < 1e-9:
+            out.append((x1, y1))
+            continue
+        R = chord / (2.0 * math.sin(half))          # có dấu
+        # Tâm nằm trên trung trực dây cung; pháp tuyến trái n = (-dy, dx)/chord.
+        # d = R·cos(θ/2) mang dấu nên tự lật đúng phía cho cung lớn / cung ngược.
+        d = R * math.cos(half)
+        cx = (x0 + x1) / 2.0 - dy / chord * d
+        cy = (y0 + y1) / 2.0 + dx / chord * d
+        a0 = math.atan2(y0 - cy, x0 - cx)
+        n = max(2, int(math.ceil(abs(theta) / step)))
+        for k in range(1, n + 1):
+            a = a0 + theta * k / n
+            out.append((cx + abs(R) * math.cos(a), cy + abs(R) * math.sin(a)))
+    return out
 
 
 def _iter_line_entities(msp, depth=0):

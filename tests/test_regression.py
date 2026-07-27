@@ -204,14 +204,89 @@ def test_custom_supports():
     assert same == base, 'supports=[] phải cho kết quả y hệt mặc định'
 
 
+def test_tendon_path_mct():
+    """`path_mct` phải là toạ độ MCT TOÀN CỤC của đúng đường cáp trong DXF.
+
+    Từng dựng ngược từ `profile_points` bằng một công thức chung cho mọi vị trí
+    cáp, trong khi `profile_points` là element-local và mỗi vị trí một quy ước:
+    cáp BOT bị ném lên trên đỉnh dầm, cáp WEB bị vẽ thành đường nằm ngang.
+    Ở đây đặt cáp giả tại vị trí biết trước rồi soi lại toạ độ vẽ ra.
+    """
+    dxf = os.path.join(ROOT, 'data/LT/S1.dxf')
+    doc = ezdxf.readfile(dxf)
+    msp = doc.modelspace()
+    outpoly = _get_polyline_vertices(msp, 'OUTPOLY')
+    frame = build_frame(outpoly, read_inpolys(msp)[0])
+    H = frame['H']
+    x_c, y_bot = frame['x_center'], frame['y_bot_dxf']
+
+    # (x_dxf, y_dxf) chọn sẵn trong bản mặt / bản đáy / bụng trái
+    fake = [
+        ('PT-TOP-1',   [(-6.0, -0.15, 0.0), (0.0, -0.15, 0.0), (6.0, -0.15, 0.0)]),
+        ('PT-BOT-1',   [(-3.5, -6.40, 0.0), (0.0, -6.40, 0.0), (3.5, -6.40, 0.0)]),
+        ('PT-WEB-L-1', [(-4.60, -1.00, 0.0), (-5.10, -3.00, 0.0), (-5.50, -5.50, 0.0)]),
+    ]
+    _, topo = write_mct(frame, 'S1', pt_cables=fake, include_pt=True)
+    got = {t['name']: t['path_mct'] for t in topo['tendons']}
+    assert set(got) == {n for n, _ in fake}, got.keys()
+
+    for name, pts in fake:
+        path = got[name]
+        assert path, f'{name}: path_mct rỗng'
+        # Mọi đỉnh DXF phải có mặt trong path_mct sau phép đổi hệ toạ độ
+        for x, y, _ in pts:
+            want = (round(x - x_c, 4), round(y - y_bot, 4))
+            assert any(abs(px - want[0]) < 1e-3 and abs(pz - want[1]) < 1e-3
+                       for px, pz in path), f'{name}: thiếu đỉnh {want} trong {path}'
+        # …và không đỉnh nào văng ra ngoài chiều cao mặt cắt
+        for px, pz in path:
+            assert -1e-6 <= pz <= H + 1e-6, f'{name}: z={pz} ngoài [0, {H}]'
+
+    # Cáp đáy phải nằm ở nửa dưới, cáp bụng phải chạy dọc chứ không nằm ngang
+    z_bot = [p[1] for p in got['PT-BOT-1']]
+    assert max(z_bot) < H / 2, f'cáp đáy bị vẽ lên cao: z={z_bot}'
+    z_web = [p[1] for p in got['PT-WEB-L-1']]
+    assert max(z_web) - min(z_web) > 1.0, f'cáp bụng bị vẽ nằm ngang: z={z_web}'
+
+
+def test_preview_matches_generated():
+    """Xem trước từ DXF và mô hình đã ghi MCT phải trùng hệ toạ độ.
+
+    Khung xem dùng chung một `FrameView` cho cả hai, nên lệch quy ước là cáp
+    nhảy chỗ ngay khi bấm Tạo MCT.
+    """
+    from src.preview import preview_topo
+
+    dxf_rel = 'data/LT/S1.dxf'
+    prev = preview_topo(os.path.join(ROOT, dxf_rel))
+    _, topo, _ = generate(dxf_rel)
+
+    assert prev['preview'] is True
+    assert abs(prev['geometry']['H'] - topo['geometry']['H']) < 1e-6
+    assert prev['geometry']['section_type'] == topo['geometry']['section_type']
+
+    a = [[round(v, 3) for v in p] for p in prev['geometry']['outpoly']]
+    b = [[round(v, 3) for v in p] for p in topo['geometry']['outpoly']]
+    assert a == b, 'biên ngoài xem trước lệch với biên ghi trong topo'
+
+    assert [t['name'] for t in prev['tendons']] == [t['name'] for t in topo['tendons']]
+    for tp, tg in zip(prev['tendons'], topo['tendons']):
+        assert len(tp['path_mct']) == len(tg['path_mct']), tp['name']
+        for (xa, za), (xb, zb) in zip(tp['path_mct'], tg['path_mct']):
+            assert abs(xa - xb) < 1e-3 and abs(za - zb) < 1e-3, tp['name']
+
+
 if __name__ == '__main__':
     failed = 0
-    try:
-        test_custom_supports()
-        print('PASS  gối tuỳ đặt')
-    except AssertionError as e:
-        failed += 1
-        print(f'FAIL  gối tuỳ đặt: {e}')
+    for fn, label in ((test_custom_supports, 'gối tuỳ đặt'),
+                      (test_tendon_path_mct, 'toạ độ vẽ cáp DƯL'),
+                      (test_preview_matches_generated, 'xem trước khớp MCT')):
+        try:
+            fn()
+            print(f'PASS  {label}')
+        except AssertionError as e:
+            failed += 1
+            print(f'FAIL  {label}: {e}')
     for case in CASES:
         try:
             test_pipeline(*case)
