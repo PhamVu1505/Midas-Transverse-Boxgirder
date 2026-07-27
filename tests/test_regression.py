@@ -376,6 +376,72 @@ def test_vclass_contains_only_vehicles():
         'mv2 phải giữ đủ 4 dòng chất tải làn'
 
 
+class _FakeCell:
+    def __init__(self, v): self.value = v
+
+
+class _FakeSheet:
+    """Sheet tối giản đủ cho parse_beam_force (chỉ cần .name/.nrows/.ncols/.cell)."""
+
+    def __init__(self, name, rows):
+        self.name = name
+        self._rows = rows
+        self.nrows = len(rows)
+        self.ncols = max((len(r) for r in rows), default=0)
+
+    def cell(self, r, c):
+        row = self._rows[r]
+        return _FakeCell(row[c] if c < len(row) else '')
+
+
+class _FakeBook:
+    def __init__(self, sheets): self._s = sheets
+    def sheets(self): return self._s
+
+
+def _bf_sheet(name, elems, extra_col=False):
+    """Sheet Beam Force giả. extra_col=True chèn thêm cột trước Elem để chắc
+    rằng bộ đọc dò theo TÊN cột chứ không đếm cột cứng."""
+    pre = ['Note'] if extra_col else []
+    head = pre + ['', '', 'Elem', 'Load', 'Stage', 'Step', 'Step Order',
+                  'Part', 'Part Order', 'Component', 'Axial\n(kN)',
+                  'Shear-y\n(kN)', 'Shear-z\n(kN)', 'Torsion\n(kN*m)',
+                  'Moment-y\n(kN*m)']
+    rows = [['Beam Force'], head]
+    for e in elems:
+        p = [''] if extra_col else []
+        rows.append(p + ['', '', e, 'str_all(max)', '', '', '',
+                         f'I[{e}]', '', '', 0, 0, 1.5, 0, 10.0 * e])
+    return _FakeSheet(name, rows)
+
+
+def test_beam_force_reads_every_sheet(monkeypatch):
+    """Phải đọc HẾT các sheet — Midas tách bảng khi vượt giới hạn dòng .xls.
+
+    Bản cũ dùng `sheet_by_index(0)` nên mô hình lớn bị mất phần lớn số liệu mà
+    bảng kiểm toán vẫn ra đầy đủ, chỉ là lấy cực trị trên tập thiếu — đúng loại
+    lỗi không bao giờ tự lộ.
+    """
+    from src import result_reader
+
+    book = _FakeBook([
+        _bf_sheet('Beam Force', [1, 2, 3]),
+        _bf_sheet('Beam Force (2)', [4, 5], extra_col=True),
+        _FakeSheet('Ghi chu', [['Bang nay khong phai Beam Force']]),
+    ])
+    monkeypatch.setattr(result_reader.xlrd, 'open_workbook', lambda p: book)
+
+    report = []
+    res = result_reader.parse_beam_force('khong-doc-den.xls', report=report)
+
+    assert [r['elem'] for r in res] == [1, 2, 3, 4, 5], \
+        f'thiếu sheet — chỉ đọc được {[r["elem"] for r in res]}'
+    # sheet thứ hai lệch cột: giá trị vẫn phải đúng, không lấy nhầm cột
+    assert res[3]['My'] == 40.0 and res[3]['Vz'] == 1.5, res[3]
+    assert any('2 sheet' in r for r in report), report
+    assert any('Ghi chu' in r for r in report), 'không báo sheet bị bỏ qua'
+
+
 def test_combo_validator_catches_orphan():
     """Bộ kiểm phải BẮT được lỗi, không phải luôn trả rỗng.
 

@@ -184,8 +184,13 @@ class ResultsWorker(QThread):
             topo['elements'] = [tuple(e) for e in topo['elements']]
             topo['sections'] = [tuple(s) for s in topo['sections']]
 
-            self.log.emit(f'[{name}] Parsing: {os.path.basename(bf_path)}')
-            results = parse_beam_force(bf_path)
+            self.log.emit(f'[{name}] Đọc: {os.path.basename(bf_path)}')
+            # Nói rõ đã đọc mấy sheet: Midas tách bảng khi vượt giới hạn dòng,
+            # đọc thiếu sheet thì bảng vẫn ra đủ nên không tự lộ.
+            bf_report = []
+            results = parse_beam_force(bf_path, report=bf_report)
+            for line in bf_report:
+                self.log.emit(f'[{name}] {line}')
             result_elems = set(r['elem'] for r in results)
             mct_elems = set(eid for eid, _, _, _ in topo['elements'])
 

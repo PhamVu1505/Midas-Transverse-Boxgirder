@@ -191,7 +191,10 @@ def _process_results(section_dir: str):
     _, topo = write_mct(frame, name, excel)
 
     # Parse beam force
-    results = parse_beam_force(xls_path)
+    bf_report = []
+    results = parse_beam_force(xls_path, report=bf_report)
+    for line in bf_report:
+        print(f'[{name}] {line}')
     result_elems = set(r['elem'] for r in results)
     mct_elems = set(eid for eid, _, _, _ in topo['elements'])
 
@@ -311,11 +314,11 @@ def _export_excel(section_name: str, check_points: dict, xlsx_path: str):
     data_rows = [
         ('Depth h (mm)', 'h', '{:.0f}'),
         ('Strength Mu (kN.m)', 'Mu', '{:.2f}'),
-        ('  -> element', 'Mu_ref', '{}'),
+        ('  -> nút · phần tử', 'Mu_ref', '{}'),
         ('Strength Vu (kN)', 'Vu', '{:.2f}'),
-        ('  -> element', 'Vu_ref', '{}'),
+        ('  -> nút · phần tử', 'Vu_ref', '{}'),
         ('Service Mser (kN.m)', 'Mser', '{:.2f}'),
-        ('  -> element', 'Mser_ref', '{}'),
+        ('  -> nút · phần tử', 'Mser_ref', '{}'),
     ]
 
     for i, (label, key, fmt) in enumerate(data_rows):

@@ -15,39 +15,99 @@ Check points:
 import xlrd
 
 
-def parse_beam_force(xls_path: str) -> list:
-    """Parse Midas Civil Beam Force export (.xls).
+# Tiêu đề cột trong bảng Beam Force của Midas. Cột mang cả đơn vị xuống dòng
+# ("Shear-z\n(kN)") nên chuẩn hoá trước khi so.
+_COLS = {'elem': 'Elem', 'load': 'Load', 'part': 'Part',
+         'Vz': 'Shear-z', 'My': 'Moment-y'}
+
+
+def _norm_header(v) -> str:
+    return str(v).split('\n')[0].strip()
+
+
+def _find_header(ws, scan_rows: int = 12):
+    """Dò hàng tiêu đề và vị trí từng cột cần dùng.
+
+    Dò theo TÊN cột chứ không đếm cột cứng: bảng Midas đổi bố cục theo lựa chọn
+    lúc xuất (có/không Torsion, Bi-Moment…), đếm cứng là đọc nhầm cột.
+
+    Returns: (row_index, {key: col_index}) hoặc (None, None) nếu không phải
+    sheet Beam Force.
+    """
+    for r in range(min(scan_rows, ws.nrows)):
+        head = {_norm_header(ws.cell(r, c).value): c for c in range(ws.ncols)}
+        if 'Elem' in head and 'Load' in head and 'Part' in head:
+            cols = {k: head.get(name) for k, name in _COLS.items()}
+            if all(v is not None for v in cols.values()):
+                return r, cols
+    return None, None
+
+
+def parse_beam_force(xls_path: str, report: list = None) -> list:
+    """Đọc bảng Beam Force xuất từ Midas Civil (.xls) — TẤT CẢ các sheet.
+
+    Midas tách kết quả sang sheet thứ hai, thứ ba… khi vượt giới hạn dòng của
+    định dạng .xls (65 536). Bản cũ chỉ đọc `sheet_by_index(0)` nên với mô hình
+    lớn thì âm thầm mất phần lớn số liệu, mà bảng kiểm toán vẫn ra đầy đủ trông
+    như bình thường — chỉ là lấy cực trị trên tập thiếu.
+
+    Args:
+        report: nếu truyền vào một list, hàm ghi thêm mô tả từng sheet đã đọc
+                (để CLI/GUI log ra cho người dùng thấy đã đọc đủ chưa).
 
     Returns:
-        list of dict: [{elem, load, part, node, Vz, My}, ...]
+        list of dict: [{elem, load, end, node, Vz, My}, ...]
     """
     wb = xlrd.open_workbook(xls_path)
-    ws = wb.sheet_by_index(0)
 
     results = []
-    for r in range(2, ws.nrows):
-        elem_val = ws.cell(r, 3).value   # D: Elem
-        load = ws.cell(r, 4).value        # E: Load case
-        part_str = ws.cell(r, 8).value    # I: Part like "I[14]" or "J[2]"
-        vz = ws.cell(r, 13).value         # N: Shear-z
-        my = ws.cell(r, 15).value         # P: Moment-y
+    read_names, skipped = [], []
 
-        if elem_val == '' or load == '':
+    for ws in wb.sheets():
+        hrow, cols = _find_header(ws)
+        if hrow is None:
+            skipped.append(ws.name)
             continue
 
-        elem = int(elem_val)
-        # Parse part: "I[14]" → ('I', 14), "J[2]" → ('J', 2)
-        end = part_str[0]  # 'I' or 'J'
-        node = int(part_str[2:-1])
+        n0 = len(results)
+        for r in range(hrow + 1, ws.nrows):
+            elem_val = ws.cell(r, cols['elem']).value
+            load = ws.cell(r, cols['load']).value
+            part_str = ws.cell(r, cols['part']).value
 
-        results.append({
-            'elem': elem,
-            'load': load,
-            'end': end,
-            'node': node,
-            'Vz': float(vz) if vz != '' else 0.0,
-            'My': float(my) if my != '' else 0.0,
-        })
+            if elem_val == '' or load == '' or not part_str:
+                continue
+
+            # "I[14]" → ('I', 14); "J[2]" → ('J', 2)
+            try:
+                end = part_str[0]
+                node = int(part_str[2:-1])
+                elem = int(elem_val)
+            except (ValueError, IndexError, TypeError):
+                continue
+
+            vz = ws.cell(r, cols['Vz']).value
+            my = ws.cell(r, cols['My']).value
+            results.append({
+                'elem': elem,
+                'load': load,
+                'end': end,
+                'node': node,
+                'Vz': float(vz) if vz != '' else 0.0,
+                'My': float(my) if my != '' else 0.0,
+            })
+        read_names.append(f'{ws.name} ({len(results) - n0} dòng)')
+
+    if report is not None:
+        if read_names:
+            report.append(f'Đọc {len(read_names)} sheet: ' + ', '.join(read_names)
+                          + f' — tổng {len(results)} bản ghi')
+        if skipped:
+            report.append('Bỏ qua sheet không phải Beam Force: '
+                          + ', '.join(skipped))
+        if not read_names:
+            report.append('KHÔNG sheet nào có cột Elem/Load/Part — '
+                          'kiểm lại file có đúng là bảng Beam Force không')
 
     return results
 
@@ -236,7 +296,11 @@ def _find_extreme(idx, eids, load_cases, field, criteria):
 
                 if is_better:
                     best_val = val
-                    best_ref = f'{end}[{rec["node"]}]'
+                    # Trong ngoặc là số hiệu NÚT (cột Part của Midas), kèm số
+                    # hiệu phần tử. Bản cũ chỉ ghi nút mà nhãn hàng lại là
+                    # "element" — hai dải số trùng nhau (bản mặt: nút 101+,
+                    # phần tử 101+) nên nhầm lẫn không bao giờ lộ ra.
+                    best_ref = f'{end}{rec["node"]} · e{eid}'
                     best_elem = eid
                     best_end = end
 
@@ -284,7 +348,7 @@ def format_check_table(section_name: str, check_points: dict) -> str:
         row_mu += f'{check_points[p]["Mu"]:12.2f}'
     lines.append(row_mu)
 
-    row_mu_ref = f'{"  -> element":30s}'
+    row_mu_ref = f'{"  -> nút · phần tử":30s}'
     for p in points:
         row_mu_ref += f'{check_points[p]["Mu_ref"]:>12s}'
     lines.append(row_mu_ref)
@@ -295,7 +359,7 @@ def format_check_table(section_name: str, check_points: dict) -> str:
         row_vu += f'{check_points[p]["Vu"]:12.2f}'
     lines.append(row_vu)
 
-    row_vu_ref = f'{"  -> element":30s}'
+    row_vu_ref = f'{"  -> nút · phần tử":30s}'
     for p in points:
         row_vu_ref += f'{check_points[p]["Vu_ref"]:>12s}'
     lines.append(row_vu_ref)
@@ -306,7 +370,7 @@ def format_check_table(section_name: str, check_points: dict) -> str:
         row_ms += f'{check_points[p]["Mser"]:12.2f}'
     lines.append(row_ms)
 
-    row_ms_ref = f'{"  -> element":30s}'
+    row_ms_ref = f'{"  -> nút · phần tử":30s}'
     for p in points:
         row_ms_ref += f'{check_points[p]["Mser_ref"]:>12s}'
     lines.append(row_ms_ref)

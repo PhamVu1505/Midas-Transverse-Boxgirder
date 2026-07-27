@@ -31,11 +31,11 @@ def group_color(group: str, t: dict) -> QColor:
 DATA_ROWS = [
     ('Depth h (mm)', 'h', '{:.0f}'),
     ('Strength Mu (kN.m)', 'Mu', '{:.2f}'),
-    ('  -> element', 'Mu_ref', '{}'),
+    ('  -> nút · phần tử', 'Mu_ref', '{}'),
     ('Strength Vu (kN)', 'Vu', '{:.2f}'),
-    ('  -> element', 'Vu_ref', '{}'),
+    ('  -> nút · phần tử', 'Vu_ref', '{}'),
     ('Service Mser (kN.m)', 'Mser', '{:.2f}'),
-    ('  -> element', 'Mser_ref', '{}'),
+    ('  -> nút · phần tử', 'Mser_ref', '{}'),
 ]
 
 # Điểm kiểm toán tô theo bộ phận: A–D bản mặt, E–F bản đáy, G–H bụng. Lấy màu
