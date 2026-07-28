@@ -12,6 +12,7 @@ Kiểm tra các bất biến hình học/topo đã từng bị vỡ trong quá k
   - *CONSTRAINT khóa đủ Dy (Midas báo singular nếu thiếu)
 """
 
+import json
 import math
 import os
 import sys
@@ -628,6 +629,54 @@ def test_section_check_flexure_is_conservative_vs_template():
     assert fl.capacity > 260.0, f'Mr={fl.capacity} thấp bất thường'
 
 
+def test_project_keeps_rebars_and_check_opts():
+    """Cốt thép và tuỳ chọn kiểm toán phải sống sót qua lượt lưu/mở project.
+
+    Đây là số liệu người dùng gõ tay cho từng điểm kiểm toán — mất là gõ lại từ
+    đầu. `Project.load` lọc khoá theo danh sách trường của `Section`, nên thêm
+    trường mới mà quên là nó bị bỏ im lặng, không báo lỗi gì.
+    """
+    import tempfile
+    from src.project import Project
+
+    p = Project()
+    p.template = 'x.xls'
+    sec = p.add_dxf('S1.dxf')
+    p.set_rebars(sec.name, {
+        'A': {'dia': 16.0, 'spacing': 150.0, 'cover': 65.0,
+              'Av': 0.0, 'Av_spacing': 0.0, 'dp': 180.0, 'Ap': 700.0},
+        'E': {'dia': 19.0, 'spacing': 200.0, 'cover': 50.0,
+              'Av': 226.0, 'Av_spacing': 300.0, 'dp': 0.0, 'Ap': 0.0},
+    })
+    p.set_check_opts(sec.name, {'standard': 'TCVN 11823', 'shear_method': 'bảng',
+                                'fc': 50.0, 'fy': 420.0,
+                                'phi_f': 0.90, 'phi_v': 0.90})
+    assert p.dirty, 'ghi cốt thép phải đánh dấu project có thay đổi'
+
+    with tempfile.TemporaryDirectory() as d:
+        path = p.save(os.path.join(d, 'test.mtbproj'))
+        back = Project.load(path)
+
+    s = back.find('S1')
+    assert s.rebars['A']['dia'] == 16.0 and s.rebars['A']['Ap'] == 700.0, s.rebars
+    assert s.rebars['E']['Av_spacing'] == 300.0, s.rebars
+    assert s.check_opts['fc'] == 50.0 and s.check_opts['shear_method'] == 'bảng'
+
+    # project cũ (chưa có hai trường này) vẫn mở được và ra dict rỗng
+    old = Project()
+    old.add_dxf('S7.dxf')
+    d2 = old.to_dict()
+    for sd in d2['sections']:
+        sd.pop('rebars', None)
+        sd.pop('check_opts', None)
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, 'old.mtbproj')
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(d2, f, ensure_ascii=False)
+        legacy = Project.load(path)
+    assert legacy.find('S7').rebars == {} and legacy.find('S7').check_opts == {}
+
+
 class _FakeCell:
     def __init__(self, v): self.value = v
 
@@ -731,7 +780,9 @@ if __name__ == '__main__':
                       (test_no_shear_exemption_and_no_c_de_in_tcvn, 'TCVN: bỏ c/de, không miễn cắt'),
                       (test_shear_table_method_beats_closed_form, 'hai phương pháp cắt'),
                       (test_section_check_flexure_is_conservative_vs_template, 'uốn thiên an toàn'),
-                      (test_combo_validator_catches_orphan, 'bộ kiểm bắt được lỗi')):
+                      (test_combo_validator_catches_orphan, 'bộ kiểm bắt được lỗi'),
+                      (test_project_keeps_rebars_and_check_opts,
+                       'project giữ cốt thép + tuỳ chọn kiểm toán')):
         try:
             fn()
             print(f'PASS  {label}')

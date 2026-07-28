@@ -62,7 +62,7 @@ trong quy trình. Bước 3 vẽ nét đứt vì phải làm bên Midas.</p>
         Lớp hiển thị</td></tr>
 <tr><td><b>Vùng giữa</b></td>
     <td>Các thẻ chế độ xem: <b>Model</b>, <b>Section shape</b>, <b>Parts</b>,
-        <b>Results table</b>, <b>MCT source</b></td></tr>
+        <b>Results table</b>, <b>Kiểm toán mặt cắt</b>, <b>MCT source</b></td></tr>
 <tr style="background:{soft}">
     <td><b>Panel Properties</b><br><span style="color:{ink2}">bên phải</span></td>
     <td>Thông tin mặt cắt, node đang trỏ, danh sách gối · thẻ
@@ -220,6 +220,62 @@ nên sửa lại DXF hay đổi kích thước phần tử thì gối vẫn nằ
 <p>Bảng kết quả cho mô men, lực cắt và chiều cao tiết diện tại tám điểm:
 <b>A–D</b> trên bản mặt, <b>E–F</b> trên bản đáy, <b>G–H</b> trên bụng. Sơ đồ bên
 cạnh bảng chỉ rõ vị trí từng điểm.</p>
+<p style="color:{ink2}">Mặt cắt <b>nhiều hộp</b> có thêm điểm phân giải cho từng
+khoang và từng vách — <b>A1, A2…</b> (giữa mỗi khoang bản mặt), <b>E1, E2…</b>
+(giữa mỗi khoang bản đáy), <b>G1…Gm</b> và <b>H1…Hm</b> (đầu trên và đầu dưới
+mỗi vách). Tám điểm A–H vẫn giữ nguyên ý nghĩa <i>bao</i> để bố trí lưới thép
+chung.</p>
+'''),
+
+        ('Kiểm toán mặt cắt', f'''
+<h2 style="color:{ink}">Kiểm toán tiết diện theo TCVN 11823</h2>
+<p>Thẻ <b>Kiểm toán mặt cắt</b> (phím <b>F7</b>) lấy nội lực vừa xử lý ở thẻ
+<b>Results table</b>, cộng với cốt thép do người dùng nhập, rồi kiểm bốn nhóm
+theo TCVN 11823-5. Tiết diện xét là <b>lát cắt rộng 1 m</b> của mặt cắt ngang.</p>
+
+{step(1, 'Nhập cốt thép',
+      'Bảng trên cùng, mỗi cột là một điểm kiểm toán. Nhập đường kính, cự ly, '
+      'lớp bảo vệ (tính đến <b>tâm</b> thanh), cốt đai và cáp nếu có. '
+      'A<sub>s</sub> tự tính. Số liệu lưu vào project theo từng mặt cắt.')}
+{step(2, 'Chọn tiêu chuẩn và hệ số',
+      "TCVN 11823 hoặc 22TCN 272-05 (để đối chiếu hồ sơ cũ). f'c lấy sẵn từ "
+      "template số liệu, sửa được. φ mặc định 0,90 cho cả uốn và cắt.")}
+{step(3, 'Bấm Kiểm toán',
+      'Bảng dưới chia bốn nhóm; dải màu ở hàng <b>mức huy động</b> cho thấy '
+      'ngay chỗ nào sát giới hạn. Bấm <b>Xuất Excel…</b> để đưa vào hồ sơ.')}
+
+<h3 style="color:{ink}">Bốn nhóm kiểm tra</h3>
+<table cellpadding="7" cellspacing="0" width="100%">
+<tr style="background:{soft}"><td width="150"><b>Sức kháng uốn</b></td>
+    <td>M<sub>u</sub> ≤ M<sub>r</sub> = φM<sub>n</sub> — Điều 7.3.2</td></tr>
+<tr><td><b>Giới hạn cốt thép</b></td>
+    <td>M<sub>r</sub> ≥ min(M<sub>cr</sub>, 1,33M<sub>u</sub>) — Điều 7.3.3, kèm
+        phân loại tiết diện theo biến dạng kéo thực ε<sub>t</sub> (Điều 7.2.1)</td></tr>
+<tr style="background:{soft}"><td><b>Nứt</b></td>
+    <td>Cự ly cốt thép ở trạng thái giới hạn Sử dụng — Điều 7.3.4</td></tr>
+<tr><td><b>Cắt</b></td>
+    <td>V<sub>u</sub> ≤ V<sub>r</sub> = φV<sub>n</sub> theo MCFT — Điều 8.3.3
+        và 8.3.4.2</td></tr>
+</table>
+
+<h3 style="color:{ink}">Hai phương pháp tra θ và β</h3>
+<p>Điều 8.3.4.2 cho dùng ngang hàng hai cách. Ô <b>Cắt theo</b> chọn giữa:</p>
+<table cellpadding="7" cellspacing="0" width="100%">
+<tr style="background:{soft}"><td width="150"><b>bảng</b></td>
+    <td>Tra Bảng 4 / Bảng 5, nội suy hai chiều, lặp θ. Mặc định.</td></tr>
+<tr><td><b>công thức</b></td>
+    <td>Công thức đóng, phương trình 77–79. Cho kết quả <b>chặt hơn nhiều</b> ở
+        tiết diện vùng nén vì chặn ε<sub>s</sub> ≥ 0.</td></tr>
+</table>
+
+{note('Điều kiện <b>c/d<sub>e</sub> ≤ 0,42</b> chỉ có ở 22TCN 272-05. TCVN 11823 '
+      'không có điều kiện này mà phân loại tiết diện theo ε<sub>t</sub>, nên khi '
+      'chọn TCVN thì bảng hiện ε<sub>t</sub> thay cho c/d<sub>e</sub>.')}
+
+<p style="color:{ink2}">Kiểm nứt được bỏ qua khi tiết diện có cáp dự ứng lực
+(chưa xét nén trước) hoặc khi ứng suất kéo ở trạng thái Sử dụng chưa tới 80%
+f<sub>r</sub> — lúc đó tiết diện chưa nứt. Cột nào bỏ qua thì cột đó ghi rõ lý do
+ở hàng <i>Ghi chú</i>.</p>
 '''),
 
         ('Tùy chọn giao diện', f'''
@@ -273,10 +329,11 @@ nhất khi khởi động và việc tự chọn mặt cắt vừa thêm.</p>
     <td>Tạo MCT cho mặt cắt đang chọn</td></tr>
 <tr><td><code>Ctrl+B</code></td><td>Gán file Beam Force</td></tr>
 <tr style="background:{soft}"><td><code>F6</code></td><td>Xử lý Beam Force</td></tr>
-<tr><td><code>F</code></td><td>Vừa khung nhìn</td></tr>
-<tr style="background:{soft}"><td><code>Ctrl+L</code></td><td>Xoá nhật ký</td></tr>
-<tr><td><code>Ctrl+,</code></td><td>Tùy chọn giao diện</td></tr>
-<tr style="background:{soft}"><td><code>F1</code></td><td>Mở hướng dẫn này</td></tr>
+<tr><td><code>F7</code></td><td>Kiểm toán mặt cắt</td></tr>
+<tr style="background:{soft}"><td><code>F</code></td><td>Vừa khung nhìn</td></tr>
+<tr><td><code>Ctrl+L</code></td><td>Xoá nhật ký</td></tr>
+<tr style="background:{soft}"><td><code>Ctrl+,</code></td><td>Tùy chọn giao diện</td></tr>
+<tr><td><code>F1</code></td><td>Mở hướng dẫn này</td></tr>
 </table>
 '''),
 

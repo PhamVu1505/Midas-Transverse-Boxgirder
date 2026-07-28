@@ -63,6 +63,14 @@ class Section:
     # quy về node đáy gần nhất.  [{'x': float, 'kind': 'pin'|'roller'|'fixed'}]
     supports: list = field(default_factory=list)
 
+    # Cốt thép nhập tay cho tab Kiểm toán mặt cắt, khoá theo TÊN ĐIỂM kiểm toán
+    # ('A', 'A1', 'E2'…): {'dia', 'spacing', 'cover', 'Av', 'Av_spacing',
+    # 'dp', 'Ap'}. Điểm phân giải thiếu số liệu thì `section_check.check_all`
+    # tự lui về chữ cái đầu, nên chỉ cần nhập 'A' là A1/A2 dùng theo.
+    rebars: dict = field(default_factory=dict)
+    # Tuỳ chọn kiểm toán riêng của mặt cắt: tiêu chuẩn, phương pháp cắt, φ, fy…
+    check_opts: dict = field(default_factory=dict)
+
     status: str = NEW
     note: str = ''
 
@@ -192,6 +200,23 @@ class Project:
         if s:
             s.set_supports(supports)
             self._dirty = True
+
+    def set_rebars(self, name: str, rebars: dict):
+        """Ghi bảng cốt thép của một mặt cắt. Không đụng tới trạng thái quy
+        trình: đổi cốt thép chỉ làm bảng kiểm toán cũ hết hiệu lực, còn MCT và
+        Beam Force vẫn nguyên."""
+        s = self.find(name)
+        if s is None:
+            return
+        s.rebars = {k: dict(v) for k, v in (rebars or {}).items()}
+        self._dirty = True
+
+    def set_check_opts(self, name: str, opts: dict):
+        s = self.find(name)
+        if s is None:
+            return
+        s.check_opts = dict(opts or {})
+        self._dirty = True
 
     def set_beam_force(self, name: str, path: str):
         s = self.find(name)

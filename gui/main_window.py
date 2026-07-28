@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QTabBar, QStackedWidget,
 from src.project import Project, FILE_EXT, CHECKED, ERROR
 from .generate_tab import GenerateController
 from .results_tab import ResultsTab
+from .check_tab import CheckTab
 from .project_panel import ProjectPanel
 from .properties_panel import PropertiesPanel
 from .viewer_panel import ViewerPanel
@@ -72,7 +73,7 @@ class MainWindow(QMainWindow):
     # ba tab đầu cùng trỏ về khung xem nhưng đổi chế độ vẽ.
     VIEW_TABS = [('Model', 0, MODEL), ('Section shape', 0, SHAPE),
                  ('Parts', 0, PARTS), ('Results table', 1, None),
-                 ('MCT source', 2, None)]
+                 ('Kiểm toán mặt cắt', 3, None), ('MCT source', 2, None)]
 
     def _build_central(self):
         root = QWidget()
@@ -111,12 +112,16 @@ class MainWindow(QMainWindow):
 
         self.viewer = ViewerPanel(self.t)
         self.res_tab = ResultsTab(self.status, self.project, self.t)
+        # Nội lực đi thẳng từ dict của ResultsTab: nó ghi vào đúng đối tượng đó
+        # sau mỗi mặt cắt xử lý xong, nên không cần sao chép hay đồng bộ.
+        self.check_tab = CheckTab(self.status, self.project, self.t,
+                                  results_provider=lambda: self.res_tab.all_results)
         self.mct_view = QPlainTextEdit()
         self.mct_view.setReadOnly(True)
         self.mct_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
 
         self.stack = QStackedWidget()
-        for w in (self.viewer, self.res_tab, self.mct_view):
+        for w in (self.viewer, self.res_tab, self.mct_view, self.check_tab):
             self.stack.addWidget(w)
         lay.addWidget(self.stack, 1)
 
@@ -134,6 +139,10 @@ class MainWindow(QMainWindow):
         elif page == 1:
             self.res_tab.refresh()
             self.steps.set_state(3, ACTIVE)
+        elif page == 3:
+            self.check_tab.refresh()
+            self.check_tab.refresh_results_state()
+            self.steps.set_state(4, ACTIVE)
         elif page == 2:
             self.mct_view.setPlainText(
                 self.gen_tab.current_mct_text() or
@@ -184,6 +193,7 @@ class MainWindow(QMainWindow):
         self.resizeDocks([self.dock_log], [156], Qt.Orientation.Vertical)
         self.gen_tab.set_log(self.log)
         self.res_tab.set_log(self.log)
+        self.check_tab.set_log(self.log)
 
     def _build_status(self):
         self.status = QStatusBar()
@@ -295,6 +305,11 @@ class MainWindow(QMainWindow):
         self.a_run = self._act('&Xử lý Beam Force', self.process_results, 'F6', 'check')
         m.addAction(self.a_bf)
         m.addAction(self.a_run)
+        m.addSeparator()
+        self.a_check = self._act('&Kiểm toán mặt cắt', self.run_section_check,
+                                 'F7', 'check',
+                                 'Nhập cốt thép và kiểm toán theo TCVN 11823')
+        m.addAction(self.a_check)
 
         m = mb.addMenu('&Xem')
         for d, label in ((self.dock, 'Panel &Project'),
@@ -407,6 +422,9 @@ class MainWindow(QMainWindow):
         self.gen_tab.progress_changed.connect(self._on_generate_progress)
         self.res_tab.project_changed.connect(self._on_project_changed)
         self.res_tab.progress_changed.connect(self._on_results_progress)
+        # Sửa một ô cốt thép chỉ cần đánh dấu project bẩn — nối vào
+        # _on_project_changed thì mỗi lần gõ phím lại dựng lại cả cây mặt cắt.
+        self.check_tab.project_changed.connect(self._update_title)
 
     # ─────────────────────────────────────────
     # Project
@@ -418,6 +436,7 @@ class MainWindow(QMainWindow):
         self.props.set_project(project)
         self.gen_tab.set_project(project)
         self.res_tab.set_project(project)
+        self.check_tab.set_project(project)
         self._on_project_changed()
         self.steps.reset()
         self.steps.set_state(0, DONE if len(project) else ACTIVE,
@@ -435,6 +454,7 @@ class MainWindow(QMainWindow):
         self.props.refresh()
         self.gen_tab.refresh()
         self.res_tab.refresh()
+        self.check_tab.refresh()
         self._update_title()
         n = len(self.project)
         self.lb_count.setText(
@@ -572,6 +592,7 @@ class MainWindow(QMainWindow):
         self.panel.apply_theme(self.t)
         self.props.apply_theme(self.t)
         self.res_tab.apply_theme(self.t, self.sizes)
+        self.check_tab.apply_theme(self.t, self.sizes)
         self.log.apply_theme(self.t, self.sizes)
         self._restyle_chrome()
 
@@ -713,6 +734,12 @@ class MainWindow(QMainWindow):
         self.tabbar.setCurrentIndex(3)
         self.res_tab.process()
 
+    def run_section_check(self):
+        """Sang tab Kiểm toán mặt cắt. KHÔNG tự bấm Kiểm toán: cốt thép là số
+        liệu người dùng nhập, chạy ngay bằng bộ mặc định thì ra một bảng trông
+        như đã kiểm mà chưa ai nhập gì."""
+        self.tabbar.setCurrentIndex(4)
+
     def open_output(self):
         d = self.project.output_dir or '.'
         if os.path.isdir(d):
@@ -843,6 +870,9 @@ class MainWindow(QMainWindow):
             n = len(self.project.by_status(CHECKED))
             self.steps.set_state(4, DONE, f'{n} mặt cắt')
             self.status_msg('Đã kiểm toán xong')
+            # Nội lực vừa đổi → cột điểm và dòng nhắc của tab Kiểm toán mặt cắt
+            # phải theo, kể cả khi người dùng đang đứng ở tab đó.
+            self.check_tab.refresh_results_state()
 
     # ─────────────────────────────────────────
     def _restore_settings(self):

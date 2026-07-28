@@ -108,8 +108,11 @@ class Rebar:
     dia: float = 0.0        # mm — đường kính thanh chịu uốn
     spacing: float = 150.0  # mm — cự ly
     cover: float = 50.0     # mm — từ mép bê tông đến TÂM thanh
-    Av: float = 0.0         # mm²/m — cốt đai (0 = không có)
-    Av_spacing: float = 0.0  # mm — cự ly đai
+    # Av là diện tích nhánh đai NẰM TRONG MỘT CỰ LY s, trên lát cắt rộng 1 m —
+    # đúng đại lượng của pt. 75 (Vs = Av·fy·dv·cotθ/s) và của Av_min (Đ.8.2.5).
+    # KHÔNG phải mm²/m.
+    Av: float = 0.0         # mm² — cốt đai (0 = không có)
+    Av_spacing: float = 0.0  # mm — cự ly đai; 0 = lấy theo `spacing`
     bar_area: float = 0.0   # mm² — ghi đè diện tích một thanh
 
     def As(self, b: float = 1000.0) -> float:

@@ -16,9 +16,10 @@ MỤC LỤC
   5. Tạo file MCT
   6. Gối
   7. Đọc kết quả
-  8. Tùy chọn giao diện
-  9. Phím tắt
-  10. Xử lý sự cố
+  8. Kiểm toán mặt cắt
+  9. Tùy chọn giao diện
+  10. Phím tắt
+  11. Xử lý sự cố
 
 ==============================================================================
 1. TỔNG QUAN
@@ -53,7 +54,7 @@ CÁC VÙNG TRÊN MÀN HÌNH
   Panel Project bên trái     Cây mặt cắt · Thiết lập (template số liệu, thư
                              mục kết quả) · Lớp hiển thị
   Vùng giữa                  Các thẻ chế độ xem: Model, Section shape, Parts,
-                             Results table, MCT source
+                             Results table, Kiểm toán mặt cắt, MCT source
   Panel Properties bên phải  Thông tin mặt cắt, node đang trỏ, danh sách gối ·
                              thẻ Input data liệt kê số liệu đọc từ template
   Messages dưới đáy          Nhật ký. Dòng vàng là cảnh báo, dòng đỏ là lỗi
@@ -231,8 +232,59 @@ Bảng kết quả cho mô men, lực cắt và chiều cao tiết diện tại 
 bản mặt, E–F trên bản đáy, G–H trên bụng. Sơ đồ bên cạnh bảng chỉ rõ vị trí
 từng điểm.
 
+Mặt cắt nhiều hộp có thêm điểm phân giải cho từng khoang và từng vách — A1,
+A2… (giữa mỗi khoang bản mặt), E1, E2… (giữa mỗi khoang bản đáy), G1…Gm và
+H1…Hm (đầu trên và đầu dưới mỗi vách). Tám điểm A–H vẫn giữ nguyên ý nghĩa bao
+để bố trí lưới thép chung.
+
 ==============================================================================
-8. TÙY CHỌN GIAO DIỆN
+8. KIỂM TOÁN MẶT CẮT
+==============================================================================
+
+KIỂM TOÁN TIẾT DIỆN THEO TCVN 11823
+-----------------------------------
+
+Thẻ Kiểm toán mặt cắt (phím F7) lấy nội lực vừa xử lý ở thẻ Results table,
+cộng với cốt thép do người dùng nhập, rồi kiểm bốn nhóm theo TCVN 11823-5.
+Tiết diện xét là lát cắt rộng 1 m của mặt cắt ngang.
+
+Bước 1 — Nhập cốt thép Bảng trên cùng, mỗi cột là một điểm kiểm toán. Nhập
+đường kính, cự ly, lớp bảo vệ (tính đến tâm thanh), cốt đai và cáp nếu có. As
+tự tính. Số liệu lưu vào project theo từng mặt cắt.
+
+Bước 2 — Chọn tiêu chuẩn và hệ số TCVN 11823 hoặc 22TCN 272-05 (để đối chiếu
+hồ sơ cũ). f'c lấy sẵn từ template số liệu, sửa được. φ mặc định 0,90 cho cả
+uốn và cắt.
+
+Bước 3 — Bấm Kiểm toán Bảng dưới chia bốn nhóm; dải màu ở hàng mức huy động
+cho thấy ngay chỗ nào sát giới hạn. Bấm Xuất Excel… để đưa vào hồ sơ.
+
+Bốn nhóm kiểm tra
+
+  Sức kháng uốn      Mu ≤ Mr = φMn — Điều 7.3.2
+  Giới hạn cốt thép  Mr ≥ min(Mcr, 1,33Mu) — Điều 7.3.3, kèm phân loại tiết
+                     diện theo biến dạng kéo thực εt (Điều 7.2.1)
+  Nứt                Cự ly cốt thép ở trạng thái giới hạn Sử dụng — Điều 7.3.4
+  Cắt                Vu ≤ Vr = φVn theo MCFT — Điều 8.3.3 và 8.3.4.2
+
+Hai phương pháp tra θ và β
+
+Điều 8.3.4.2 cho dùng ngang hàng hai cách. Ô Cắt theo chọn giữa:
+
+  bảng       Tra Bảng 4 / Bảng 5, nội suy hai chiều, lặp θ. Mặc định.
+  công thức  Công thức đóng, phương trình 77–79. Cho kết quả chặt hơn nhiều ở
+             tiết diện vùng nén vì chặn εs ≥ 0.
+
+LƯU Ý: Điều kiện c/de ≤ 0,42 chỉ có ở 22TCN 272-05. TCVN 11823 không có điều
+  kiện này mà phân loại tiết diện theo εt, nên khi chọn TCVN thì bảng hiện εt
+  thay cho c/de.
+
+Kiểm nứt được bỏ qua khi tiết diện có cáp dự ứng lực (chưa xét nén trước) hoặc
+khi ứng suất kéo ở trạng thái Sử dụng chưa tới 80% fr — lúc đó tiết diện chưa
+nứt. Cột nào bỏ qua thì cột đó ghi rõ lý do ở hàng Ghi chú.
+
+==============================================================================
+9. TÙY CHỌN GIAO DIỆN
 ==============================================================================
 
 TÙY CHỌN
@@ -267,7 +319,7 @@ Khôi phục mặc định đưa mọi mục về ban đầu nhưng giữ nguyê
 mục kết quả và template.
 
 ==============================================================================
-9. PHÍM TẮT
+10. PHÍM TẮT
 ==============================================================================
 
 PHÍM TẮT
@@ -282,13 +334,14 @@ PHÍM TẮT
   Shift+F5      Tạo MCT cho mặt cắt đang chọn
   Ctrl+B        Gán file Beam Force
   F6            Xử lý Beam Force
+  F7            Kiểm toán mặt cắt
   F             Vừa khung nhìn
   Ctrl+L        Xoá nhật ký
   Ctrl+,        Tùy chọn giao diện
   F1            Mở hướng dẫn này
 
 ==============================================================================
-10. XỬ LÝ SỰ CỐ
+11. XỬ LÝ SỰ CỐ
 ==============================================================================
 
 CÁC LỖI HAY GẶP
