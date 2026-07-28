@@ -451,6 +451,70 @@ def test_check_points_twin_box_covers_center_web():
         'G', 'G1', 'G2', 'G3', 'H', 'H1', 'H2', 'H3'], sorted(ce)
 
 
+def test_section_check_matches_template():
+    """Kiểm toán tiết diện phải tái lập ĐÚNG số của sheet `Strength` file mẫu.
+
+    Lấy điểm E của S1 — điểm không có cáp nên mọi công thức chạy thẳng, không
+    có chỗ nào để giấu sai số. Dùng đúng diện tích thanh của file mẫu (bảng tra
+    ASTM 284 mm² cho D19) vì π·d²/4 ra 283.5, lệch 0.2%.
+    """
+    from src.section_check import Material, Rebar, Forces, check_point
+
+    mat = Material(fc=50.0, fy=420.0, Ec=38006.9895)
+    assert abs(mat.beta1 - 0.6929) < 1e-4, mat.beta1
+
+    r = check_point(760.0, Forces(Mu=181.41, Vu=80.10, Mser=142.65),
+                    Rebar(dia=19, spacing=150, cover=65, bar_area=284.0), mat)
+    fl, cr, sh, lim = r['flexure'], r['crack'], r['shear'], r['limits']
+
+    want = [('As', fl.values['As'], 1893.3333), ('ds', fl.values['ds'], 695.0),
+            ('c', fl.values['c'], 27.0050), ('a', fl.values['a'], 18.7106),
+            ('Mr', fl.capacity, 490.7022), ('c/de', lim.values['c/de'], 0.0389),
+            ('n', cr.values['n'], 5.2622), ('m', cr.values['m'], 0.0143),
+            ('k', cr.values['k'], 0.1556), ('j', cr.values['j'], 0.9481),
+            ('fs', cr.values['fs'], 114.3378), ('dv', sh.values['dv'], 685.6447)]
+    for lbl, got, exp in want:
+        assert abs(got - exp) < 5e-4, f'{lbl}: {got} ≠ {exp} (file mẫu)'
+
+
+def test_section_check_skips_crack_when_prestressed():
+    """Tiết diện có cáp thì KHÔNG kiểm nứt bằng công thức tiết diện nứt đàn hồi.
+
+    Công thức đó chia toàn bộ Mser cho cánh tay đòn cốt thép thường, bỏ qua nén
+    trước, nên fs vọt lên vô lý (điểm A của S1 ra 338 MPa → hỏng ảo). File mẫu
+    cũng chỉ kiểm nứt ở bốn điểm không cáp.
+    """
+    from src.section_check import Material, Rebar, Tendon, Forces, check_point
+
+    mat = Material(fc=50.0, fy=420.0, Ec=38006.9895)
+    rb = Rebar(dia=16, spacing=150, cover=65, bar_area=199.0)
+    with_pt = check_point(300.0, Forces(Mu=95.88, Vu=120.67, Mser=98.83),
+                          rb, mat, Tendon(dp=180, Ap=700))
+    assert not with_pt['crack'].applicable, 'có cáp mà vẫn kiểm nứt'
+    assert 'cáp' in with_pt['crack'].note
+
+    no_pt = check_point(300.0, Forces(Mu=95.88, Vu=120.67, Mser=98.83), rb, mat)
+    assert no_pt['crack'].applicable, 'không cáp thì phải kiểm nứt'
+
+
+def test_section_check_flexure_is_conservative_vs_template():
+    """Sức kháng uốn của tiết diện có cáp phải THẤP HƠN file mẫu.
+
+    File mẫu lấy trục trung hoà từ riêng lực cáp (bỏ cốt thép thường khỏi
+    phương trình cân bằng) nhưng lại cộng cốt thép thường vào Mn — hai vế không
+    nhất quán. Giải đúng TCVN 11823-5 cho c lớn hơn, cánh tay đòn ngắn lại, Mr
+    nhỏ đi. Chốt lại chiều lệch để không ai vô tình "sửa" ngược lên.
+    """
+    from src.section_check import Material, Rebar, Tendon, Forces, flexure
+
+    mat = Material(fc=50.0, fy=420.0, Ec=38006.9895)
+    fl = flexure(300.0, Forces(Mu=95.88),
+                 Rebar(dia=16, spacing=150, cover=65, bar_area=199.0),
+                 mat, Tendon(dp=180, Ap=700))
+    assert fl.capacity < 289.87, f'Mr={fl.capacity} phải nhỏ hơn file mẫu 289.87'
+    assert fl.capacity > 260.0, f'Mr={fl.capacity} thấp bất thường'
+
+
 class _FakeCell:
     def __init__(self, v): self.value = v
 
@@ -547,6 +611,9 @@ if __name__ == '__main__':
                       (test_vclass_contains_only_vehicles, 'VCLASS chỉ chứa xe'),
                       (test_check_points_single_box_unchanged, 'điểm kiểm toán 1 hộp'),
                       (test_check_points_twin_box_covers_center_web, 'điểm kiểm toán 2 hộp'),
+                      (test_section_check_matches_template, 'kiểm toán khớp file mẫu'),
+                      (test_section_check_skips_crack_when_prestressed, 'bỏ kiểm nứt khi có cáp'),
+                      (test_section_check_flexure_is_conservative_vs_template, 'uốn thiên an toàn'),
                       (test_combo_validator_catches_orphan, 'bộ kiểm bắt được lỗi')):
         try:
             fn()
