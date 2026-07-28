@@ -303,9 +303,11 @@ def main():
                 return
             if panel:
                 widget.resize(*panel)
-            # Vẽ lại HẲN trước khi chụp. Chỉ `processEvents()` thì đôi khi
-            # `grab()` bắt được khung hình dở dang — thanh trạng thái từng ra
-            # ảnh có ba dòng chữ chồng lên nhau, trông y như lỗi bố cục.
+            # Vẽ lại HẲN trước khi chụp: chỉ `processEvents()` thì đôi khi
+            # `grab()` bắt được khung hình dở dang.
+            # (Ba dòng chữ chồng nhau ở thanh trạng thái thì KHÔNG phải do chụp
+            #  — đó là thông điệp tạm của QStatusBar vẽ đè lên widget, đã sửa
+            #  bằng lớp `StatusBar` trong gui/main_window.py.)
             app.processEvents()
             widget.repaint()
             app.processEvents()

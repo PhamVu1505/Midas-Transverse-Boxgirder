@@ -211,6 +211,7 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 
 - `gui/generate_tab.py` giờ là **`GenerateController`** (QObject, không phải widget) — chỉ điều phối worker và ghi kết quả vào project.
 - `gui/viewer_panel.py` gói canvas + lớp nổi; `gui/properties_panel.py` là dock phải.
+- **Status bar không dùng thông điệp tạm của Qt** — lớp `StatusBar` trong `main_window.py` chặn `showMessage()` lại và ghi thẳng vào `lb_detail`. `QStatusBar` tự vẽ thông điệp tạm ở nửa trái và đúng ra phải ẩn widget không cố định trong lúc đó, nhưng ở đây **không ẩn**: `Sẵn sàng` + chữ `showMessage()` + `lb_detail` chồng lên nhau thành một đám không đọc nổi ở mọi ảnh chụp. Trước đây tưởng là lỗi lúc `grab()` chụp trúng khung hình dở nên chú thích trong `tools/render_ui.py` ghi nhầm — tái hiện được 100% bằng cách gọi `showMessage()` rồi `grab()` riêng thanh trạng thái.
 
 ### Khung xem mặt cắt (v1.3.0 — Giai đoạn 3)
 `gui/frame_view.py` vẽ thẳng từ `topo.json`, tức **đúng mô hình đã ghi ra MCT**, không phải hình dựng lại. Zoom/pan/fit, bật tắt lớp, rê chuột tra node.

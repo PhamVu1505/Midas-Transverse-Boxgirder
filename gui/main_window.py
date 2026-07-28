@@ -33,6 +33,39 @@ ORG, APP = 'TEDI', 'MidasTransverseBoxgirder'
 MAX_RECENT = 8
 
 
+class StatusBar(QStatusBar):
+    """Thanh trạng thái chỉ gồm widget — **không** dùng thông điệp tạm của Qt.
+
+    `QStatusBar` vẽ thông điệp tạm bằng chính nó, đè lên vùng bên trái. Đúng ra
+    Qt phải ẩn các widget không cố định trong lúc đó, nhưng ở đây không ẩn: ảnh
+    chụp cho thấy `Sẵn sàng` (lb_msg), chữ của `showMessage()` và nội dung
+    `lb_detail` **nằm chồng lên nhau** thành một đám không đọc được. Chỗ này
+    từng bị ghi nhầm là lỗi lúc `grab()` chụp trúng khung hình dở.
+
+    Mà bố cục vốn không cần thông điệp tạm: `lb_msg` giữ trạng thái ngắn,
+    `lb_detail` giữ chi tiết, và mọi `showMessage()` trong các tab đều nhắm vào
+    ô chi tiết. Nên chuyển thẳng vào đó và không bao giờ đặt thông điệp tạm.
+
+    `timeout` bị bỏ qua — không nơi nào truyền, và chữ chi tiết nên nằm lại tới
+    khi có việc khác thay thế.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.detail = None                  # QLabel, gán trong _build_status
+
+    def showMessage(self, text, timeout=0):
+        if self.detail is not None:
+            self.detail.setText(text)
+
+    def clearMessage(self):
+        if self.detail is not None:
+            self.detail.setText('')
+
+    def currentMessage(self):
+        return self.detail.text() if self.detail is not None else ''
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -196,7 +229,7 @@ class MainWindow(QMainWindow):
         self.check_tab.set_log(self.log)
 
     def _build_status(self):
-        self.status = QStatusBar()
+        self.status = StatusBar()
         self.setStatusBar(self.status)
         self._seps = []
         self._msg_level = 'ok'
@@ -206,6 +239,7 @@ class MainWindow(QMainWindow):
         self.status.addWidget(self.lb_msg)
         self.lb_detail = QLabel('')
         self.status.addWidget(self.lb_detail, 1)
+        self.status.detail = self.lb_detail
 
         self.lb_cursor = QLabel('')
         self.lb_cursor.setStyleSheet(
@@ -237,8 +271,8 @@ class MainWindow(QMainWindow):
             f'font-family: {FONT_MONO}; color: {self.t["ink_3"]};')
         self.status.addPermanentWidget(self.lb_ver)
 
-        self.status.messageChanged.connect(
-            lambda s: self.lb_detail.setText(s) if s else None)
+        # Không nối `messageChanged` nữa: `StatusBar.showMessage` ghi thẳng vào
+        # `lb_detail`, không còn thông điệp tạm nào để phản chiếu.
 
     def _sep(self):
         f = QFrame()
