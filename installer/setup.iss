@@ -3,12 +3,12 @@
 
 [Setup]
 AppName=Midas Transverse Boxgirder
-AppVersion=1.3.1
+AppVersion=1.4.0
 AppPublisher=CITEC
 DefaultDirName={autopf}\MidasTransverseBoxgirder
 DefaultGroupName=Midas Transverse Boxgirder
 OutputDir=..\dist\installer
-OutputBaseFilename=MidasTransverseBoxgirder_Setup_v1.3.1
+OutputBaseFilename=MidasTransverseBoxgirder_Setup_v1.4.0
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
