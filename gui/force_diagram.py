@@ -17,8 +17,7 @@ cố định để đường bao liền mạch khi đi vòng quanh khung.
 """
 
 from PyQt6.QtCore import Qt, QPointF, QRectF
-from PyQt6.QtGui import (QPainter, QPen, QBrush, QColor, QPolygonF,
-                         QPainterPath, QFont)
+from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QFontMetrics
 from PyQt6.QtWidgets import QWidget
 
 from .pan_zoom import PanZoom
@@ -132,6 +131,35 @@ class ForceDiagram(PanZoom, QWidget):
             return None
         return (float(v[0]), float(v[1]))
 
+    # Bước kẻ của kiểu tô "Line fill" (pixel). Midas mặc định kiểu này chứ
+    # không phải tô đặc — nét kẻ cho thấy tung độ biến thiên thế nào dọc phần
+    # tử, còn mảng màu đặc thì chỉ thấy đường bao.
+    HATCH_STEP = 7.0
+
+    def _segments(self, fn, field, grp, which, k):
+        """[(pa, pb, qa, qb, vi, vj)] — trục phần tử và cạnh ngoài của biểu đồ."""
+        out = []
+        for eid, n1, n2 in self._elems:
+            if n1 not in self._nodes or n2 not in self._nodes:
+                continue
+            vi = self._values(eid, 'I', field, grp)
+            vj = self._values(eid, 'J', field, grp)
+            if vi is None or vj is None:
+                continue
+            pa, pb = fn(*self._nodes[n1]), fn(*self._nodes[n2])
+            dx, dy = pb.x() - pa.x(), pb.y() - pa.y()
+            L = (dx * dx + dy * dy) ** 0.5
+            if L < 1e-9:
+                continue
+            nx, ny = -dy / L, dx / L          # pháp tuyến trái của phần tử
+            i = vi[1] if which == 'max' else vi[0]
+            j = vj[1] if which == 'max' else vj[0]
+            out.append((pa, pb,
+                        QPointF(pa.x() + nx * i * k, pa.y() + ny * i * k),
+                        QPointF(pb.x() + nx * j * k, pb.y() + ny * j * k),
+                        i, j))
+        return out
+
     def paintEvent(self, _e):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -145,117 +173,138 @@ class ForceDiagram(PanZoom, QWidget):
             return
 
         base, _s, span = self._base_mapper()
+
         def fn(x, z):
             return self.map_point(base(x, z))
 
         field, grp, unit, label = self._spec()
 
-        # Biên độ lớn nhất trong TOÀN bộ khung, để hai biểu đồ cùng một tỉ lệ
+        # Biên độ lớn nhất trong TOÀN khung để hai đường bao cùng một tỉ lệ
         peak = 0.0
         for eid, n1, n2 in self._elems:
             for end in ('I', 'J'):
                 v = self._values(eid, end, field, grp)
                 if v:
                     peak = max(peak, abs(v[0]), abs(v[1]))
-        # Tung độ quy về pixel: tính trên hình đã phóng nên biểu đồ phóng theo
         px_span = span * _s * self._zoom
         k = (self.ORD_FRAC * px_span / peak) if peak > 1e-9 else 0.0
 
-        if k <= 0:
-            p.setPen(QPen(QColor(t['dia_edge']), 1.4))
-            for eid, n1, n2 in self._elems:
-                if n1 in self._nodes and n2 in self._nodes:
-                    p.drawLine(fn(*self._nodes[n1]), fn(*self._nodes[n2]))
-            self._caption(p, f'{label} — không có số liệu')
-            p.end()
-            return
-
-        for which, col_key, alpha in (('max', 'part_top', 38),
-                                      ('min', 'part_bot', 38)):
-            path = QPainterPath()
-            col = QColor(t[col_key])
-            for eid, n1, n2 in self._elems:
-                if n1 not in self._nodes or n2 not in self._nodes:
-                    continue
-                vi = self._values(eid, 'I', field, grp)
-                vj = self._values(eid, 'J', field, grp)
-                if vi is None or vj is None:
-                    continue
-                a, b = self._nodes[n1], self._nodes[n2]
-                pa, pb = fn(*a), fn(*b)
-                dx, dy = pb.x() - pa.x(), pb.y() - pa.y()
-                L = (dx * dx + dy * dy) ** 0.5
-                if L < 1e-9:
-                    continue
-                nx, ny = -dy / L, dx / L       # pháp tuyến trái của phần tử
-                i = vi[1] if which == 'max' else vi[0]
-                j = vj[1] if which == 'max' else vj[0]
-                qa = QPointF(pa.x() + nx * i * k, pa.y() + ny * i * k)
-                qb = QPointF(pb.x() + nx * j * k, pb.y() + ny * j * k)
-                poly = QPolygonF([pa, qa, qb, pb])
-                path.addPolygon(poly)
-
-            p.setPen(Qt.PenStyle.NoPen)
-            fill = QColor(col)
-            fill.setAlpha(alpha)
-            p.setBrush(QBrush(fill))
-            p.drawPath(path)
-            pen = QPen(col, 1.6)
-            p.setPen(pen)
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            # Chỉ vẽ viền phía ngoài của mỗi dải: vẽ cả path thì hai cạnh dựng
-            # đứng ở mỗi phần tử thành một hàng rào răng lược.
-            for eid, n1, n2 in self._elems:
-                if n1 not in self._nodes or n2 not in self._nodes:
-                    continue
-                vi = self._values(eid, 'I', field, grp)
-                vj = self._values(eid, 'J', field, grp)
-                if vi is None or vj is None:
-                    continue
-                a, b = self._nodes[n1], self._nodes[n2]
-                pa, pb = fn(*a), fn(*b)
-                dx, dy = pb.x() - pa.x(), pb.y() - pa.y()
-                L = (dx * dx + dy * dy) ** 0.5
-                if L < 1e-9:
-                    continue
-                nx, ny = -dy / L, dx / L
-                i = vi[1] if which == 'max' else vi[0]
-                j = vj[1] if which == 'max' else vj[0]
-                p.drawLine(QPointF(pa.x() + nx * i * k, pa.y() + ny * i * k),
-                           QPointF(pb.x() + nx * j * k, pb.y() + ny * j * k))
-
-        # Khung vẽ SAU CÙNG, đè lên hai dải bao — vẽ trước thì nó chìm dưới
-        # phần tô và không còn nhìn ra hình mặt cắt để định vị.
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(QColor(t['dia_edge']), 1.6))
+        # Trục khung: nét mảnh, vẽ TRƯỚC để biểu đồ nằm đè lên — đây là đường
+        # chuẩn số 0 của biểu đồ, không phải hình trang trí.
+        p.setPen(QPen(QColor(t['ink_3']), 1.0))
         for eid, n1, n2 in self._elems:
             if n1 in self._nodes and n2 in self._nodes:
                 p.drawLine(fn(*self._nodes[n1]), fn(*self._nodes[n2]))
 
-        self._caption(p, f'{label} · lớn nhất {peak:,.1f} {unit}'
-                      .replace(',', ' '))
+        if k <= 0:
+            self._legend(p, label, unit, None, None)
+            p.end()
+            return
+
+        hi = lo = None
+        for which, col_key in (('max', 'part_top'), ('min', 'part_bot')):
+            col = QColor(t[col_key])
+            hatch = QColor(col)
+            hatch.setAlpha(115)
+            segs = self._segments(fn, field, grp, which, k)
+
+            # 1. nét kẻ tô (Line fill kiểu Midas)
+            p.setPen(QPen(hatch, 0.9))
+            for pa, pb, qa, qb, _vi, _vj in segs:
+                L = max(abs(pb.x() - pa.x()), abs(pb.y() - pa.y()))
+                n = max(1, int(L / self.HATCH_STEP))
+                for m in range(n + 1):
+                    u = m / n
+                    p.drawLine(
+                        QPointF(pa.x() + (pb.x() - pa.x()) * u,
+                                pa.y() + (pb.y() - pa.y()) * u),
+                        QPointF(qa.x() + (qb.x() - qa.x()) * u,
+                                qa.y() + (qb.y() - qa.y()) * u))
+
+            # 2. đường bao ngoài
+            p.setPen(QPen(col, 1.7))
+            for _pa, _pb, qa, qb, _vi, _vj in segs:
+                p.drawLine(qa, qb)
+
+            # 3. nhãn giá trị cực trị — Midas gọi là "Abs Max": một con số duy
+            #    nhất tại đúng chỗ nó xảy ra, không rải số khắp biểu đồ.
+            best = None
+            for _pa, _pb, qa, qb, vi, vj in segs:
+                for q, v in ((qa, vi), (qb, vj)):
+                    if best is None or abs(v) > abs(best[1]):
+                        best = (q, v)
+            if best and abs(best[1]) > 1e-9:
+                self._value_label(p, best[0], best[1], col)
+                if which == 'max':
+                    hi = best[1]
+                else:
+                    lo = best[1]
+
+        self._legend(p, label, unit, hi, lo)
         p.end()
 
-    def _caption(self, p, text):
+    def _value_label(self, p, pt, value, col):
+        """Số cực trị đặt cạnh đường bao, có nền để không lẫn vào nét kẻ."""
+        f = QFont(self.font())
+        f.setPointSizeF(max(6.5, f.pointSizeF() - 1.5))
+        f.setBold(True)
+        p.setFont(f)
+        txt = f'{value:,.1f}'.replace(',', ' ')
+        w = QFontMetrics(f).horizontalAdvance(txt) + 8
+        h = QFontMetrics(f).height() + 2
+        x = min(max(pt.x() - w / 2, 2), self.width() - w - 2)
+        y = min(max(pt.y() - h - 3, 2), self.height() - h - 2)
+        bg = QColor(self.t['panel'])
+        bg.setAlpha(225)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(bg))
+        p.drawRect(QRectF(x, y, w, h))
+        p.setPen(QPen(col))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawText(QRectF(x, y, w, h), int(Qt.AlignmentFlag.AlignCenter), txt)
+
+    def _legend(self, p, label, unit, hi, lo):
+        """Hộp chú giải góc trên trái, theo lối bảng Legend của Midas."""
         t = self.t
         f = QFont(self.font())
-        f.setPointSizeF(max(7.0, f.pointSizeF() - 1))
+        f.setPointSizeF(max(6.5, f.pointSizeF() - 1.5))
         p.setFont(f)
-        # Nền mờ dưới chữ: biểu đồ có thể chạy tới sát mép dưới, chữ đè lên
-        # đường bao là không đọc được.
+        fm = QFontMetrics(f)
+        rows = [(None, label), (None, f'Đơn vị: {unit}')]
+        if hi is None and lo is None:
+            rows.append((None, 'không có số liệu'))
+        else:
+            rows.append((t['part_top'],
+                         f'Max  {hi:,.1f}'.replace(',', ' ') if hi is not None
+                         else 'Max  —'))
+            rows.append((t['part_bot'],
+                         f'Min  {lo:,.1f}'.replace(',', ' ') if lo is not None
+                         else 'Min  —'))
+        # Bề rộng đo trên hàng ĐẦU ở kiểu đậm: hàng tiêu đề in đậm nên rộng hơn
+        # số đo thường, tính theo kiểu thường thì tên biểu đồ bị cắt mất đuôi.
+        fb = QFont(f)
+        fb.setBold(True)
+        w = max(max(fm.horizontalAdvance(s) for _c, s in rows),
+                QFontMetrics(fb).horizontalAdvance(rows[0][1])) + 24
+        h = len(rows) * (fm.height() + 1) + 10
+
+        p.setPen(QPen(QColor(t['border'])))
         bg = QColor(t['panel'])
-        bg.setAlpha(215)
-        p.fillRect(QRectF(0, self.height() - 22, self.width(), 22), bg)
-        p.setPen(QPen(QColor(t['ink_2'])))
-        p.drawText(QRectF(8, self.height() - 20, self.width() - 16, 16),
-                   int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-                   text)
-        # chú giải hai đường bao
-        p.setPen(QPen(QColor(t['part_top'])))
-        p.drawText(QRectF(8, 4, self.width() - 16, 16),
-                   int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter),
-                   'đường bao (max)')
-        p.setPen(QPen(QColor(t['part_bot'])))
-        p.drawText(QRectF(8, 18, self.width() - 16, 16),
-                   int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter),
-                   'đường bao (min)')
+        bg.setAlpha(232)
+        p.setBrush(QBrush(bg))
+        p.drawRect(QRectF(6, 6, w, h))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        y = 11
+        for i, (col, s) in enumerate(rows):
+            f.setBold(i == 0)
+            p.setFont(f)
+            p.setPen(QPen(QColor(col or (t['ink'] if i == 0 else t['ink_2']))))
+            p.drawText(QRectF(14, y, w - 16, fm.height()),
+                       int(Qt.AlignmentFlag.AlignLeft
+                           | Qt.AlignmentFlag.AlignVCenter), s)
+            if col:
+                p.fillRect(QRectF(10, y + fm.height() / 2 - 1.5, 0, 0), QColor(col))
+                p.setPen(QPen(QColor(col), 2.4))
+                p.drawLine(QPointF(9, y + fm.height() / 2),
+                           QPointF(12, y + fm.height() / 2))
+            y += fm.height() + 1

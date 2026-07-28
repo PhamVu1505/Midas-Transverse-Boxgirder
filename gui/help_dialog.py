@@ -265,6 +265,12 @@ cột bản đáy và bụng bị khoá, hiện dấu gạch — không gõ nh�
 <p>d<sub>p</sub> tính thẳng từ đường cáp trong DXF: nội suy cao độ cáp tại vị trí
 điểm kiểm toán rồi đo tới thớ chịu nén (thớ nào chịu nén thì suy từ dấu của
 M<sub>u</sub>). Sửa lại được nếu cần.</p>
+{note('Ô <b>Kể đến cáp DƯL</b> mặc định <b>TẮT</b>: sức kháng uốn tính như tiết '
+      'diện bê tông cốt thép thường, bỏ cáp ra ngoài — thiên về bất lợi. Bật lên '
+      'thì sức kháng uốn tăng rất mạnh (điểm A của S1: hệ số 1,36 → 3,28) và '
+      'kiểm toán nứt bị bỏ qua vì chưa xét nén trước. Nhật ký ghi rõ đang chạy '
+      'ở chế độ nào, file Excel xuất ra cũng ghi ngay dòng đầu.', warn)}
+
 <p>Diện tích một bó lấy từ template số liệu (khoá <code>Ap</code>). Cự ly cáp theo
 phương dọc cầu mặc định <b>1000 mm</b> — đúng bằng giả thiết của mô hình Midas:
 khung ngang được dựng thành dải rộng 1 m và cáp trong dải đó mang diện tích của

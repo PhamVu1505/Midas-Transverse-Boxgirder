@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QTableWidget, QTableWidgetItem, QHeaderView,
                              QAbstractItemView,
                              QFileDialog, QMessageBox, QSizePolicy,
-                             QScrollArea, QSplitter, QFrame)
+                             QScrollArea, QSplitter, QFrame, QCheckBox)
 
 from src import section_check as sc
 from src.result_reader import order_points
@@ -77,7 +77,8 @@ D_FORCE = '{:,.0f}'     # Mu, Vu, Mser, Mr, Mcr, Vc, Vs, Vr
 D_LEN = '{:,.0f}'       # h, c, a, ds, dp, dv, sx, sxe, s
 D_AREA = '{:,.0f}'      # As, Ap, Av
 D_STRESS = '{:,.0f}'    # fs, fss, fsa, fps
-D_COEF2 = '{:.2f}'      # n, βs, γe, θ, β, hệ số Mr/Mu
+D_COEF1 = '{:.1f}'      # θ, β — file mẫu để một chữ số
+D_COEF2 = '{:.2f}'      # n, βs, γe, hệ số Mr/Mu
 D_COEF3 = '{:.3f}'      # β₁, c/de, m, k, j, εx×10³
 
 
@@ -261,6 +262,16 @@ class CheckTab(QWidget):
         row2.addWidget(QLabel('Hệ số sức kháng:'))
         self.sp_phif = self._spin(row2, 'φ uốn', 0.5, 1.0, 0.90, 2, 0.05)
         self.sp_phiv = self._spin(row2, 'φ cắt', 0.5, 1.0, 0.90, 2, 0.05)
+        row2.addSpacing(14)
+        # MẶC ĐỊNH TẮT. Bỏ cáp ra khỏi sức kháng là thiên về bất lợi — VuPQ chốt
+        # lấy hướng đó. Cáp làm Mr tăng rất mạnh (điểm A của S1: 1,36 → 3,28)
+        # nên không được bật sẵn rồi để người dùng tự phát hiện.
+        self.chk_pt = QCheckBox('Kể đến cáp DƯL')
+        self.chk_pt.setToolTip(
+            'Tắt (mặc định): bỏ cáp khỏi sức kháng uốn — thiên về bất lợi.\n'
+            'Bật: dùng dp và Ap ở bảng trên. Sức kháng uốn sẽ tăng đáng kể;\n'
+            'kiểm toán nứt khi đó bị bỏ qua vì chưa xét nén trước.')
+        row2.addWidget(self.chk_pt)
         row2.addStretch()
         lay.addLayout(row2)
 
@@ -268,6 +279,7 @@ class CheckTab(QWidget):
             w.currentTextChanged.connect(self._save_opts)
         for w in (self.sp_fc, self.sp_fy, self.sp_phif, self.sp_phiv):
             w.valueChanged.connect(self._save_opts)
+        self.chk_pt.toggled.connect(self._save_opts)
 
         # ── bảng nhập cốt thép ──
         self.tb_in = QTableWidget(len(INPUT_ROWS) + 1, 1)
@@ -510,6 +522,7 @@ class CheckTab(QWidget):
             self.sp_fy.setValue(float(o.get('fy', 420.0)))
             self.sp_phif.setValue(float(o.get('phi_f', 0.90)))
             self.sp_phiv.setValue(float(o.get('phi_v', 0.90)))
+            self.chk_pt.setChecked(bool(o.get('use_pt', False)))
         finally:
             self._loading = False
 
@@ -537,6 +550,7 @@ class CheckTab(QWidget):
             'fy': self.sp_fy.value(),
             'phi_f': self.sp_phif.value(),
             'phi_v': self.sp_phiv.value(),
+            'use_pt': self.chk_pt.isChecked(),
         })
         self.project_changed.emit()
 
@@ -736,9 +750,10 @@ class CheckTab(QWidget):
         mat = sc.Material(fc=self.sp_fc.value(), fy=self.sp_fy.value(),
                           fpu=fpu, fpy=fpy, Ep=Ep)
         rebars, tendons = {}, {}
+        use_pt = self.chk_pt.isChecked()
         for j, pt in enumerate(self._points, 1):
             rebars[pt] = self._rebar_of_column(j)
-            td = self._tendon_of_column(j)
+            td = self._tendon_of_column(j) if use_pt else None
             if td:
                 tendons[pt] = td
 
@@ -782,10 +797,13 @@ class CheckTab(QWidget):
         # Nói rõ điểm nào được tính có cáp: cáp làm sức kháng uốn tăng đáng kể,
         # không được để nó lặng lẽ đi vào kết quả.
         if tendons:
-            self._log('[%s] Có cáp tại %s — Ap = %s mm²/m, dp = %s mm' % (
+            self._log('[%s] Kể đến cáp tại %s — Ap = %s mm²/m, dp = %s mm' % (
                 name, ', '.join(order_points(tendons.keys())),
                 ' / '.join(f'{t.Ap:.0f}' for _p, t in sorted(tendons.items())),
                 ' / '.join(f'{t.dp:.0f}' for _p, t in sorted(tendons.items()))))
+        elif any(self._pt_of(p)['has_pt'] for p in self._points):
+            self._log(f'[{name}] BỎ QUA cáp DƯL trong sức kháng (thiên về bất '
+                      f'lợi) — bật ô “Kể đến cáp DƯL” nếu muốn tính có cáp')
         self._log(f'[{name}] {n_ok}/{n} điểm ĐẠT',
                   'ok' if n_ok == n else 'warn')
         self.status_bar.showMessage(f'{name}: kiểm toán {n_ok}/{n} điểm đạt')
@@ -908,8 +926,8 @@ class CheckTab(QWidget):
              else R[p]['shear'].values['εx'] * 1000, D_COEF3)
         group('sx (mm)', 'shear', 'sx', D_LEN)
         group('sxe (mm)', 'shear', 'sxe', D_LEN)
-        group('Góc nghiêng ứng suất nén  θ (°)', 'shear', 'θ', D_COEF2)
-        group('Hệ số khả năng chịu kéo  β', 'shear', 'β', D_COEF2)
+        group('Góc nghiêng ứng suất nén  θ (°)', 'shear', 'θ', D_COEF1)
+        group('Hệ số khả năng chịu kéo  β', 'shear', 'β', D_COEF1)
         data('Tra bảng', lambda p: R[p]['shear'].values.get('bảng', '—'))
         group('Sức kháng cắt bê tông  Vc (kN)', 'shear', 'Vc', D_FORCE)
         group('Sức kháng cắt cốt đai  Vs (kN)', 'shear', 'Vs', D_FORCE)
@@ -1042,5 +1060,7 @@ class CheckTab(QWidget):
             'fc': self.sp_fc.value(), 'fy': self.sp_fy.value(),
             'Ec': m.Ec if m else None,
             'phi_f': self.sp_phif.value(), 'phi_v': self.sp_phiv.value(),
+            'use_pt': bool(getattr(self, '_rebar_map', None)
+                           and self.chk_pt.isChecked()),
             'rebars': {p: self._rb(p) for p in self._out_points},
         }

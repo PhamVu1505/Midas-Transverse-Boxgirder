@@ -22,9 +22,12 @@ CLI dùng lại được.
 
 import os
 
-# Định dạng số của file mẫu
+# Định dạng số của file mẫu. Ít chữ số sau dấu phẩy là CÓ CHỦ Ý: bảng in ra
+# giấy, mỗi cột chỉ rộng 8,5 ký tự, mà nội lực lấy tới hai chữ số thập phân thì
+# vừa tràn cột vừa gợi ý một độ chính xác không có thật.
 F_INT = '0;\\-0;"-"'                    # nội lực, kích thước, diện tích, ứng suất
-F_2 = '0.00;\\-0.00;"-"'                # n, βs, θ, β, hệ số
+F_1 = '0.0;\\-0.0;"-"'                  # θ, β
+F_2 = '0.00;\\-0.00;"-"'                # n, βs, hệ số sức kháng/nội lực
 F_3 = '0.000;\\-0.000;"-"'              # β₁, c/de, m, k, j, εx×10³
 
 # (mô tả, ký hiệu, đơn vị, hàm(r, cp, rb), định dạng)
@@ -70,7 +73,7 @@ _SECTIONS = [
         ('Cường độ chịu kéo khi uốn', 'fr', 'MPa',
          lambda r, c, b: r['limits'].values.get('fr'), F_2),
         ('Mô đun tiết diện', 'S', 'm3',
-         lambda r, c, b: r['limits'].values.get('S'), '0.0000'),
+         lambda r, c, b: r['limits'].values.get('S'), F_3),
         ('Mômen kháng nứt', 'Mcr', 'KN.m',
          lambda r, c, b: r['limits'].values.get('Mcr'), F_INT),
         ('1,33 lần mômen tính toán', '1.33Mu', 'KN.m',
@@ -117,9 +120,9 @@ _SECTIONS = [
         ('', 'sx', 'mm', lambda r, c, b: r['shear'].values.get('sx'), F_INT),
         ('', 'sxe', 'mm', lambda r, c, b: r['shear'].values.get('sxe'), F_INT),
         ('Góc nghiêng ứng suất nén', 'θ', 'deg',
-         lambda r, c, b: r['shear'].values.get('θ'), F_2),
+         lambda r, c, b: r['shear'].values.get('θ'), F_1),
         ('Hệ số khả năng chịu kéo của bê tông', 'β', '',
-         lambda r, c, b: r['shear'].values.get('β'), F_2),
+         lambda r, c, b: r['shear'].values.get('β'), F_1),
         ('Tra bảng', '', '', lambda r, c, b: r['shear'].values.get('bảng'), None),
         ('Sức kháng cắt của bê tông', 'Vc', 'KN',
          lambda r, c, b: r['shear'].values.get('Vc'), F_INT),
@@ -207,7 +210,9 @@ def export_check_xlsx(path: str, section_name: str, points: list,
                 + (f" · Ec = {meta['Ec']:.0f} MPa" if meta.get('Ec') else '')
                 + f" · φ uốn = {meta.get('phi_f', 0):.2f}"
                 + f" · φ cắt = {meta.get('phi_v', 0):.2f}"
-                + f" · cắt tra theo: {meta.get('shear_method', '')}")
+                + f" · cắt tra theo: {meta.get('shear_method', '')}"
+                + (' · CÓ kể đến cáp DƯL' if meta.get('use_pt')
+                   else ' · KHÔNG kể đến cáp DƯL (thiên về bất lợi)'))
     c.font = font(italic=True, color='595959', size=9)
     c.alignment = center
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=ncol)
