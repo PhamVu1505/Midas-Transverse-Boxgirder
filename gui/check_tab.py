@@ -28,7 +28,7 @@ from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QBrush
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QComboBox, QPushButton, QDoubleSpinBox,
                              QTableWidget, QTableWidgetItem, QHeaderView,
-                             QStyledItemDelegate, QAbstractItemView,
+                             QAbstractItemView,
                              QFileDialog, QMessageBox, QSizePolicy,
                              QScrollArea, QSplitter, QFrame)
 
@@ -45,6 +45,8 @@ GROUP_OF = {'A': 'Top slab', 'B': 'Top slab', 'C': 'Top slab', 'D': 'Top slab',
 DEFAULT_POINTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
 # Hàng nhập: (nhãn, khoá trong Section.rebars, giá trị mặc định, số chữ số)
+# Hai hàng cuối là cáp DƯL và chỉ mở khi bộ phận đó THẬT SỰ có cáp — xem
+# `src/pt_layout.py`.
 INPUT_ROWS = [
     ('Đường kính Ø (mm)',     'dia',        16.0,  0),
     ('Cự ly @ (mm)',          'spacing',    150.0, 0),
@@ -52,26 +54,43 @@ INPUT_ROWS = [
     ('Cốt đai Av (mm²)',      'Av',         0.0,   0),
     ('Cự ly đai s (mm)',      'Av_spacing', 0.0,   0),
     ('Cáp dp (mm)',           'dp',         0.0,   0),
-    ('Cáp Ap (mm²)',          'Ap',         0.0,   0),
+    ('Cự ly cáp @ (mm)',      'pt_spacing', 0.0,   0),
 ]
+PT_KEYS = ('dp', 'pt_spacing')
 INPUT_TIPS = {
     'cover': 'Từ mép bê tông đến TÂM thanh chịu kéo',
     'Av': 'Diện tích nhánh đai nằm trong MỘT cự ly s, trên lát cắt rộng 1 m — '
           'không phải mm²/m',
     'Av_spacing': 'Để 0 thì lấy bằng cự ly cốt thép chịu uốn',
-    'dp': 'Từ thớ nén ngoài cùng đến trọng tâm cáp; 0 = không có cáp',
-    'Ap': 'Diện tích cáp trên lát cắt rộng 1 m',
+    'dp': 'Từ thớ nén ngoài cùng đến trọng tâm cáp.\n'
+          'Tự nhận diện từ đường cáp trong DXF — sửa lại được.',
+    'pt_spacing': 'Cự ly cáp theo phương dọc cầu (@-CTC).\n'
+                  'Ap trên 1 m = Ap một bó × 1000 / cự ly.',
 }
 
-# Ngưỡng đổi màu dải mức huy động
-UTIL_WARN = 0.75
+# Số chữ số thập phân — theo đúng định dạng ô của file mẫu Hà Tam
+# (`data/Transverse-HT.xls`, sheet `Strength`): nội lực, kích thước, diện tích
+# và ứng suất để 0 chữ số; hệ số không thứ nguyên để 2–3.
+D_FORCE = '{:,.0f}'     # Mu, Vu, Mser, Mr, Mcr, Vc, Vs, Vr
+D_LEN = '{:,.0f}'       # h, c, a, ds, dp, dv, sx, sxe, s
+D_AREA = '{:,.0f}'      # As, Ap, Av
+D_STRESS = '{:,.0f}'    # fs, fss, fsa, fps
+D_COEF2 = '{:.2f}'      # n, βs, γe, θ, β, hệ số Mr/Mu
+D_COEF3 = '{:.3f}'      # β₁, c/de, m, k, j, εx×10³
 
 
-def _f(v, fmt='{:.2f}'):
-    """Số → chuỗi; None hoặc không phải số → gạch ngang."""
+def _f(v, fmt=D_COEF2):
+    """Số → chuỗi; None hoặc không phải số → gạch ngang.
+
+    Số 0 cũng ra gạch ngang, đúng như định dạng `0;\\-0;"-"` của file mẫu: cột
+    nào không có đại lượng đó thì để trống nhìn cho sạch, chứ một bảng đầy số 0
+    thì mắt phải tự lọc.
+    """
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         return '—'
-    return fmt.format(v)
+    if abs(v) < 5e-9:
+        return '—'
+    return fmt.format(v).replace(',', ' ')
 
 
 class PointHeader(QHeaderView):
@@ -135,28 +154,20 @@ class PointHeader(QHeaderView):
         p.restore()
 
 
-class UtilDelegate(QStyledItemDelegate):
-    """Vẽ dải mức huy động dưới đáy ô. Tỉ lệ đọc từ `Qt.UserRole`."""
+# Hệ số an toàn tối thiểu để coi là "đủ dư". Dưới ngưỡng này tuy vẫn đạt nhưng
+# chỉ dư chưa tới 5% — tô vàng để người thiết kế biết mà cân nhắc.
+MARGIN_TIGHT = 1.05
 
-    def __init__(self, theme, parent=None):
-        super().__init__(parent)
-        self.t = theme
 
-    def paint(self, p, opt, index):
-        super().paint(p, opt, index)
-        ratio = index.data(Qt.ItemDataRole.UserRole)
-        if not isinstance(ratio, float) or ratio <= 0:
-            return
-        t = self.t
-        col = QColor(t['err'] if ratio > 1.0
-                     else t['warn'] if ratio > UTIL_WARN else t['ok'])
-        r = opt.rect
-        w = max(2, int(r.width() * min(ratio, 1.0)))
-        p.save()
-        p.fillRect(r.left(), r.bottom() - 3, r.width(), 3,
-                   QColor(t['sunken']))
-        p.fillRect(r.left(), r.bottom() - 3, w, 3, col)
-        p.restore()
+def verdict_fill(ratio, t: dict):
+    """Nền ô theo hệ số sức kháng/nội lực: xanh · vàng (dư <5%) · đỏ."""
+    if not isinstance(ratio, (int, float)) or ratio <= 0:
+        return None
+    if ratio < 1.0:
+        return QColor(t['err_bg'])
+    if ratio < MARGIN_TIGHT:
+        return QColor(t['warn_bg'])
+    return QColor(t['ok_bg'])
 
 
 class CheckTab(QWidget):
@@ -280,8 +291,6 @@ class CheckTab(QWidget):
         self.tb_out.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.tb_out.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection)
-        self.util_delegate = UtilDelegate(self.t, self.tb_out)
-        self.tb_out.setItemDelegate(self.util_delegate)
 
         # Hai bảng ngăn bằng splitter: mặt cắt nhiều hộp có 18 cột và bảng nhập
         # cao 8 hàng, ai muốn xem kết quả nhiều hơn thì kéo lên được.
@@ -338,7 +347,6 @@ class CheckTab(QWidget):
         self.t = theme
         self.hdr_in.apply_theme(theme)
         self.hdr_out.apply_theme(theme)
-        self.util_delegate.t = theme
         self._apply_inline_styles()
         self._fill_input()
         if self._results:
@@ -398,6 +406,7 @@ class CheckTab(QWidget):
     def _on_section_changed(self, name):
         self._results = {}
         self._points = self._points_for(name)
+        self._detect_pt(name)
         self._load_opts(name)
         self._out_points = []
         self._results = {}
@@ -447,12 +456,47 @@ class CheckTab(QWidget):
                           'warn')
         return list(DEFAULT_POINTS)
 
+    # ── cáp dự ứng lực ──
+    def _pt_of(self, pt) -> dict:
+        d = getattr(self, '_pt_map', {})
+        return d.get(pt) or d.get(pt[0]) or {'has_pt': False, 'dp': 0.0}
+
+    def _detect_pt(self, name):
+        """Nhận diện cáp từ DXF đã dựng: bộ phận nào có cáp, dp bao nhiêu."""
+        self._pt_map = {}
+        sec = self.project.find(name) if name else None
+        if not (sec and sec.topo and os.path.exists(sec.topo)):
+            return
+        try:
+            import json
+            from src.pt_layout import detect
+            with open(sec.topo, encoding='utf-8') as f:
+                topo = json.load(f)
+            self._pt_map = detect(topo, self.results_provider().get(name) or {})
+        except Exception as e:
+            self._log(f'[{name}] không nhận diện được cáp DƯL: {e}', 'warn')
+            return
+        zones = {}
+        for p, rec in self._pt_map.items():
+            if rec['has_pt']:
+                zones.setdefault(rec['zone'], set()).update(rec['cables'])
+        if not zones:
+            return
+        line = '[%s] Cáp DƯL: %s' % (name, ' · '.join(
+            f'{z} ({", ".join(sorted(c))})' for z, c in sorted(zones.items())))
+        # Nhận diện chạy lại mỗi lần đổi mặt cắt hay xử lý xong Beam Force —
+        # không lọc thì cùng một dòng lặp lại trong Messages.
+        if line != getattr(self, '_pt_logged', ''):
+            self._pt_logged = line
+            self._log(line)
+
     # ── tuỳ chọn ──
     def _load_opts(self, name):
         sec = self.project.find(name) if name else None
         o = dict(sec.check_opts) if sec else {}
-        fc, fpu, fpy, Ep = self._material_defaults(sec)
+        fc, fpu, fpy, Ep, ap1 = self._material_defaults(sec)
         self._tpl_mat = (fc, fpu, fpy, Ep)
+        self._ap_bundle = ap1
         self._loading = True
         try:
             for w, k, d in ((self.cb_std, 'standard', sc.STANDARDS[0]),
@@ -468,17 +512,17 @@ class CheckTab(QWidget):
             self._loading = False
 
     def _material_defaults(self, sec):
-        """(f'c, fpu, fpy, Ep) lấy từ template số liệu; không đọc được thì
-        dùng bộ thông dụng."""
+        """(f'c, fpu, fpy, Ep, Ap một bó) lấy từ template số liệu; không đọc
+        được thì dùng bộ thông dụng và Ap = 0 (buộc phải nhập tay)."""
         tpl = self.project.template_for(sec) if sec else self.project.template
         if tpl and os.path.exists(tpl):
             try:
                 from src.input_reader import read_inputs
                 d = read_inputs(tpl)
-                return d['fc'], d['fpu'], d['fpy'], d['Ep']
+                return d['fc'], d['fpu'], d['fpy'], d['Ep'], d['Ap']
             except Exception:
                 pass
-        return 40.0, 1860.0, 1674.0, 197000.0
+        return 40.0, 1860.0, 1674.0, 197000.0, 0.0
 
     def _save_opts(self):
         name = self.section_name
@@ -503,50 +547,69 @@ class CheckTab(QWidget):
         hdr.points = list(points)
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        table.setColumnWidth(0, 230)
+        # Nhãn hàng viết đủ chữ như file mẫu ("Sức kháng tính toán Mr = φ·Mn")
+        # nên cột đầu phải rộng; hẹp hơn là bị cắt thành "Sức kháng tính t…".
+        table.setColumnWidth(0, 268)
         hdr.viewport().update()
 
     def _rebars_of(self, name) -> dict:
         sec = self.project.find(name) if name else None
         return dict(sec.rebars) if sec else {}
 
+    DERIVED_ROWS = [('→ As (mm²/m)', 'As'), ('→ Ap (mm²/m)', 'Ap')]
+
     def _fill_input(self):
         self._loading = True
         try:
             self._set_columns(self.tb_in, self._points)
-            self.tb_in.setRowCount(len(INPUT_ROWS) + 1)
+            self.tb_in.setRowCount(len(INPUT_ROWS) + len(self.DERIVED_ROWS))
             stored = self._rebars_of(self.section_name)
             soft = QColor(self.t['accent_soft'])
             alt = QColor(self.t['panel_alt'])
+            ro = Qt.ItemFlag.ItemIsEnabled
+            rw = ro | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable
             for i, (label, key, dflt, dec) in enumerate(INPUT_ROWS):
                 head = QTableWidgetItem(label)
                 head.setBackground(alt)
-                head.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                head.setFlags(ro)
                 if key in INPUT_TIPS:
                     head.setToolTip(INPUT_TIPS[key])
                 self.tb_in.setItem(i, 0, head)
                 for j, pt in enumerate(self._points, 1):
+                    # Bộ phận không có cáp thì KHOÁ hai ô cáp lại. Để mở thì sớm
+                    # muộn cũng có người gõ dp vào cột bản đáy của mặt cắt chỉ
+                    # căng cáp bản mặt, và sức kháng uốn vọt lên không ai biết.
+                    live = key not in PT_KEYS or self._pt_of(pt)['has_pt']
                     v = stored.get(pt, {}).get(key)
                     if v is None:
-                        v = stored.get(pt[0], {}).get(key, dflt)
-                    it = QTableWidgetItem(f'{float(v):.{dec}f}')
-                    it.setBackground(soft)
+                        v = stored.get(pt[0], {}).get(key)
+                    if v is None:
+                        v = self._pt_of(pt)['dp'] if key == 'dp' else dflt
+                    if not live:
+                        v = 0.0
+                    it = QTableWidgetItem(f'{float(v):.{dec}f}' if live else '—')
+                    it.setBackground(soft if live else alt)
+                    it.setFlags(rw if live else ro)
+                    if not live:
+                        it.setForeground(QColor(self.t['ink_3']))
+                        it.setToolTip(f'{pt} không có cáp dự ứng lực trong DXF')
                     it.setTextAlignment(Qt.AlignmentFlag.AlignRight
                                         | Qt.AlignmentFlag.AlignVCenter)
                     self.tb_in.setItem(i, j, it)
 
-            r = len(INPUT_ROWS)
-            head = QTableWidgetItem('→ As (mm²/m)')
-            head.setBackground(alt)
-            head.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self.tb_in.setItem(r, 0, head)
-            for j, pt in enumerate(self._points, 1):
-                it = QTableWidgetItem('')
-                it.setFlags(Qt.ItemFlag.ItemIsEnabled)
-                it.setForeground(QColor(self.t['ink_2']))
-                it.setTextAlignment(Qt.AlignmentFlag.AlignRight
-                                    | Qt.AlignmentFlag.AlignVCenter)
-                self.tb_in.setItem(r, j, it)
+            for k, (label, _key) in enumerate(self.DERIVED_ROWS):
+                r = len(INPUT_ROWS) + k
+                head = QTableWidgetItem(label)
+                head.setBackground(alt)
+                head.setFlags(ro)
+                self.tb_in.setItem(r, 0, head)
+                for j, pt in enumerate(self._points, 1):
+                    it = QTableWidgetItem('')
+                    it.setFlags(ro)
+                    it.setForeground(QColor(self.t['ink_2']))
+                    it.setTextAlignment(Qt.AlignmentFlag.AlignRight
+                                        | Qt.AlignmentFlag.AlignVCenter)
+                    self.tb_in.setItem(r, j, it)
         finally:
             self._loading = False
         self._update_as()
@@ -596,28 +659,42 @@ class CheckTab(QWidget):
         self._update_as()
         self._store_rebars()
 
-    def _rebar_of_column(self, j) -> sc.Rebar:
-        vals = {key: self._cell_val(i, j)
+    def _col_vals(self, j) -> dict:
+        return {key: self._cell_val(i, j)
                 for i, (_, key, _, _) in enumerate(INPUT_ROWS)}
-        return sc.Rebar(dia=vals['dia'], spacing=vals['spacing'],
-                        cover=vals['cover'], Av=vals['Av'],
-                        Av_spacing=vals['Av_spacing'])
+
+    def _rebar_of_column(self, j) -> sc.Rebar:
+        v = self._col_vals(j)
+        return sc.Rebar(dia=v['dia'], spacing=v['spacing'], cover=v['cover'],
+                        Av=v['Av'], Av_spacing=v['Av_spacing'])
+
+    def _ap_of_column(self, j) -> float:
+        """Ap trên một mét dài = diện tích MỘT BÓ × 1000 / cự ly cáp dọc cầu.
+
+        Cùng cách file mẫu làm (hàng `dp` và `@-CTC` ở sheet `Strength`). Diện
+        tích bó lấy từ template số liệu; mặt cắt ngang không mang cự ly dọc cầu
+        nên chỗ đó phải nhập.
+        """
+        s = self._col_vals(j)['pt_spacing']
+        ap1 = getattr(self, '_ap_bundle', 0.0)
+        return ap1 * 1000.0 / s if s > 0 and ap1 > 0 else 0.0
 
     def _tendon_of_column(self, j):
-        vals = {key: self._cell_val(i, j)
-                for i, (_, key, _, _) in enumerate(INPUT_ROWS)}
-        if vals['dp'] > 0 and vals['Ap'] > 0:
-            return sc.Tendon(dp=vals['dp'], Ap=vals['Ap'])
+        v = self._col_vals(j)
+        Ap = self._ap_of_column(j)
+        if v['dp'] > 0 and Ap > 0:
+            return sc.Tendon(dp=v['dp'], Ap=Ap)
         return None
 
     def _update_as(self):
-        r = len(INPUT_ROWS)
+        r0 = len(INPUT_ROWS)
         self._loading = True
         for j in range(1, self.tb_in.columnCount()):
-            As = self._rebar_of_column(j).As()
-            it = self.tb_in.item(r, j)
-            if it:
-                it.setText(f'{As:,.0f}'.replace(',', ' '))
+            for k, val in enumerate((self._rebar_of_column(j).As(),
+                                     self._ap_of_column(j))):
+                it = self.tb_in.item(r0 + k, j)
+                if it:
+                    it.setText(_f(val, D_AREA))
         self._loading = False
 
     def _store_rebars(self):
@@ -705,10 +782,15 @@ class CheckTab(QWidget):
     # ─────────────────────────────────────────
     def _rows(self):
         """Danh sách hàng: ('sect', tiêu đề) · ('data', nhãn, [ô]) ·
-        ('util', nhãn, [(chữ, tỉ lệ)]) · ('verdict', nhãn, chữ, đạt?).
+        ('ratio', nhãn, [(chữ, hệ số)]).
 
         Ô của hàng 'data' là chuỗi đã định dạng — mọi phép tính nằm ở
-        `section_check`, ở đây chỉ trình bày.
+        `section_check`, ở đây chỉ trình bày. Số chữ số theo file mẫu Hà Tam.
+
+        Không còn hàng "Kết luận": kết luận từng nhóm nay nằm ngay ở hàng **hệ
+        số sức kháng/nội lực** — nền xanh là đạt, vàng là đạt mà dư chưa tới 5%,
+        đỏ là không đạt. Đọc theo cột thấy ngay điểm nào yếu, thay vì phải bắt
+        chéo giữa một dòng chữ và tám cột số.
         """
         P = self._out_points
         R = self._results
@@ -718,105 +800,109 @@ class CheckTab(QWidget):
         std_tcvn = getattr(self, '_run_std', sc.STANDARDS[0]) != '22TCN 272-05'
         rows = []
 
-        def data(label, fn, fmt='{:.2f}'):
+        def data(label, fn, fmt=D_COEF2):
             cells = []
             for p in P:
                 v = fn(p)
                 cells.append(v if isinstance(v, str) else _f(v, fmt))
             rows.append(('data', label, cells))
 
-        def group(label, key, sub, fmt='{:.2f}'):
+        def group(label, key, sub, fmt=D_COEF2):
             data(label, lambda p: R[p][key].values.get(sub), fmt)
 
-        def verdict(label, key):
-            got = [p for p in P if R[p][key].applicable]
-            bad = [p for p in P if R[p][key].applicable and not R[p][key].ok]
-            if not got:
-                rows.append(('verdict', label, 'KHÔNG ÁP DỤNG · '
-                             'chưa nhập cốt thép', None))
-            elif bad:
-                rows.append(('verdict', label,
-                             f'KHÔNG ĐẠT · {len(bad)}/{len(got)} điểm: '
-                             + ', '.join(bad), False))
-            else:
-                rows.append(('verdict', label,
-                             f'ĐẠT · {len(got)}/{len(got)} điểm', True))
+        def ratio(label, key):
+            """Hệ số sức kháng / nội lực — nghịch đảo mức huy động.
 
-        def util(label, key):
+            Kỹ sư đọc hệ số an toàn (Mr/Mu = 2,15) chứ không đọc phần trăm huy
+            động; và số càng LỚN càng an toàn thì cùng chiều với mọi bảng kiểm
+            toán khác trong hồ sơ.
+            """
             cells = []
             for p in P:
                 r = R[p][key]
-                cells.append(('—' if not r.applicable else f'{r.ratio * 100:.0f}%',
-                              r.ratio if r.applicable else 0.0))
-            rows.append(('util', label, cells))
+                k = (r.capacity / abs(r.demand)
+                     if r.applicable and abs(r.demand) > 1e-9 else None)
+                cells.append((_f(k, D_COEF2) if k is not None else '—', k))
+            rows.append(('ratio', label, cells))
 
         rows.append(('sect', 'Nội lực và cấu tạo'))
-        data('h (mm)', lambda p: cps.get(p, {}).get('h'), '{:.0f}')
-        data('Mu (kN·m)', lambda p: cps.get(p, {}).get('Mu'))
-        data('Vu (kN)', lambda p: cps.get(p, {}).get('Vu'))
-        data('Mser (kN·m)', lambda p: cps.get(p, {}).get('Mser'))
-        rows.append(('data', 'Cốt thép Ø / @ (mm)', [
-            f"{self._rb(p).dia:g}/{self._rb(p).spacing:g}" for p in P]))
-        group('As (mm²/m)', 'flexure', 'As', '{:.0f}')
-        group('ds (mm)', 'flexure', 'ds', '{:.0f}')
-        rows.append(('data', 'Cáp dp (mm) · Ap (mm²)', [
-            (f"{R[p]['flexure'].values.get('dp', 0):.0f} · "
-             f"{R[p]['flexure'].values.get('Ap', 0):.0f}")
-            if R[p]['flexure'].values.get('Ap') else '—' for p in P]))
+        data('Chiều cao mặt cắt  h (mm)', lambda p: cps.get(p, {}).get('h'), D_LEN)
+        data('Mômen tính toán  Mu (kN·m)', lambda p: cps.get(p, {}).get('Mu'), D_FORCE)
+        data('Lực cắt tính toán  Vu (kN)', lambda p: cps.get(p, {}).get('Vu'), D_FORCE)
+        data('Mômen TTGH Sử dụng  Mser (kN·m)',
+             lambda p: cps.get(p, {}).get('Mser'), D_FORCE)
+        data('Đường kính cốt thép  Ø (mm)', lambda p: self._rb(p).dia, D_LEN)
+        data('Cự ly cốt thép  @ (mm)', lambda p: self._rb(p).spacing, D_LEN)
+        data('Lớp bảo vệ  dc (mm)', lambda p: self._rb(p).cover, D_LEN)
+        group('Diện tích cốt thép  As (mm²/m)', 'flexure', 'As', D_AREA)
+        group('Chiều cao có hiệu  ds (mm)', 'flexure', 'ds', D_LEN)
+        group('Vị trí cáp DƯL  dp (mm)', 'flexure', 'dp', D_LEN)
+        group('Diện tích cáp  Ap (mm²/m)', 'flexure', 'Ap', D_AREA)
+        group('Ứng suất trong cáp  fps (MPa)', 'flexure', 'fps', D_STRESS)
 
-        rows.append(('sect', 'Kiểm toán uốn — Mu ≤ Mr = φMn  (Đ.7.3.2)'))
-        group('c (mm)', 'flexure', 'c')
-        group('a = β₁·c (mm)', 'flexure', 'a')
-        group('Mn (kN·m)', 'flexure', 'Mn')
-        data('Mr = φ·Mn (kN·m)', lambda p: R[p]['flexure'].capacity)
-        util('Mức huy động Mu/Mr', 'flexure')
-        verdict('Kết luận uốn', 'flexure')
+        rows.append(('sect', 'Sức kháng uốn — Mu ≤ Mr = φMn  (Đ.7.3.2)'))
+        group('Hệ số quy đổi khối ứng suất  β₁', 'flexure', 'beta1', D_COEF3)
+        group('Trục trung hoà  c (mm)', 'flexure', 'c', D_LEN)
+        group('Chiều cao vùng nén  a = β₁·c (mm)', 'flexure', 'a', D_LEN)
+        group('Sức kháng danh định  Mn (kN·m)', 'flexure', 'Mn', D_FORCE)
+        data('Sức kháng tính toán  Mr = φ·Mn (kN·m)',
+             lambda p: R[p]['flexure'].capacity, D_FORCE)
+        ratio('Hệ số  Mr / Mu', 'flexure')
 
-        rows.append(('sect', 'Giới hạn cốt thép — Mr ≥ min(Mcr, 1,33Mu)  '
+        rows.append(('sect', 'Giới hạn cốt thép — Mr ≥ min(Mcr; 1,33Mu)  '
                              '(Đ.7.3.3)'))
-        group('Mcr (kN·m)', 'limits', 'Mcr')
-        group('1,33·Mu (kN·m)', 'limits', '1.33Mu')
-        data('Yêu cầu (kN·m)', lambda p: R[p]['limits'].demand)
+        group('Cường độ kéo khi uốn  fr (MPa)', 'limits', 'fr', D_COEF2)
+        group('Mômen kháng nứt  Mcr (kN·m)', 'limits', 'Mcr', D_FORCE)
+        group('1,33·Mu (kN·m)', 'limits', '1.33Mu', D_FORCE)
+        data('Yêu cầu  min(Mcr; 1,33Mu) (kN·m)',
+             lambda p: R[p]['limits'].demand, D_FORCE)
         if std_tcvn:
             # 22TCN chặn c/de ≤ 0,42; TCVN 11823 KHÔNG có điều kiện đó mà phân
             # loại tiết diện theo biến dạng kéo thực εt (Đ.7.2.1).
-            data('εt (×10⁻³)  (Đ.7.2.1)',
+            data('Biến dạng kéo thực  εt (×10⁻³)',
                  lambda p: None if R[p]['control'].get('εt') is None
-                 else R[p]['control']['εt'] * 1000, '{:.2f}')
-            data('Phân loại tiết diện', lambda p: R[p]['control'].get('loại', '—'))
+                 else R[p]['control']['εt'] * 1000, D_COEF3)
+            data('Phân loại tiết diện (Đ.7.2.1)',
+                 lambda p: R[p]['control'].get('loại', '—'))
         else:
-            group('c/de  (≤ 0,42)', 'limits', 'c/de', '{:.3f}')
-        verdict('Kết luận giới hạn cốt thép', 'limits')
+            group('Hàm lượng thép tối đa  c/de ≤ 0,42', 'limits', 'c/de', D_COEF3)
+        ratio('Hệ số  Mr / yêu cầu', 'limits')
 
         rows.append(('sect', 'Kiểm toán nứt — TTGH Sử dụng  (Đ.7.3.4)'))
-        group('fs (MPa)', 'crack', 'fs')
+        group('Tỉ số mô đun  n = Es/Ec', 'crack', 'n', D_COEF2)
+        group('m = n·As/(b·ds)', 'crack', 'm', D_COEF3)
+        group('k', 'crack', 'k', D_COEF3)
+        group('j = 1 − k/3', 'crack', 'j', D_COEF3)
+        group('Ứng suất cốt thép  fs (MPa)', 'crack', 'fs', D_STRESS)
         if std_tcvn:
-            group('fss = min(fs; 0,6fy) (MPa)', 'crack', 'fss')
-            group('βs', 'crack', 'βs', '{:.3f}')
-            data('s bố trí · s_max (mm)', lambda p: (
-                f"{R[p]['crack'].demand:.0f} · {R[p]['crack'].capacity:.0f}"
-                if R[p]['crack'].applicable else '—'))
+            group('fss = min(fs; 0,6fy) (MPa)', 'crack', 'fss', D_STRESS)
+            group('βs = 1 + dc/(0,7(h−dc))', 'crack', 'βs', D_COEF2)
+            data('Cự ly tối đa  s_max (mm)',
+                 lambda p: (R[p]['crack'].capacity
+                            if R[p]['crack'].applicable else None), D_LEN)
         else:
-            group('fsa (MPa)', 'crack', 'fsa')
+            group('Ứng suất cho phép  fsa (MPa)', 'crack', 'fsa', D_STRESS)
         data('Ghi chú', lambda p: R[p]['crack'].note or '')
-        verdict('Kết luận nứt', 'crack')
+        ratio('Hệ số  s_max / s' if std_tcvn else 'Hệ số  fsa / fs', 'crack')
 
         rows.append(('sect', 'Kiểm toán cắt — MCFT, Vu ≤ Vr = φVn  '
                              '(Đ.8.3.3 · 8.3.4.2)'))
-        group('dv (mm)', 'shear', 'dv', '{:.1f}')
-        data('εx (×10⁻³)',
+        data('Cốt đai bố trí  Av (mm²)', lambda p: self._rb(p).Av, D_AREA)
+        group('Cốt đai tối thiểu  Av_min (mm²)', 'shear', 'Av_min', D_AREA)
+        group('Chiều cao chịu cắt  dv (mm)', 'shear', 'dv', D_LEN)
+        data('Biến dạng dọc trục  εx (×10⁻³)',
              lambda p: None if R[p]['shear'].values.get('εx') is None
-             else R[p]['shear'].values['εx'] * 1000, '{:.3f}')
-        group('sxe (mm)', 'shear', 'sxe', '{:.0f}')
-        data('θ (°) · β', lambda p: (
-            f"{R[p]['shear'].values['θ']:.1f} · {R[p]['shear'].values['β']:.2f}"
-            if R[p]['shear'].applicable else '—'))
+             else R[p]['shear'].values['εx'] * 1000, D_COEF3)
+        group('sx (mm)', 'shear', 'sx', D_LEN)
+        group('sxe (mm)', 'shear', 'sxe', D_LEN)
+        group('Góc nghiêng ứng suất nén  θ (°)', 'shear', 'θ', D_COEF2)
+        group('Hệ số khả năng chịu kéo  β', 'shear', 'β', D_COEF2)
         data('Tra bảng', lambda p: R[p]['shear'].values.get('bảng', '—'))
-        group('Vc (kN)', 'shear', 'Vc')
-        group('Vs (kN)', 'shear', 'Vs')
-        data('Vr = φ·Vn (kN)', lambda p: R[p]['shear'].capacity)
-        util('Mức huy động Vu/Vr', 'shear')
-        verdict('Kết luận cắt', 'shear')
+        group('Sức kháng cắt bê tông  Vc (kN)', 'shear', 'Vc', D_FORCE)
+        group('Sức kháng cắt cốt đai  Vs (kN)', 'shear', 'Vs', D_FORCE)
+        data('Sức kháng tính toán  Vr = φ·Vn (kN)',
+             lambda p: R[p]['shear'].capacity, D_FORCE)
+        ratio('Hệ số  Vr / Vu', 'shear')
 
         return rows
 
@@ -856,28 +942,15 @@ class CheckTab(QWidget):
                 self.tb_out.setSpan(i, 0, 1, self.tb_out.columnCount())
                 continue
 
+            is_ratio = r[0] == 'ratio'
             head = QTableWidgetItem(r[1])
             head.setBackground(alt)
+            if is_ratio:
+                head.setFont(bold)
             self.tb_out.setItem(i, 0, head)
 
-            if r[0] == 'verdict':
-                _, _, text, ok = r
-                it = QTableWidgetItem('  ' + text)
-                it.setBackground(QColor(t['ok_bg'] if ok else
-                                        t['panel_alt'] if ok is None
-                                        else t['err_bg']))
-                it.setForeground(QColor(t['ok'] if ok else
-                                        t['ink_2'] if ok is None else t['err']))
-                it.setFont(bold)
-                self.tb_out.setItem(i, 1, it)
-                self.tb_out.setSpan(i, 1, 1, self.tb_out.columnCount() - 1)
-                continue
-
             for j, cell in enumerate(r[2], 1):
-                if r[0] == 'util':
-                    text, ratio = cell
-                else:
-                    text, ratio = cell, None
+                text, k = cell if is_ratio else (cell, None)
                 it = QTableWidgetItem(str(text))
                 it.setTextAlignment(Qt.AlignmentFlag.AlignRight
                                     | Qt.AlignmentFlag.AlignVCenter)
@@ -885,8 +958,14 @@ class CheckTab(QWidget):
                 # trong bảng ba chục hàng, mà đổi dấu mô men là đổi mặt chịu kéo.
                 if str(text).startswith('-') or str(text).startswith('−'):
                     it.setForeground(QColor(t['err']))
-                if ratio is not None:
-                    it.setData(Qt.ItemDataRole.UserRole, float(ratio))
+                if is_ratio:
+                    it.setFont(bold)
+                    fill = verdict_fill(k, t)
+                    if fill is not None:
+                        it.setBackground(fill)
+                        it.setForeground(QColor(
+                            t['err'] if k < 1.0 else
+                            t['warn'] if k < MARGIN_TIGHT else t['ok']))
                 self.tb_out.setItem(i, j, it)
 
         self.tb_out.resizeRowsToContents()
@@ -898,15 +977,21 @@ class CheckTab(QWidget):
             self.lb_sum.setText('')
             return
         n_ok = sum(1 for r in R.values() if r['ok'])
-        worst_p, worst_r, worst_k = '', 0.0, ''
+        # Hệ số NHỎ NHẤT trong bảng — cùng đại lượng với hàng "Hệ số" nên đọc
+        # dòng này rồi rà xuống bảng là thấy đúng ô đó.
+        worst_p, worst_k, worst_lb = '', None, ''
         for p, r in R.items():
             for key, lb in (('flexure', 'uốn'), ('shear', 'cắt')):
-                if r[key].applicable and r[key].ratio > worst_r:
-                    worst_p, worst_r, worst_k = p, r[key].ratio, lb
+                res = r[key]
+                if not res.applicable or abs(res.demand) < 1e-9:
+                    continue
+                k = res.capacity / abs(res.demand)
+                if worst_k is None or k < worst_k:
+                    worst_p, worst_k, worst_lb = p, k, lb
         bits = [f'{n_ok}/{len(R)} điểm ĐẠT']
         if worst_p:
-            bits.append(f'huy động cao nhất: {worst_p} — '
-                        f'{worst_r * 100:.0f}% sức kháng {worst_k}')
+            bits.append(f'hệ số thấp nhất: {worst_p} — '
+                        f'{worst_k:.2f} ({worst_lb})')
         self.lb_sum.setText(' · '.join(bits))
         self.lb_sum.setStyleSheet(
             f'color: {self.t["ok"] if n_ok == len(R) else self.t["err"]};'

@@ -629,6 +629,65 @@ def test_section_check_flexure_is_conservative_vs_template():
     assert fl.capacity > 260.0, f'Mr={fl.capacity} thấp bất thường'
 
 
+def test_web_marks_sit_inside_the_web():
+    """Ký hiệu G và H phải nằm HẲN trong bụng, không dính vào bản.
+
+    G là phần tử trên cùng của bụng, H là phần tử dưới cùng; lấy điểm giữa phần
+    tử thì ký hiệu vẽ ra sát ngay chỗ giao với bản mặt / bản đáy và đọc thành
+    "cắt qua bản". Chốt lại: G phải thấp hơn đỉnh dầm, H phải cao hơn hẳn mặt
+    trên bản đáy.
+    """
+    from src.result_reader import check_point_marks
+
+    topo = _topo_for('S1')
+    marks = check_point_marks(topo)
+    zs = [q[1] for q in topo['geometry']['outpoly']]
+    z_top, z_bot = max(zs), min(zs)
+    H = z_top - z_bot
+
+    # Bản đáy dày cỡ 0.5 m, bản mặt cỡ 0.3 m — ký hiệu phải lùi vào quá chỗ đó
+    assert marks['H']['z'] > z_bot + 0.06 * H, marks['H']
+    assert marks['G']['z'] < z_top - 0.06 * H, marks['G']
+    assert marks['G']['dir'] == marks['H']['dir'] == 'h'
+    # và vẫn nằm trong chiều cao dầm
+    assert z_bot < marks['H']['z'] < marks['G']['z'] < z_top
+
+
+def test_pt_detected_only_where_cables_exist():
+    """Nhận diện cáp: bản mặt của S1 có cáp, bản đáy và bụng thì không.
+
+    Đây là chốt chặn cho việc tự điền `dp`: điền nhầm sang bộ phận không có cáp
+    thì sức kháng uốn vọt lên mà bảng vẫn báo ĐẠT.
+    """
+    from src.pt_layout import detect
+
+    topo = _topo_for('S1')
+    cps = {p: {'h': 300.0, 'Mu': 90.0} for p in 'ABCDEFGH'}
+    got = detect(topo, cps)
+
+    for p in 'ABCD':
+        assert got[p]['has_pt'], f'{p}: bản mặt S1 có PT-TOP-1'
+        assert 0 < got[p]['dp'] <= 300.0, got[p]
+    for p in 'EFGH':
+        assert not got[p]['has_pt'], f'{p}: không có cáp mà báo có'
+        assert got[p]['dp'] == 0.0, got[p]
+
+    # Không có khối tendons thì mọi điểm đều "không cáp", không được nổ
+    bare = dict(topo, tendons=[])
+    assert not any(r['has_pt'] for r in detect(bare, cps).values())
+
+
+def _topo_for(name: str) -> dict:
+    """topo.json đã sinh sẵn trong output/. Bỏ qua test nếu chưa chạy pipeline."""
+    path = os.path.join(ROOT, 'output', name, f'{name}_topo.json')
+    if not os.path.exists(path):
+        pytest.skip(f'chưa có {path} — chạy pipeline trước')
+    with open(path, encoding='utf-8') as f:
+        topo = json.load(f)
+    topo['elements'] = [tuple(e) for e in topo['elements']]
+    return topo
+
+
 def test_project_keeps_rebars_and_check_opts():
     """Cốt thép và tuỳ chọn kiểm toán phải sống sót qua lượt lưu/mở project.
 
@@ -782,7 +841,10 @@ if __name__ == '__main__':
                       (test_section_check_flexure_is_conservative_vs_template, 'uốn thiên an toàn'),
                       (test_combo_validator_catches_orphan, 'bộ kiểm bắt được lỗi'),
                       (test_project_keeps_rebars_and_check_opts,
-                       'project giữ cốt thép + tuỳ chọn kiểm toán')):
+                       'project giữ cốt thép + tuỳ chọn kiểm toán'),
+                      (test_web_marks_sit_inside_the_web, 'ký hiệu G/H trong bụng'),
+                      (test_pt_detected_only_where_cables_exist,
+                       'nhận diện cáp đúng bộ phận')):
         try:
             fn()
             print(f'PASS  {label}')

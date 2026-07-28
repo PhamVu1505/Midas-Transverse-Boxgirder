@@ -218,8 +218,12 @@ nên sửa lại DXF hay đổi kích thước phần tử thì gối vẫn nằ
 
 <h3 style="color:{ink}">Tám điểm kiểm toán</h3>
 <p>Bảng kết quả cho mô men, lực cắt và chiều cao tiết diện tại tám điểm:
-<b>A–D</b> trên bản mặt, <b>E–F</b> trên bản đáy, <b>G–H</b> trên bụng. Sơ đồ bên
-cạnh bảng chỉ rõ vị trí từng điểm.</p>
+<b>A–D</b> trên bản mặt, <b>E–F</b> trên bản đáy, <b>G–H</b> trên bụng. Hình mặt
+cắt phía trên bảng vẽ từ <i>toạ độ DXF thật</i> và chỉ rõ vị trí từng điểm bằng
+ký hiệu vết cắt theo quy ước bản vẽ.</p>
+<p>Hình này <b>lăn chuột để phóng to thu nhỏ, kéo chuột để di chuyển</b>, bấm đúp
+hoặc phím <b>F</b> để vừa khung — như thẻ Model. Kéo thanh chia giữa hình và bảng
+để đổi tỉ lệ hai phần.</p>
 <p style="color:{ink2}">Mặt cắt <b>nhiều hộp</b> có thêm điểm phân giải cho từng
 khoang và từng vách — <b>A1, A2…</b> (giữa mỗi khoang bản mặt), <b>E1, E2…</b>
 (giữa mỗi khoang bản đáy), <b>G1…Gm</b> và <b>H1…Hm</b> (đầu trên và đầu dưới
@@ -235,14 +239,41 @@ theo TCVN 11823-5. Tiết diện xét là <b>lát cắt rộng 1 m</b> của m�
 
 {step(1, 'Nhập cốt thép',
       'Bảng trên cùng, mỗi cột là một điểm kiểm toán. Nhập đường kính, cự ly, '
-      'lớp bảo vệ (tính đến <b>tâm</b> thanh), cốt đai và cáp nếu có. '
+      'lớp bảo vệ (tính đến <b>tâm</b> thanh) và cốt đai. '
       'A<sub>s</sub> tự tính. Số liệu lưu vào project theo từng mặt cắt.')}
 {step(2, 'Chọn tiêu chuẩn và hệ số',
       "TCVN 11823 hoặc 22TCN 272-05 (để đối chiếu hồ sơ cũ). f'c lấy sẵn từ "
       "template số liệu, sửa được. φ mặc định 0,90 cho cả uốn và cắt.")}
 {step(3, 'Bấm Kiểm toán',
-      'Bảng dưới chia bốn nhóm; dải màu ở hàng <b>mức huy động</b> cho thấy '
-      'ngay chỗ nào sát giới hạn. Bấm <b>Xuất Excel…</b> để đưa vào hồ sơ.')}
+      'Bảng dưới chia bốn nhóm, trình bày theo mẫu bảng kiểm toán quen dùng. '
+      'Bấm <b>Xuất Excel…</b> để đưa vào hồ sơ.')}
+
+<h3 style="color:{ink}">Cáp dự ứng lực nhận diện tự động</h3>
+<p>Hai hàng <b>Cáp d<sub>p</sub></b> và <b>Cự ly cáp @</b> chỉ mở ở những bộ phận
+<i>thật sự có cáp trong bản vẽ</i>. Mặt cắt chỉ căng cáp ngang ở bản mặt thì các
+cột bản đáy và bụng bị khoá, hiện dấu gạch — không gõ nhầm vào được.</p>
+<p>d<sub>p</sub> tính thẳng từ đường cáp trong DXF: nội suy cao độ cáp tại vị trí
+điểm kiểm toán rồi đo tới thớ chịu nén (thớ nào chịu nén thì suy từ dấu của
+M<sub>u</sub>). Sửa lại được nếu cần.</p>
+<p>Diện tích cáp trên một mét dài <b>không</b> suy ra được từ mặt cắt ngang, nên
+phải nhập <b>cự ly cáp theo phương dọc cầu</b>; chương trình lấy
+A<sub>p</sub> = (diện tích một bó từ template) × 1000 / cự ly.</p>
+
+<h3 style="color:{ink}">Đọc bảng kết quả</h3>
+<p>Mỗi nhóm kết thúc bằng hàng <b>hệ số sức kháng / nội lực</b>
+(M<sub>r</sub>/M<sub>u</sub>, V<sub>r</sub>/V<sub>u</sub>…) — số càng lớn càng
+an toàn. Nền ô nói ngay kết quả:</p>
+<table cellpadding="7" cellspacing="0" width="100%">
+<tr style="background:{soft}"><td width="150"><b style="color:{ok}">Xanh</b></td>
+    <td>hệ số ≥ 1,05 — đạt và còn dư</td></tr>
+<tr><td><b style="color:{warn}">Vàng</b></td>
+    <td>1,00 ≤ hệ số &lt; 1,05 — đạt nhưng dư chưa tới 5%</td></tr>
+<tr style="background:{soft}"><td><b style="color:{t["err"]}">Đỏ</b></td>
+    <td>hệ số &lt; 1,00 — không đạt</td></tr>
+</table>
+<p style="color:{ink2}">Số chữ số thập phân theo đúng bảng kiểm toán mẫu: nội
+lực, kích thước, diện tích và ứng suất lấy tròn số; hệ số không thứ nguyên lấy
+2–3 chữ số. Ô nào bằng 0 thì hiện dấu gạch cho đỡ rối.</p>
 
 <h3 style="color:{ink}">Bốn nhóm kiểm tra</h3>
 <table cellpadding="7" cellspacing="0" width="100%">

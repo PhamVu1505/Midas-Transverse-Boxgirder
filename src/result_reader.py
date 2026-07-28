@@ -450,6 +450,12 @@ def check_point_marks(topo: dict) -> dict:
 
     Điểm đại diện lấy phần tử GIỮA nhóm chứ không phải phần tử đầu: nhóm vút
     gồm hai đầu của khoang nên phần tử đầu nằm lệch hẳn về một bên.
+
+    **G và H lấy đầu phía TRONG bụng, không lấy điểm giữa phần tử.** G là phần
+    tử trên cùng của bụng (giáp bản mặt), H là phần tử dưới cùng (giáp bản đáy);
+    điểm giữa của chúng nằm sát ngay chỗ giao, nên ký hiệu vẽ ra trông như đang
+    cắt qua bản mặt / bản đáy chứ không phải cắt bụng. Đẩy về đầu kia của phần
+    tử thì ký hiệu nằm hẳn trong bụng, đọc không nhầm được.
     """
     coords = node_coords(topo)
     elem = {e[0]: (e[1], e[2]) for e in topo['elements']}
@@ -462,8 +468,13 @@ def check_point_marks(topo: dict) -> dict:
             n1, n2 = elem[eid]
             if n1 in coords and n2 in coords:
                 (x1, z1), (x2, z2) = coords[n1], coords[n2]
-                pts.append(((x1 + x2) / 2, (z1 + z2) / 2,
-                            abs(x2 - x1), abs(z2 - z1)))
+                if name[0] == 'G':        # bụng phía trên → lùi xuống dưới
+                    px, pz = (x1, z1) if z1 < z2 else (x2, z2)
+                elif name[0] == 'H':      # bụng phía dưới → đẩy lên trên
+                    px, pz = (x1, z1) if z1 > z2 else (x2, z2)
+                else:
+                    px, pz = (x1 + x2) / 2, (z1 + z2) / 2
+                pts.append((px, pz, abs(x2 - x1), abs(z2 - z1)))
         if not pts:
             continue
         # 'v' khi phần tử nằm ngang (dx > dz) — đường cắt vuông góc nên thẳng đứng

@@ -80,15 +80,29 @@ class CheckPointDiagram(QWidget):
     R_BUBBLE = 15                 # bán kính vòng tròn tên, pixel
     CUT_OUT = 13                  # đường cắt nhô ra ngoài mặt bê tông, pixel
 
+    ZOOM_STEP = 1.15
+    ZOOM_MIN, ZOOM_MAX = 0.15, 40.0
+
     def __init__(self, theme=None):
         super().__init__()
         self.t = theme or LIGHT
-        # Cao tối thiểu 300: lề trên = 26% chiều cao phải đạt 77 px mới xếp
-        # được hai hàng ký hiệu so le, thấp hơn thì B bị D che.
-        self.setMinimumSize(380, 300)
+        # Tối thiểu để nhỏ: khung này nằm chung splitter với bảng nội lực, chặn
+        # dưới 300 px thì trên màn hình thấp bảng chỉ còn một dòng. Hai hàng ký
+        # hiệu so le tự tắt khi lề không đủ (`_two_rows`).
+        self.setMinimumSize(260, 180)
         self._geom = None          # {'outpoly', 'inpolys', 'H'}
         self._marks = {}           # {tên: {'x','z','dir'}}
         self._name = ''
+        # Zoom/pan như thẻ Model: hệ số phóng và độ dời tính bằng PIXEL, cộng
+        # thẳng vào phép quy đổi toạ độ nên không đụng tới phần vẽ.
+        self._zoom = 1.0
+        self._off = QPointF(0, 0)
+        self._drag = None
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setToolTip('Lăn chuột để phóng to/thu nhỏ · kéo để di chuyển · '
+                        'bấm đúp hoặc phím F để vừa khung')
 
     def apply_theme(self, theme: dict):
         self.t = theme
@@ -99,7 +113,52 @@ class CheckPointDiagram(QWidget):
         self._name = name or ''
         self._geom = geometry or None
         self._marks = marks or {}
+        self.fit()
+
+    # ── zoom / pan ──
+    def fit(self):
+        self._zoom = 1.0
+        self._off = QPointF(0, 0)
         self.update()
+
+    def wheelEvent(self, e):
+        if not self._geom:
+            return
+        d = e.angleDelta().y()
+        if not d:
+            return
+        k = self.ZOOM_STEP if d > 0 else 1.0 / self.ZOOM_STEP
+        new = max(self.ZOOM_MIN, min(self.ZOOM_MAX, self._zoom * k))
+        k = new / self._zoom
+        # Giữ nguyên điểm dưới con trỏ: phóng quanh con trỏ chứ không quanh tâm
+        # khung — phóng quanh tâm thì chỗ đang muốn xem trôi ra ngoài ngay.
+        p = e.position()
+        self._off = p - (p - self._off) * k
+        self._zoom = new
+        self.update()
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self._geom:
+            self._drag = e.position() - self._off
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+
+    def mouseMoveEvent(self, e):
+        if self._drag is not None:
+            self._off = e.position() - self._drag
+            self.update()
+
+    def mouseReleaseEvent(self, e):
+        self._drag = None
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+    def mouseDoubleClickEvent(self, e):
+        self.fit()
+
+    def keyPressEvent(self, e):
+        if e.key() in (Qt.Key.Key_F, Qt.Key.Key_Home):
+            self.fit()
+        else:
+            super().keyPressEvent(e)
 
     # ── quy đổi toạ độ ──
     def _mapper(self):
@@ -129,9 +188,15 @@ class CheckPointDiagram(QWidget):
         ox = ml + (cw - (x1 - x0) * s) / 2
         oz = mt + (ch - (z1 - z0) * s) / 2
 
+        # Zoom/pan chồng lên phép quy đổi cơ sở. Ký hiệu vết cắt (vòng tròn, mũi
+        # tên) vẫn giữ nguyên cỡ pixel — đúng lối bản vẽ: phóng to là để nhìn
+        # rõ hình, không phải để ký hiệu to ra.
+        zm, off = self._zoom, self._off
+
         def fn(x, z):
-            return QPointF(ox + (x - x0) * s, oz + (z1 - z) * s)
-        return fn, s
+            return QPointF(off.x() + (ox + (x - x0) * s) * zm,
+                           off.y() + (oz + (z1 - z) * s) * zm)
+        return fn, s * zm
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -320,11 +385,14 @@ class ResultsTab(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setMinimumWidth(180)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # Đủ chỗ cho cả bảy hàng ngay từ đầu; chỗ dôi ra khi phóng to cửa sổ
+        # dồn hết cho hình (stretch 1 / 0) vì bảng không cần cao thêm.
+        self.table.setMinimumHeight(140)
         self._style_table_headers()
         splitter.addWidget(self.table)
-        splitter.setSizes([380, 240])
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 2)
+        splitter.setSizes([360, 250])
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 0)
         layout.addWidget(splitter, 1)
 
         # Log
@@ -370,6 +438,14 @@ class ResultsTab(QWidget):
     def open_folder(self): self._open_folder()
 
     def set_log(self, log):
+        """Chuyển sang dùng cửa sổ Messages chung.
+
+        Phải GIẤU khung log riêng của tab đi. Trước đây chỉ gán lại biến, còn
+        widget cũ vẫn nằm trong layout và chiếm 130 px trắng ngay dưới bảng nội
+        lực — đó là lý do bảng bị bóp chỉ còn một dòng.
+        """
+        if log is not self.log_area and self.log_area is not None:
+            self.log_area.hide()
         self.log_area = log
 
     def set_project(self, project):
@@ -405,6 +481,12 @@ class ResultsTab(QWidget):
                     f'{s.name:<12} {s.n_elems:>4} phần tử  ←  '
                     f'(chưa gán Beam Force — bấm đúp để chọn)')
                 n_missing += 1
+        # Danh sách cao vừa đủ số dòng (tối đa 4). Để cứng 112 px thì project
+        # một mặt cắt vẫn chừa gần trăm pixel trắng, trong khi bảng nội lực
+        # ngay dưới đang thiếu chỗ.
+        rh = self.pair_list.sizeHintForRow(0) if self.pair_list.count() else 24
+        self.pair_list.setFixedHeight(
+            min(112, max(30, (rh if rh > 0 else 24) * self.pair_list.count() + 6)))
         bits = []
         if n_ready:
             bits.append(f'{n_ready} mặt cắt sẵn sàng')
