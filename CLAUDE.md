@@ -99,6 +99,25 @@ Sheet `Load` mục 2.3 dùng **phương pháp dải tương đương**. Mọi co
 
 `lane` đã được bỏ khỏi `VCLASS` (chỉ để lại xe) — **không đổi kết quả**, xe trội hơn tải làn 8–36 lần ở mọi phần tử. Tải làn vẫn vào đủ qua `mv2`.
 
+### Điểm kiểm toán mặt cắt nhiều hộp (v1.4.0)
+`classify_check_elements(topo)` trong `result_reader.py` — đọc danh sách bụng qua `wL/wC/wR` rồi sắp theo toạ độ x, chia bản mặt thành khoang giữa các vách, chia bản đáy theo **toạ độ chân từng vách** (chuỗi nút bản đáy không cùng cách chia với bản mặt).
+
+- **Một hộp ra đúng A–H như bản cũ**, không lệch một phần tử nào — `test_check_points_single_box_unchanged` dựng lại thuật toán cũ ngay trong test rồi so từng phần tử.
+- Bản cũ chỉ nhận vách trái/phải nên với hai hộp: nhóm `A` lấy 1/3 giữa của cả dải vách-trái→vách-phải, ra `x = −2.20…+1.75` **trùm qua chân vách giữa** (vùng mô men âm); bụng giữa và 2/4 vị trí vút phía trong **không điểm nào chạm tới**.
+- Giữ `A–H` làm **bao** để bố trí lưới thép trên/dưới (VuPQ yêu cầu), thêm điểm phân giải khi có ≥3 bụng: `A1..An`, `E1..En`, `G1..Gm`, `H1..Hm`. S1_V2 ra 18 điểm.
+- `check_point_marks(topo)` trả vị trí + hướng đường cắt để vẽ ký hiệu. Điểm đại diện lấy phần tử **giữa** nhóm, không phải phần tử đầu — nhóm vút gồm hai đầu của khoang. `_MARK_SIDE` đẩy các nhóm phủ cả hai bên về một phía cố định, nếu không `B` và `C` (cùng một nhóm phần tử) vẽ chồng nhau.
+
+### Kiểm toán tiết diện — `src/section_check.py` (v1.4.0)
+Bốn nhóm: uốn (Đ.7.3.2) · giới hạn cốt thép (Đ.7.3.3) · nứt (Đ.7.3.4) · cắt MCFT (Đ.8.3.3, 8.3.4.2). **Nguồn công thức là bản chính thức TCVN 11823-5:2017** — xem `reference_standards_location`.
+
+- Điểm E của S1 khớp **tuyệt đối cả 11 đại lượng** với sheet `Strength` (lệch 0.0000). Bảng 5 nội suy lại đúng θ/β của bốn điểm tới 4 chữ số.
+- **`c/de ≤ 0,42` KHÔNG có trong TCVN 11823** (soi cả 192 trang, chuỗi `0,42` không xuất hiện). Điều 7.4.2 "Giới hạn cốt thép" là về cột chịu nén. Thay bằng `tension_control()` phân loại theo `εt` (Đ.7.2.1). `c/de` chỉ còn ở chế độ 22TCN.
+- **Không miễn kiểm cắt cho bản mặt.** Tôi từng viện điều khoản đó — không có căn cứ: Đ.7.3.4 chỉ loại trừ bản thiết kế theo **Điều 7.2 Phần 9 = THIẾT KẾ THEO KINH NGHIỆM**, không phải phương pháp dải. Cũng không cần: dùng Bảng 5 thì bản mặt đạt chính đáng.
+- **Đ.8.3.4.2 cho hai phương pháp ngang hàng.** `'bảng'` (mặc định) = Bảng 4/Bảng 5 nội suy hai chiều + lặp θ 20 vòng; `'công thức'` = pt. 77–79. Lệch nhau rất nhiều ở vùng nén: (a) chặn `εs ≥ 0` nên β ≤ 4.8 rồi còn nhân `51/(39+sxe)` với `sxe ≥ 294` → β ≈ 0.7; Bảng 5 cho `εx` xuống −0.20×10⁻³ với β tới 6.36. Chặn `sxe`: **294–2000 cho (a)** (pt. 81), **chỉ ≤2000 cho (b)** (pt. 85).
+- `εx` âm thì phương pháp (b) **tính lại theo pt. 84** với mẫu `2(Ec·Ac + Es·As + Ep·Aps)`, `Ac` = nửa chiều cao phía chịu kéo. Không lấy 0 — đó là lựa chọn của phương pháp (a).
+- **φ = 0,90 cho MỌI tiết diện.** Đ.5.4.2.1 cho phép 1,00 với tiết diện DƯL khống chế kéo; VuPQ chốt giữ 0,90 (thiên an toàn, thấp hơn 11%). Đừng tự nâng.
+- Ba chỗ cố ý khác file mẫu: trục trung hoà khi có cáp (file mẫu bỏ `As·fy` khỏi cân bằng nhưng cộng vào `Mn`, và thiếu `Aps` trong `k·Aps·fpu/dp`); diện tích thanh `π·d²/4` thay vì bảng tra ASTM; bỏ kiểm nứt khi có cáp hoặc khi ứng suất kéo chưa tới 80%·fr.
+
 ### Sửa gối (v1.3.0 — Giai đoạn 3b)
 Gối **lưu theo toạ độ X**, không theo ID node: đổi `target_len` hay sửa DXF là ID node đổi hết, còn vị trí gối trên bản đáy thì không. `write_mct(..., supports=[{'x','kind'}])` mới quy về node đáy gần nhất lúc ghi.
 
@@ -206,39 +225,39 @@ installer\build.bat
 ```
 
 ## Current Sprint
-**Goal:** v1.3.1 — sửa toạ độ vẽ cáp DƯL, xem trước từ DXF, kéo thả, hộp thoại Tùy chọn giao diện.
+**Goal:** v1.4.0 — kiểm toán tiết diện theo TCVN 11823 trong app (điểm kiểm toán cho mặt cắt nhiều hộp, `src/section_check.py`, GUI mới).
 
-**Trạng thái:** `pytest tests -q` **30/30 pass**. Phiên bản đã bump đủ 5 chỗ. **24 commit trên `feature/t13-twin-box` chưa push.**
+**Trạng thái:** `pytest tests -q` **40/40 pass**. **32 commit trên `feature/t13-twin-box` chưa push.** Backend kiểm toán xong và đã chạy trên số liệu Midas thật; còn **một** phần GUI.
 
 Đã làm:
-1. **`path_mct` sai công thức** — cáp BOT bị vẽ trên đỉnh dầm (z=6.856 khi H=6.628), cáp WEB thành đường nằm ngang. Nay sinh thẳng từ toạ độ DXF + `tessellate_bulge()`. **Khối MCT không đổi một byte.**
-2. **`src/preview.py`** — xem trước hình học + cáp ngay khi thêm DXF, chưa cần tạo MCT.
-3. **Kéo thả** `.dxf` / thư mục / `.mtbproj` vào bất kỳ đâu trong cửa sổ.
-4. **`gui/prefs.py`** — hộp thoại Tùy chọn 3 trang + 3 bảng màu, đổi tức thì. Mặc định lần đầu giống hệt v1.3.0 (QSS diff = 0 dòng đổi).
-5. **Dọn tổ hợp tải trọng** — bảng `_COMBOS` khai báo bằng dữ liệu, tên theo TCVN 11823, bỏ `Sử dụng II` và tổ hợp nứt trùng lặp, thêm `_validate_load_references()`. Xem mục *Tổ hợp tải trọng*.
-6. **VCLASS chỉ chứa xe** — bỏ `lane` khỏi lớp, không đổi kết quả. Xem mục *Hoạt tải*.
+1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử` (trong ngoặc vốn là số hiệu **nút**, nhãn cũ ghi "element" là sai).
+2. **Điểm kiểm toán tổng quát cho nhiều hộp** (`0d30002`) — `classify_check_elements(topo)`. Xem mục *Điểm kiểm toán mặt cắt nhiều hộp*.
+3. **`src/section_check.py`** (`0fd9168`, `21fef85`, `c31acfc`, `699c62f`) — bốn nhóm kiểm tra theo TCVN 11823-5 bản chính thức. Xem mục *Kiểm toán tiết diện*.
+4. **GUI Results tab** (`3f37e67`) — mặt cắt **thật từ DXF** lên trên, bảng xuống dưới, ký hiệu vết cắt chuẩn bản vẽ, dải nhắc cách xuất Beam Force.
 
-**Đã chạy Midas thật** với MCT sinh ra (`output/S1`, 2026-07-27): mô hình import sạch, phân tích xong, xuất được Beam Force. Kết luận trong mục *Hoạt tải*.
+**Kiểm toán S1 trên số liệu Midas thật** (phương pháp Bảng 5): 8/8 điểm ĐẠT. Huy động uốn 3.3–65.1% (cao nhất D — chân cánh hẫng), cắt 5.2–31.7%, nứt bỏ qua hết vì ứng suất kéo chưa tới 80%·fr.
 
 **Next Action cụ thể:**
-1. `python run_gui.py` → thả một DXF **có cáp bụng / cáp đáy thật** vào → xem cáp có đúng chỗ không. Dữ liệu mẫu trong repo chỉ có `PT-TOP-1`, nên BOT/WEB mới chỉ kiểm bằng cáp giả lập trong `tests/test_regression.py::test_tendon_path_mct`.
-2. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`. Lần chạy `output/S1` có `Prestress` trong kết quả nên khối cáp đã được nạp, nhưng chưa ai soi kỹ đường cáp và lực căng trong Midas.
-3. Hai tab **Results table** và **MCT source** giờ đã có `output/S1/Beam Force.xls` thật để chạy thử — trước đây thiếu.
-4. Lần import Midas tới, so `mv1(max)` tại phần tử 118 của S1: phải vẫn là **41.38** (chứng minh việc bỏ `lane` khỏi VCLASS không đổi kết quả).
-5. Thử `Ctrl+,` đổi sang bản Tối, soi chỗ nào còn giữ màu cũ. Registry có thể còn theme tối từ lúc test → ⚙ → **Khôi phục mặc định**.
+1. **Tab "Kiểm toán mặt cắt"** — phần duy nhất còn lại. Backend đã đủ: `section_check.check_all(check_points, rebars, mat, tendons)`. Cần: bảng nhập cốt thép (Ø, cự ly, lớp bảo vệ, cốt đai) lưu vào `.mtbproj`, chọn tiêu chuẩn TCVN 11823 / 22TCN 272-05, chọn phương pháp cắt `bảng`/`công thức`, một bảng cuộn chia nhóm bằng dải tiêu đề, dải "mức huy động". Mockup đã duyệt: https://claude.ai/code/artifact/34b2a9ec-089b-4bdf-902e-91070f97da37
+2. **Đóng workbook `Midas-Transverse-Boxgirder-analysis.xls` trong Excel mà KHÔNG lưu**, rồi `git checkout -- data/Midas-Transverse-Boxgirder-analysis.xls`. File đang lệch byte so với HEAD do Excel COM ghi lại; **số liệu nguyên vẹn** (42 khoá đọc từ HEAD và bản hiện tại giống hệt).
+3. Chạy `python run_gui.py` xem tab Results thật (đã kiểm bằng xuất ảnh, chưa mở app).
+4. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`.
+5. Push 32 commit.
 
 **Blocker:** không có.
 
-**Chưa làm (đã bàn, để sau):** đổi số hiệu node/phần tử (cần lớp ánh xạ ID và phải đồng bộ với `result_reader` vì Beam Force tra theo ID); mặt cắt ≥3 hộp.
+**Chưa làm (đã bàn, để sau):**
+- `εx` của file mẫu dùng `fpo = 1000` MPa cứng thay vì `0.7fpu = 1302`, và bỏ hệ số 2 của pt. 84 rồi lấy `Ac = b·h` thay vì `b·h/2` — hai chỗ bù nhau nên chỉ lệch 3%. Module làm đúng quy phạm.
+- 12 dòng `crosscheck` lệch **có sẵn từ trước**: toạ độ ô legacy trong `input_reader._KEYS` lệch một dòng ở 12 khoá (`d_L` trỏ vào ô của `barrier_right`…). Không ảnh hưởng hôm nay vì sheet `INPUT` là nguồn chính, nhưng nếu ai xoá sheet `INPUT` thì đường lui đọc sai số.
+- Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-07-28: **Kiểm toán tiết diện theo TCVN 11823** — tra bản chính thức, `src/section_check.py` (Bảng 4/5, pt.82/83/84), điểm kiểm toán tổng quát cho mặt cắt nhiều hộp, đọc HẾT sheet Beam Force, Results tab vẽ mặt cắt thật + ký hiệu vết cắt.
 - 2026-07-27: **Dọn tổ hợp tải trọng** (bảng dữ liệu, tên TCVN 11823, bỏ tổ hợp trùng, bộ kiểm tham chieu) + **giải mã mạch tính hoạt tải trong Excel** + xác minh trên Midas thật (`output/S1`); bỏ `lane` khỏi VCLASS; bump v1.3.1.
 - 2026-07-27: Hộp thoại **Tùy chọn** (3 trang, 3 bảng màu, đổi tức thì) + khoá mặc định lần đầu giống hệt v1.3.0 (`tests/test_theme.py`).
 - 2026-07-27: Sửa **`path_mct`** vẽ cáp sai chỗ (BOT lên đỉnh dầm, WEB nằm ngang); `src/preview.py` xem trước từ DXF; kéo thả DXF/thư mục/`.mtbproj`.
 - 2026-07-27: Cáp DƯL tách hình học khỏi vật liệu (vẫn hiện khi chưa có template, kèm cảnh báo); mở rộng nhận diện layer cáp; nút "..." hết tàng hình.
 - 2026-07-26: Sửa lỗi Midas `(null)` (STLDCASE/LOADCOMB ghi vô điều kiện); dựng lại bố cục đúng mockup; sửa gối kiểu Fast Restraints; cửa sổ Hướng dẫn tiếng Việt.
 - 2026-07-26: GĐ3 khung xem tương tác (zoom/pan/fit, 3 chế độ, truy vấn node) + GĐ3b sửa gối xuyên suốt.
-- 2026-07-26: GĐ2 project model `.mtbproj`, cây mặt cắt, bỏ `_match_pairs`; logo app mới + logo TEDI.
-- 2026-07-26: GĐ1 vỏ giao diện — theme token + QSS, menu/toolbar, thanh bước, log phân cấp màu.
 
 Lịch sử đầy đủ: `git log --oneline`.
