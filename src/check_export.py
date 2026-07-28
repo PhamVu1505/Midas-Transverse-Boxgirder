@@ -135,6 +135,8 @@ _SECTIONS = [
 
 RATIO_LABEL = 'Hệ số sức kháng / nội lực'
 MARGIN_TIGHT = 1.05     # dưới mức này là đạt nhưng dư chưa tới 5% → tô vàng
+ROW_H = 15              # pt — chiều cao hàng của file mẫu
+HEADER_ROW = 4          # hàng tiêu đề cột, lặp lại khi in nhiều trang
 
 
 def _ratio(res):
@@ -167,45 +169,59 @@ def export_check_xlsx(path: str, section_name: str, points: list,
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
     from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.properties import PageSetupProperties
 
     wb = Workbook()
     ws = wb.active
     ws.title = 'Kiem toan'
 
-    thin = Side(style='thin', color='D0D5DD')
+    # Phông và chiều cao hàng đúng như file mẫu: Arial 10 pt, hàng 15 pt.
+    FONT = 'Arial'
+    ws.sheet_format.defaultRowHeight = ROW_H
+
+    def font(bold=False, italic=False, color='000000', size=10):
+        return Font(name=FONT, size=size, bold=bold, italic=italic, color=color)
+
+    thin = Side(style='thin', color='808080')
     box = Border(left=thin, right=thin, top=thin, bottom=thin)
     center = Alignment(horizontal='center', vertical='center')
     right = Alignment(horizontal='right', vertical='center')
-    head_fill = PatternFill('solid', start_color='1B5E9E')
-    sect_fill = PatternFill('solid', start_color='E9ECF1')
-    ok_fill = PatternFill('solid', start_color='ECFDF3')
-    tight_fill = PatternFill('solid', start_color='FFFAEB')
-    bad_fill = PatternFill('solid', start_color='FEF3F2')
+    left = Alignment(horizontal='left', vertical='center')
+    head_fill = PatternFill('solid', start_color='D9E2F3')
+    sect_fill = PatternFill('solid', start_color='EDEDED')
+    ok_fill = PatternFill('solid', start_color='E2EFDA')
+    tight_fill = PatternFill('solid', start_color='FFF2CC')
+    bad_fill = PatternFill('solid', start_color='FCE4E4')
     NC = 3                      # số cột mô tả trước khi tới các điểm
     ncol = NC + len(points)
 
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncol)
-    ws.cell(1, 1, f'{section_name} — Kiểm toán tiết diện theo '
-                  f'{meta.get("standard", "")}').font = Font(bold=True, size=14)
+    c = ws.cell(1, 1, f'{section_name} — KIỂM TOÁN TIẾT DIỆN THEO '
+                      f'{meta.get("standard", "")}')
+    c.font = font(bold=True, size=13)
+    c.alignment = center
+    ws.row_dimensions[1].height = 22
 
-    ws.cell(2, 1, f"f'c = {meta.get('fc', 0):g} MPa · fy = {meta.get('fy', 0):g} MPa"
-                  + (f" · Ec = {meta['Ec']:.0f} MPa" if meta.get('Ec') else '')
-                  + f" · φ uốn = {meta.get('phi_f', 0):.2f}"
-                  + f" · φ cắt = {meta.get('phi_v', 0):.2f}"
-                  + f" · cắt tra theo: {meta.get('shear_method', '')}"
-            ).font = Font(italic=True, color='667085')
+    c = ws.cell(2, 1,
+                f"f'c = {meta.get('fc', 0):g} MPa · fy = {meta.get('fy', 0):g} MPa"
+                + (f" · Ec = {meta['Ec']:.0f} MPa" if meta.get('Ec') else '')
+                + f" · φ uốn = {meta.get('phi_f', 0):.2f}"
+                + f" · φ cắt = {meta.get('phi_v', 0):.2f}"
+                + f" · cắt tra theo: {meta.get('shear_method', '')}")
+    c.font = font(italic=True, color='595959', size=9)
+    c.alignment = center
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=ncol)
 
-    r = 4
+    r = HEADER_ROW
     for j, lb in enumerate(('Mặt cắt kiểm toán', 'Ký hiệu', 'Đơn vị'), 1):
         c = ws.cell(r, j, lb)
-        c.font = Font(bold=True, color='FFFFFF')
+        c.font = font(bold=True)
         c.fill = head_fill
         c.alignment = center
         c.border = box
     for j, p in enumerate(points, NC + 1):
         c = ws.cell(r, j, p)
-        c.font = Font(bold=True, color='FFFFFF')
+        c.font = font(bold=True)
         c.fill = head_fill
         c.alignment = center
         c.border = box
@@ -213,24 +229,27 @@ def export_check_xlsx(path: str, section_name: str, points: list,
     rebars = meta.get('rebars') or {}
     for title, rows in _SECTIONS:
         r += 1
-        ws.cell(r, 1, title).font = Font(bold=True, color='667085')
+        ws.cell(r, 1, title)
         for j in range(1, ncol + 1):
-            ws.cell(r, j).fill = sect_fill
-            ws.cell(r, j).border = box
+            cell = ws.cell(r, j)
+            cell.fill = sect_fill
+            cell.border = box
+            cell.font = font(bold=True, color='404040')
+            cell.alignment = left if j == 1 else center
         for desc, sym, unit, fn, fmt in rows:
             is_ratio = desc == '__ratio__'
             r += 1
-            ws.cell(r, 1, RATIO_LABEL if is_ratio else desc).border = box
-            ws.cell(r, 2, sym).border = box
-            ws.cell(r, 3, unit).border = box
-            ws.cell(r, 3).alignment = center
-            if is_ratio:
-                for j in (1, 2):
-                    ws.cell(r, j).font = Font(bold=True)
+            for j, val, al in ((1, RATIO_LABEL if is_ratio else desc, left),
+                               (2, sym, center), (3, unit, center)):
+                cell = ws.cell(r, j, val)
+                cell.border = box
+                cell.alignment = al
+                cell.font = font(bold=is_ratio)
             for j, p in enumerate(points, NC + 1):
                 cell = ws.cell(r, j)
                 cell.border = box
                 cell.alignment = right
+                cell.font = font(bold=is_ratio)
                 try:
                     v = fn(results[p], check_points.get(p, {}),
                            rebars.get(p) or _EMPTY_REBAR)
@@ -242,29 +261,52 @@ def export_check_xlsx(path: str, section_name: str, points: list,
                 elif isinstance(v, str):
                     cell.value = v
                     cell.alignment = center
+                    cell.font = font(size=9)
                 else:
                     cell.value = float(v)
                     if fmt:
                         cell.number_format = fmt
                     if is_ratio:
-                        cell.font = Font(bold=True, color=(
-                            'B42318' if v < 1.0 else
-                            'B45309' if v < MARGIN_TIGHT else '15803D'))
+                        cell.font = font(bold=True, color=(
+                            'C00000' if v < 1.0 else
+                            'BF8F00' if v < MARGIN_TIGHT else '2E7D32'))
                         cell.fill = (bad_fill if v < 1.0 else
                                      tight_fill if v < MARGIN_TIGHT else ok_fill)
 
+    last_row = r
     r += 2
-    ws.cell(r, 1, 'Hệ số ≥ 1,00 là đạt · dưới 1,05 là đạt nhưng dư chưa tới 5% '
-                  '(ô vàng) · dưới 1,00 là không đạt (ô đỏ)'
-            ).font = Font(italic=True, color='667085')
+    c = ws.cell(r, 1, 'Hệ số ≥ 1,00 là đạt · dưới 1,05 là đạt nhưng dư chưa tới '
+                      '5% (ô vàng) · dưới 1,00 là không đạt (ô đỏ)')
+    c.font = font(italic=True, color='595959', size=9)
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=ncol)
 
+    # ── bề rộng cột: lấy theo file mẫu (A 36 · B 16 · C 7 · điểm 8,5) ──
     ws.column_dimensions['A'].width = 36
-    ws.column_dimensions['B'].width = 17
-    ws.column_dimensions['C'].width = 8
+    ws.column_dimensions['B'].width = 16
+    ws.column_dimensions['C'].width = 7
     for j in range(NC + 1, ncol + 1):
-        ws.column_dimensions[get_column_letter(j)].width = 12
-    ws.freeze_panes = ws.cell(5, NC + 1).coordinate
+        ws.column_dimensions[get_column_letter(j)].width = 8.5
+    ws.freeze_panes = ws.cell(HEADER_ROW + 1, NC + 1).coordinate
+
+    # ── thiết lập in ──
+    # Bảng có 3 cột mô tả + tối đa 18 cột điểm nên phải nằm ngang và ép vừa một
+    # trang theo BỀ NGANG (fitToHeight = 0 = bao nhiêu trang dọc cũng được).
+    # Hàng tiêu đề lặp lại ở mỗi trang, nếu không thì trang hai không biết cột
+    # nào là điểm nào.
+    ws.page_setup.orientation = 'landscape'
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+    ws.print_title_rows = f'{HEADER_ROW}:{HEADER_ROW}'
+    ws.print_options.horizontalCentered = True
+    ws.print_area = f'A1:{get_column_letter(ncol)}{r}'
+    pm = ws.page_margins
+    pm.left = pm.right = 0.3
+    pm.top = pm.bottom = 0.45
+    pm.header = pm.footer = 0.2
+    ws.oddFooter.left.text = section_name
+    ws.oddFooter.right.text = 'Trang &P/&N'
+    ws.oddFooter.left.size = ws.oddFooter.right.size = 8
 
     os.makedirs(os.path.dirname(os.path.abspath(path)) or '.', exist_ok=True)
     wb.save(path)

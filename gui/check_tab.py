@@ -54,7 +54,7 @@ INPUT_ROWS = [
     ('Cốt đai Av (mm²)',      'Av',         0.0,   0),
     ('Cự ly đai s (mm)',      'Av_spacing', 0.0,   0),
     ('Cáp dp (mm)',           'dp',         0.0,   0),
-    ('Cự ly cáp @ (mm)',      'pt_spacing', 0.0,   0),
+    ('Cự ly cáp @ (mm)',      'pt_spacing', 1000.0, 0),
 ]
 PT_KEYS = ('dp', 'pt_spacing')
 INPUT_TIPS = {
@@ -65,7 +65,9 @@ INPUT_TIPS = {
     'dp': 'Từ thớ nén ngoài cùng đến trọng tâm cáp.\n'
           'Tự nhận diện từ đường cáp trong DXF — sửa lại được.',
     'pt_spacing': 'Cự ly cáp theo phương dọc cầu (@-CTC).\n'
-                  'Ap trên 1 m = Ap một bó × 1000 / cự ly.',
+                  'Ap trên 1 m = Ap một bó × 1000 / cự ly.\n'
+                  'Mặc định 1000 mm — đúng bằng giả thiết của mô hình Midas '
+                  '(khung ngang là dải rộng 1 m, mỗi dải một bó cáp).',
 }
 
 # Số chữ số thập phân — theo đúng định dạng ô của file mẫu Hà Tam
@@ -672,8 +674,12 @@ class CheckTab(QWidget):
         """Ap trên một mét dài = diện tích MỘT BÓ × 1000 / cự ly cáp dọc cầu.
 
         Cùng cách file mẫu làm (hàng `dp` và `@-CTC` ở sheet `Strength`). Diện
-        tích bó lấy từ template số liệu; mặt cắt ngang không mang cự ly dọc cầu
-        nên chỗ đó phải nhập.
+        tích bó lấy từ template số liệu (khoá `Ap`, sheet General).
+
+        Cự ly mặc định **1000 mm** vì đó chính là giả thiết của mô hình đã sinh
+        ra nội lực: `mct_frame_writer` dựng khung ngang thành dải rộng đúng 1 m
+        (`W = 0.5` nửa bề rộng) và gán cho cáp `AREA = Ap` của một bó. Lấy cự ly
+        khác thì bảng kiểm toán và mô hình Midas nói hai chuyện khác nhau.
         """
         s = self._col_vals(j)['pt_spacing']
         ap1 = getattr(self, '_ap_bundle', 0.0)
@@ -773,6 +779,13 @@ class CheckTab(QWidget):
         self._log(f'[{name}] Kiểm toán {self.cb_std.currentText()} · '
                   f"f'c = {mat.fc:g} MPa · fy = {mat.fy:g} MPa · cắt theo "
                   f'{self.cb_shear.currentText()}')
+        # Nói rõ điểm nào được tính có cáp: cáp làm sức kháng uốn tăng đáng kể,
+        # không được để nó lặng lẽ đi vào kết quả.
+        if tendons:
+            self._log('[%s] Có cáp tại %s — Ap = %s mm²/m, dp = %s mm' % (
+                name, ', '.join(order_points(tendons.keys())),
+                ' / '.join(f'{t.Ap:.0f}' for _p, t in sorted(tendons.items())),
+                ' / '.join(f'{t.dp:.0f}' for _p, t in sorted(tendons.items()))))
         self._log(f'[{name}] {n_ok}/{n} điểm ĐẠT',
                   'ok' if n_ok == n else 'warn')
         self.status_bar.showMessage(f'{name}: kiểm toán {n_ok}/{n} điểm đạt')

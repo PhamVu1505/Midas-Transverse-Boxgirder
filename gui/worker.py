@@ -145,6 +145,9 @@ class ResultsWorker(QThread):
     """Process Beam Force results matched with MCT topology files."""
     log = pyqtSignal(str)
     section_done = pyqtSignal(str, dict)       # name, check_points
+    # Bao nội lực để vẽ biểu đồ — tách khỏi `section_done` cho khỏi đổi chữ ký
+    # tín hiệu cũ; ai không cần thì không nối.
+    envelope_done = pyqtSignal(str, dict)      # name, envelope
     error_mismatch = pyqtSignal(str, int, int, str)  # name, mct_count, result_count, bf_path
     finished_all = pyqtSignal(int)             # count
 
@@ -208,6 +211,9 @@ class ResultsWorker(QThread):
             check_elems = classify_check_elements(topo)
 
             check_points = extract_check_points(results, check_elems, thick_map)
+
+            from gui.force_diagram import build_envelope
+            self.envelope_done.emit(name, build_envelope(results))
 
             # Save text report
             from src.result_reader import format_check_table

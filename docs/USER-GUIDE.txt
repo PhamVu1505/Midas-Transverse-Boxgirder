@@ -237,6 +237,16 @@ Hình này lăn chuột để phóng to thu nhỏ, kéo chuột để di chuyể
 phím F để vừa khung — như thẻ Model. Kéo thanh chia giữa hình và bảng để đổi
 tỉ lệ hai phần.
 
+Biểu đồ bao nội lực
+
+Ô bên phải vẽ đường bao mômen hoặc lực cắt lên chính hình khung ngang, chọn
+bằng ô Biểu đồ: Cường độ (str_all) hoặc Sử dụng (ser_all) — đúng hai tổ hợp
+bao mà bảng bên dưới vẫn tra, nên hình và bảng luôn nói cùng một con số.
+
+Hai đường bao vẽ chồng: max và min. Nhìn hình mới thấy được hình dạng nội lực
+— chỗ đổi dấu, chỗ vút, chỗ nào lẽ ra phải trơn mà lại gãy khúc (dấu hiệu chia
+lưới hoặc gán tải sai). Ô này cũng zoom/pan như ô mặt cắt.
+
 Mặt cắt nhiều hộp có thêm điểm phân giải cho từng khoang và từng vách — A1,
 A2… (giữa mỗi khoang bản mặt), E1, E2… (giữa mỗi khoang bản đáy), G1…Gm và
 H1…Hm (đầu trên và đầu dưới mỗi vách). Tám điểm A–H vẫn giữ nguyên ý nghĩa bao
@@ -274,9 +284,11 @@ dp tính thẳng từ đường cáp trong DXF: nội suy cao độ cáp tại v
 toán rồi đo tới thớ chịu nén (thớ nào chịu nén thì suy từ dấu của Mu). Sửa lại
 được nếu cần.
 
-Diện tích cáp trên một mét dài không suy ra được từ mặt cắt ngang, nên phải
-nhập cự ly cáp theo phương dọc cầu; chương trình lấy Ap = (diện tích một bó từ
-template) × 1000 / cự ly.
+Diện tích một bó lấy từ template số liệu (khoá Ap). Cự ly cáp theo phương dọc
+cầu mặc định 1000 mm — đúng bằng giả thiết của mô hình Midas: khung ngang được
+dựng thành dải rộng 1 m và cáp trong dải đó mang diện tích của một bó. Đổi cự
+ly thì bảng kiểm toán và mô hình nói hai chuyện khác nhau. Ap trên 1 m = (diện
+tích một bó) × 1000 / cự ly.
 
 Đọc bảng kết quả
 

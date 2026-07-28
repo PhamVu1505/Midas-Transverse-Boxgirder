@@ -14,12 +14,23 @@ from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QFontMetrics
 from .worker import ResultsWorker
 from .widgets import LogView
 from .theme import LIGHT
+from .pan_zoom import PanZoom
+from .force_diagram import ForceDiagram, QUANTITY_LABELS
 
 
 POINTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 LABELS = ['Center +', 'Haunch M-', 'Haunch M+', 'Out Side',
           'Center', 'Haunch', 'Mid->upper', 'Mid->lower']
 GROUPS = ['Top slab', '', '', '', 'Bottom slab', '', 'Web', '']
+
+# Bộ phận theo CHỮ CÁI ĐẦU, không theo chỉ số cột: mặt cắt nhiều hộp có thêm
+# A1, E2, G3… nên tra theo vị trí trong danh sách là sai ngay từ cột thứ chín.
+GROUP_OF = {'A': 'Top slab', 'B': 'Top slab', 'C': 'Top slab', 'D': 'Top slab',
+            'E': 'Bottom slab', 'F': 'Bottom slab', 'G': 'Web', 'H': 'Web'}
+# Bề rộng cột khi bảng có nhiều hơn số cột vừa khung — lúc đó cho cuộn ngang
+# thay vì bóp mỗi cột còn vài chục pixel.
+COL_W = 96
+MAX_STRETCH_COLS = 9
 
 # Nền nhóm hàng lấy từ token: bảng Tối cần nền tối, nếu giữ pastel sáng thì
 # chữ (màu mực sáng của theme) biến mất trên đó.
@@ -61,7 +72,7 @@ def point_color(pt: str, t: dict) -> QColor:
     return c if not step else c.lighter(100 + step * 12)
 
 
-class CheckPointDiagram(QWidget):
+class CheckPointDiagram(PanZoom, QWidget):
     """Mặt cắt ngang THẬT (đọc từ topo, tức từ DXF) kèm ký hiệu vết cắt A–H.
 
     Bản trước vẽ một hình hộp tượng trưng với tỉ lệ cố định — không phản ánh mặt
@@ -80,29 +91,20 @@ class CheckPointDiagram(QWidget):
     R_BUBBLE = 15                 # bán kính vòng tròn tên, pixel
     CUT_OUT = 13                  # đường cắt nhô ra ngoài mặt bê tông, pixel
 
-    ZOOM_STEP = 1.15
-    ZOOM_MIN, ZOOM_MAX = 0.15, 40.0
-
     def __init__(self, theme=None):
-        super().__init__()
+        QWidget.__init__(self)
         self.t = theme or LIGHT
         # Tối thiểu để nhỏ: khung này nằm chung splitter với bảng nội lực, chặn
         # dưới 300 px thì trên màn hình thấp bảng chỉ còn một dòng. Hai hàng ký
-        # hiệu so le tự tắt khi lề không đủ (`_two_rows`).
-        self.setMinimumSize(260, 180)
+        # hiệu so le tự bớt hàng khi lề không đủ (`_symbol_metrics`).
+        self.setMinimumSize(240, 170)
         self._geom = None          # {'outpoly', 'inpolys', 'H'}
         self._marks = {}           # {tên: {'x','z','dir'}}
         self._name = ''
-        # Zoom/pan như thẻ Model: hệ số phóng và độ dời tính bằng PIXEL, cộng
-        # thẳng vào phép quy đổi toạ độ nên không đụng tới phần vẽ.
-        self._zoom = 1.0
-        self._off = QPointF(0, 0)
-        self._drag = None
-        self.setMouseTracking(True)
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setToolTip('Lăn chuột để phóng to/thu nhỏ · kéo để di chuyển · '
-                        'bấm đúp hoặc phím F để vừa khung')
+        self._init_pan_zoom()
+
+    def has_content(self):
+        return bool(self._geom)
 
     def apply_theme(self, theme: dict):
         self.t = theme
@@ -115,50 +117,55 @@ class CheckPointDiagram(QWidget):
         self._marks = marks or {}
         self.fit()
 
-    # ── zoom / pan ──
-    def fit(self):
-        self._zoom = 1.0
-        self._off = QPointF(0, 0)
-        self.update()
+    R_MIN = 8.0          # nhỏ hơn nữa là không đọc nổi chữ trong vòng tròn
 
-    def wheelEvent(self, e):
-        if not self._geom:
-            return
-        d = e.angleDelta().y()
-        if not d:
-            return
-        k = self.ZOOM_STEP if d > 0 else 1.0 / self.ZOOM_STEP
-        new = max(self.ZOOM_MIN, min(self.ZOOM_MAX, self._zoom * k))
-        k = new / self._zoom
-        # Giữ nguyên điểm dưới con trỏ: phóng quanh con trỏ chứ không quanh tâm
-        # khung — phóng quanh tâm thì chỗ đang muốn xem trôi ra ngoài ngay.
-        p = e.position()
-        self._off = p - (p - self._off) * k
-        self._zoom = new
-        self.update()
+    def _vertical_groups(self):
+        """Ký hiệu cắt đứng, tách thành nhóm VẼ PHÍA TRÊN và nhóm VẼ PHÍA DƯỚI.
 
-    def mousePressEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton and self._geom:
-            self._drag = e.position() - self._off
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        Phải tách: ký hiệu bản mặt vẽ lên trên, ký hiệu bản đáy vẽ xuống dưới,
+        hai bên không đụng nhau. Gộp chung một danh sách thì A (giữa bản mặt) và
+        E (giữa bản đáy) cùng x = 0 → khoảng cách bằng 0 → cả hình bị coi là
+        chật cứng và ký hiệu co lại vô cớ.
+        """
+        zs = [q[1] for q in self._geom['outpoly']]
+        zmid = (max(zs) + min(zs)) / 2
+        up, down = [], []
+        for n, m in self._marks.items():
+            if m['dir'] != 'v':
+                continue
+            (up if m['z'] > zmid else down).append(n)
+        key = lambda n: self._marks[n]['x']
+        return sorted(up, key=key), sorted(down, key=key)
 
-    def mouseMoveEvent(self, e):
-        if self._drag is not None:
-            self._off = e.position() - self._drag
-            self.update()
+    def _symbol_metrics(self, s):
+        """(bán kính, số hàng so le) để các ký hiệu cắt ĐỨNG không chạm nhau.
 
-    def mouseReleaseEvent(self, e):
-        self._drag = None
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        Chật thì **thêm hàng so le trước, thu nhỏ sau**. Mặt cắt hai hộp có tới
+        mười hai ký hiệu đứng trên bản mặt; chỉ thu bán kính thì chữ trong vòng
+        tròn nhỏ đến mức không đọc được, mà tên điểm chính là thứ duy nhất phải
+        đọc được trên hình.
+        """
+        r0 = float(self.R_BUBBLE)
+        best_rows, best_r = 1, r0
+        for names in self._vertical_groups():
+            xs = sorted(self._marks[n]['x'] for n in names)
+            if len(xs) < 2:
+                continue
 
-    def mouseDoubleClickEvent(self, e):
-        self.fit()
+            def gap_for(rows):
+                if len(xs) <= rows:
+                    return float('inf')
+                return min((xs[i + rows] - xs[i]) * s * self._zoom
+                           for i in range(len(xs) - rows))
 
-    def keyPressEvent(self, e):
-        if e.key() in (Qt.Key.Key_F, Qt.Key.Key_Home):
-            self.fit()
-        else:
-            super().keyPressEvent(e)
+            rows, r = 3, max(self.R_MIN, min(r0, gap_for(3) / 2.15))
+            for k in (1, 2, 3):
+                if gap_for(k) >= 2.15 * r0:
+                    rows, r = k, r0
+                    break
+            best_rows = max(best_rows, rows)
+            best_r = min(best_r, r)
+        return best_r, best_rows
 
     # ── quy đổi toạ độ ──
     def _mapper(self):
@@ -168,23 +175,38 @@ class CheckPointDiagram(QWidget):
         zs = [p[1] for p in g['outpoly']]
         x0, x1 = min(xs), max(xs)
         z0, z1 = min(zs), max(zs)
+        W, H = self.width(), self.height()
         # Lề co theo kích thước: để cứng 88 px thì khi panel thấp (splitter kéo
         # nhỏ) lề ăn hết chỗ và mặt cắt bị bóp còn vài pixel.
-        # Lề co theo kích thước: để cứng 88 px thì khi panel thấp (splitter kéo
-        # nhỏ) lề ăn hết chỗ và mặt cắt bị bóp còn vài pixel.
-        ml, mt, mr, mb = self.MARGIN
-        ml = mr = min(ml, self.width() * 0.14)
-        mt = mb = min(mt, self.height() * 0.26)
-        cw = max(self.width() - ml - mr, 1)
-        ch = max(self.height() - mt - mb, 1)
-        # Ký hiệu cũng phải co theo: bán kính và độ nhô ra vừa đúng lề còn lại,
-        # và chỉ xếp hai hàng khi lề đủ chỗ — không thì hàng thứ hai bị cắt.
-        self._r = max(8.0, min(self.R_BUBBLE, (mt - 6) / 2.2))
-        self._out = max(5.0, min(self.CUT_OUT, mt - 2 * self._r - 2))
-        self._two_rows = (self._out + self._r * (2 + 2.3)) <= mt
-        sx = cw / max(x1 - x0, 1e-9)
-        sz = ch / max(z1 - z0, 1e-9)
-        s = min(sx, sz)
+        ml = mr = min(self.MARGIN[0], W * 0.14)
+
+        def scale_for(mt):
+            cw = max(W - ml - mr, 1)
+            ch = max(H - 2 * mt, 1)
+            return min(cw / max(x1 - x0, 1e-9), ch / max(z1 - z0, 1e-9)), cw, ch
+
+        # Vòng lặp hai bước: cỡ ký hiệu quyết định lề trên, lề trên lại quyết
+        # định tỉ lệ vẽ, mà tỉ lệ vẽ lại quyết định các ký hiệu có chật hay
+        # không. Hai vòng là đủ hội tụ cho mọi mặt cắt đã gặp.
+        # Lề trên KHÔNG được vượt 30% chiều cao: hình mặt cắt mới là thứ chính,
+        # để ký hiệu tự nới lề thì mặt cắt bị bóp còn một dải mỏng.
+        mt_cap = H * 0.30
+        mt = min(self.MARGIN[1], mt_cap)
+        s, cw, ch = scale_for(mt)
+        r, rows, out = float(self.R_BUBBLE), 1, float(self.CUT_OUT)
+        for _ in range(2):
+            r, rows = self._symbol_metrics(s)
+            out = min(self.CUT_OUT, max(4.0, H * 0.05))
+            # Không đủ lề cho số hàng đó ở bán kính tối thiểu → bớt hàng đi
+            while rows > 1 and out + self.R_MIN * (2 + 2.3 * (rows - 1)) + 4 > mt_cap:
+                rows -= 1
+            span = 2 + 2.3 * (rows - 1)
+            mt = min(max(out + r * span + 4, 22.0), mt_cap)
+            r = max(6.0, min(r, (mt - out - 4) / span))
+            s, cw, ch = scale_for(mt)
+        self._r, self._rows, self._out = r, rows, out
+
+        mb = mt
         ox = ml + (cw - (x1 - x0) * s) / 2
         oz = mt + (ch - (z1 - z0) * s) / 2
 
@@ -211,7 +233,7 @@ class CheckPointDiagram(QWidget):
             p.end()
             return
 
-        fn, _ = self._mapper()      # đặt luôn self._r / _out / _two_rows
+        fn, _ = self._mapper()      # đặt luôn self._r / _out / _rows
         from PyQt6.QtGui import QPainterPath
 
         # bê tông = biên ngoài trừ lỗ rỗng, gạch 45° theo quy ước bản vẽ
@@ -241,11 +263,15 @@ class CheckPointDiagram(QWidget):
         p.drawLine(fn(0.0, max(zs)) + QPointF(0, -18),
                    fn(0.0, min(zs)) + QPointF(0, 18))
 
-        # Ký hiệu cắt đứng xếp thành hai hàng so le: các mặt cắt bản mặt cách
-        # nhau chưa tới 1 m nên để một hàng là bubble chen nhau.
-        vert = sorted((n for n, m in self._marks.items() if m['dir'] == 'v'),
-                      key=lambda n: self._marks[n]['x'])
-        rank = {n: (i % 2 if self._two_rows else 0) for i, n in enumerate(vert)}
+        # Ký hiệu cắt đứng xếp so le nhiều hàng: các mặt cắt bản mặt cách nhau
+        # chưa tới 1 m nên để một hàng là bubble chen nhau. Số hàng do
+        # `_symbol_metrics` quyết định theo mật độ thực tế.
+        rows = max(1, getattr(self, '_rows', 1))
+        rank = {}
+        for names in self._vertical_groups():
+            # So le TRONG TỪNG NHÓM: đánh số chạy qua cả hai nhóm thì hàng của
+            # ký hiệu bản đáy phụ thuộc số ký hiệu bản mặt, đổi mặt cắt là nhảy.
+            rank.update({n: (i % rows) for i, n in enumerate(names)})
         for name in sorted(self._marks, key=lambda n: (n[0], n[1:])):
             self._draw_mark(p, fn, name, self._marks[name], rank.get(name, 0))
         p.end()
@@ -312,6 +338,8 @@ class ResultsTab(QWidget):
         self.t = theme or LIGHT
         self.worker = None
         self.all_results = {}
+        self.all_env = {}      # {mặt cắt: bao nội lực để vẽ biểu đồ}
+        self._points = list(POINTS)
         self._init_ui()
 
     def _init_ui(self):
@@ -362,13 +390,19 @@ class ResultsTab(QWidget):
         row_btn.addWidget(self.btn_process)
         layout.addLayout(row_btn)
 
-        # Section selector
+        # Section selector + chọn biểu đồ
         row_view = QHBoxLayout()
         row_view.addWidget(QLabel('Xem mặt cắt:'))
         self.section_combo = QComboBox()
         self.section_combo.setMinimumWidth(120)
         self.section_combo.currentTextChanged.connect(self._on_section_changed)
         row_view.addWidget(self.section_combo)
+        row_view.addSpacing(16)
+        row_view.addWidget(QLabel('Biểu đồ:'))
+        self.diag_combo = QComboBox()
+        self.diag_combo.addItems(QUANTITY_LABELS)
+        self.diag_combo.setMinimumWidth(190)
+        row_view.addWidget(self.diag_combo)
         row_view.addStretch()
         layout.addLayout(row_view)
 
@@ -376,19 +410,28 @@ class ResultsTab(QWidget):
         # một cột hẹp, không vẽ nổi tỉ lệ thật; bảng 8 cột thì bị nén.
         splitter = QSplitter(Qt.Orientation.Vertical)
 
+        # Hàng trên chia đôi: trái là mặt cắt kèm ký hiệu vết cắt, phải là biểu
+        # đồ bao nội lực. Hai hình cùng một khung ngang nên đặt cạnh nhau đọc
+        # được ngay chỗ nào mômen lớn ứng với điểm kiểm toán nào.
+        top = QSplitter(Qt.Orientation.Horizontal)
         self.diagram = CheckPointDiagram(self.t)
-        splitter.addWidget(self.diagram)
+        self.forces = ForceDiagram(self.t)
+        self.diag_combo.currentTextChanged.connect(self.forces.set_quantity)
+        top.addWidget(self.diagram)
+        top.addWidget(self.forces)
+        top.setSizes([520, 460])
+        splitter.addWidget(top)
 
-        self.table = QTableWidget(len(DATA_ROWS), 8)
-        self.table.setHorizontalHeaderLabels(POINTS)
+        self.table = QTableWidget(len(DATA_ROWS), len(POINTS))
         self.table.setVerticalHeaderLabels([r[0] for r in DATA_ROWS])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setMinimumWidth(180)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setHorizontalScrollMode(
+            QAbstractItemView.ScrollMode.ScrollPerPixel)
         # Đủ chỗ cho cả bảy hàng ngay từ đầu; chỗ dôi ra khi phóng to cửa sổ
         # dồn hết cho hình (stretch 1 / 0) vì bảng không cần cao thêm.
         self.table.setMinimumHeight(140)
-        self._style_table_headers()
+        self._set_points(POINTS)
         splitter.addWidget(self.table)
         splitter.setSizes([360, 250])
         splitter.setStretchFactor(0, 1)
@@ -411,12 +454,28 @@ class ResultsTab(QWidget):
         self._pairs = []      # [(name, bf_path, topo_path)] dựng từ project
         self.refresh()
 
+    def _set_points(self, points):
+        """Dựng lại cột theo ĐÚNG các điểm kiểm toán của mặt cắt đang xem.
+
+        Bản trước ghim cứng tám cột A–H, nên mặt cắt hai hộp (18 điểm) mất mười
+        cột mà không có gì báo. Quá chín cột thì bỏ chế độ Stretch và cho cuộn
+        ngang — bóp mỗi cột còn vài chục pixel thì số dính vào nhau.
+        """
+        self._points = list(points)
+        self.table.setColumnCount(len(self._points))
+        self.table.setHorizontalHeaderLabels(self._points)
+        hdr = self.table.horizontalHeader()
+        if len(self._points) <= MAX_STRETCH_COLS:
+            hdr.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        else:
+            hdr.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+            for j in range(len(self._points)):
+                self.table.setColumnWidth(j, COL_W)
+        self._style_table_headers()
+
     def _style_table_headers(self):
-        current_group = ''
-        for j in range(8):
-            if GROUPS[j]:
-                current_group = GROUPS[j]
-            color = group_color(current_group, self.t)
+        for j, pt in enumerate(self._points):
+            color = group_color(GROUP_OF.get(pt[0], ''), self.t)
             for i in range(len(DATA_ROWS)):
                 item = QTableWidgetItem('')
                 item.setBackground(color)
@@ -426,6 +485,7 @@ class ResultsTab(QWidget):
         self.t = theme
         self.lb_ready.setStyleSheet(f'color: {theme["ink_2"]}; font-size: 8pt;')
         self.diagram.apply_theme(theme)
+        self.forces.apply_theme(theme)
         self.log_area.apply_theme(theme, size)
         # Nền nhóm nằm trong từng ô của bảng — phải đặt lại, QSS không với tới.
         self._style_table_headers()
@@ -538,6 +598,7 @@ class ResultsTab(QWidget):
     def _clear(self):
         self.log_area.clear()
         self.all_results.clear()
+        self.all_env.clear()
         self.section_combo.clear()
         self.refresh()
 
@@ -550,6 +611,7 @@ class ResultsTab(QWidget):
         self.btn_process.setEnabled(False)
         self.log_area.clear()
         self.all_results.clear()
+        self.all_env.clear()
         self.section_combo.clear()
 
         output_dir = self.out_edit.text() or 'output'
@@ -559,12 +621,16 @@ class ResultsTab(QWidget):
         self._done = 0
         self.progress_changed.emit(0, self._total)
         self.worker.section_done.connect(self._on_section_done)
+        self.worker.envelope_done.connect(self._on_envelope)
         self.worker.error_mismatch.connect(self._on_mismatch)
         self.worker.finished_all.connect(self._on_finished)
         self.worker.start()
 
     def _on_log(self, msg):
         self.log_area.append_auto(msg)
+
+    def _on_envelope(self, name, env):
+        self.all_env[name] = env
 
     def _on_section_done(self, name, check_points):
         self.all_results[name] = check_points
@@ -607,44 +673,50 @@ class ResultsTab(QWidget):
         if not name or name not in self.all_results:
             return
         self._fill_table(self.all_results[name])
-        self.diagram.set_section(name, *self._section_geometry(name))
+        geom, marks, nodes, elems = self._section_geometry(name)
+        self.diagram.set_section(name, geom, marks)
+        self.forces.set_data(name, nodes, elems, self.all_env.get(name) or {})
 
     def _section_geometry(self, name):
-        """(geometry, marks) đọc từ topo.json của mặt cắt — cùng nguồn với MCT."""
-        from src.result_reader import check_point_marks
+        """(geometry, marks, nodes, elements) đọc từ topo.json của mặt cắt.
+
+        Cùng nguồn với MCT — biểu đồ bao vẽ trên đúng bộ node/phần tử mà Midas
+        đã tính, nên không có chuyện hình một đằng số một nẻo.
+        """
+        from src.result_reader import check_point_marks, node_coords
         sec = self.project.find(name)
         path = sec.topo if sec else None
         if not path or not os.path.exists(path):
-            return None, {}
+            return None, {}, {}, []
         try:
             with open(path, encoding='utf-8') as f:
                 topo = json.load(f)
             topo['elements'] = [tuple(e) for e in topo['elements']]
-            return topo.get('geometry'), check_point_marks(topo)
+            elems = [(e[0], e[1], e[2]) for e in topo['elements']]
+            return (topo.get('geometry'), check_point_marks(topo),
+                    node_coords(topo), elems)
         except Exception as e:
-            self.log_area.warn(f'[{name}] không vẽ được mặt cắt: {e}')
-            return None, {}
+            self.log_area.warning(f'[{name}] không vẽ được mặt cắt: {e}')
+            return None, {}, {}, []
 
     def _fill_table(self, check_points):
+        from src.result_reader import order_points
         bold_font = QFont()
         bold_font.setBold(True)
 
-        current_group = ''
-        for j, pt in enumerate(POINTS):
-            if GROUPS[j]:
-                current_group = GROUPS[j]
-            color = group_color(current_group, self.t)
+        points = order_points(check_points.keys())
+        if points != getattr(self, '_points', None):
+            self._set_points(points)
 
+        for j, pt in enumerate(points):
+            color = group_color(GROUP_OF.get(pt[0], ''), self.t)
             for i, (label, key, fmt) in enumerate(DATA_ROWS):
                 val = check_points[pt][key]
-                if isinstance(val, str):
-                    text = val
-                else:
-                    text = fmt.format(val)
-
+                text = val if isinstance(val, str) else fmt.format(val)
                 item = QTableWidgetItem(text)
                 item.setBackground(color)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight
+                                      | Qt.AlignmentFlag.AlignVCenter)
                 if not label.startswith(' '):
                     item.setFont(bold_font)
                 self.table.setItem(i, j, item)

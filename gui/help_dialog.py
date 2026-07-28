@@ -224,6 +224,16 @@ ký hiệu vết cắt theo quy ước bản vẽ.</p>
 <p>Hình này <b>lăn chuột để phóng to thu nhỏ, kéo chuột để di chuyển</b>, bấm đúp
 hoặc phím <b>F</b> để vừa khung — như thẻ Model. Kéo thanh chia giữa hình và bảng
 để đổi tỉ lệ hai phần.</p>
+
+<h3 style="color:{ink}">Biểu đồ bao nội lực</h3>
+<p>Ô bên phải vẽ <b>đường bao mômen hoặc lực cắt</b> lên chính hình khung ngang,
+chọn bằng ô <b>Biểu đồ</b>: Cường độ (<code>str_all</code>) hoặc Sử dụng
+(<code>ser_all</code>) — đúng hai tổ hợp bao mà bảng bên dưới vẫn tra, nên hình
+và bảng luôn nói cùng một con số.</p>
+<p>Hai đường bao vẽ chồng: <b style="color:{t["part_top"]}">max</b> và
+<b style="color:{t["part_bot"]}">min</b>. Nhìn hình mới thấy được <i>hình dạng</i>
+nội lực — chỗ đổi dấu, chỗ vút, chỗ nào lẽ ra phải trơn mà lại gãy khúc (dấu hiệu
+chia lưới hoặc gán tải sai). Ô này cũng zoom/pan như ô mặt cắt.</p>
 <p style="color:{ink2}">Mặt cắt <b>nhiều hộp</b> có thêm điểm phân giải cho từng
 khoang và từng vách — <b>A1, A2…</b> (giữa mỗi khoang bản mặt), <b>E1, E2…</b>
 (giữa mỗi khoang bản đáy), <b>G1…Gm</b> và <b>H1…Hm</b> (đầu trên và đầu dưới
@@ -255,9 +265,11 @@ cột bản đáy và bụng bị khoá, hiện dấu gạch — không gõ nh�
 <p>d<sub>p</sub> tính thẳng từ đường cáp trong DXF: nội suy cao độ cáp tại vị trí
 điểm kiểm toán rồi đo tới thớ chịu nén (thớ nào chịu nén thì suy từ dấu của
 M<sub>u</sub>). Sửa lại được nếu cần.</p>
-<p>Diện tích cáp trên một mét dài <b>không</b> suy ra được từ mặt cắt ngang, nên
-phải nhập <b>cự ly cáp theo phương dọc cầu</b>; chương trình lấy
-A<sub>p</sub> = (diện tích một bó từ template) × 1000 / cự ly.</p>
+<p>Diện tích một bó lấy từ template số liệu (khoá <code>Ap</code>). Cự ly cáp theo
+phương dọc cầu mặc định <b>1000 mm</b> — đúng bằng giả thiết của mô hình Midas:
+khung ngang được dựng thành dải rộng 1 m và cáp trong dải đó mang diện tích của
+một bó. Đổi cự ly thì bảng kiểm toán và mô hình nói hai chuyện khác nhau.
+A<sub>p</sub> trên 1 m = (diện tích một bó) × 1000 / cự ly.</p>
 
 <h3 style="color:{ink}">Đọc bảng kết quả</h3>
 <p>Mỗi nhóm kết thúc bằng hàng <b>hệ số sức kháng / nội lực</b>
