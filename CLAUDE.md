@@ -270,7 +270,7 @@ installer\build.bat
 ## Current Sprint
 **Goal:** v1.4.0 — kiểm toán tiết diện theo TCVN 11823 trong app (điểm kiểm toán cho mặt cắt nhiều hộp, `src/section_check.py`, GUI mới).
 
-**Trạng thái:** `pytest tests -q` **43/43 pass**. **37 commit trên `feature/t13-twin-box` chưa push.** Toàn bộ v1.4.0 đã chạy trên số liệu Midas thật; **GUI xong**, chỉ còn việc bump phiên bản và push.
+**Trạng thái:** `pytest tests -q` **43/43 pass**. **39 commit trên `feature/t13-twin-box` chưa push.** Toàn bộ v1.4.0 đã chạy trên số liệu Midas thật; **GUI xong**, chỉ còn việc bump phiên bản và push.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
@@ -278,22 +278,26 @@ installer\build.bat
 3. **`src/section_check.py`** (`0fd9168`, `21fef85`, `c31acfc`, `699c62f`) — bốn nhóm kiểm tra theo TCVN 11823-5 bản chính thức.
 4. **GUI Results tab** (`3f37e67`) — mặt cắt thật từ DXF + ký hiệu vết cắt.
 
-Đã làm (session 2026-07-29, 5 commit):
+Đã làm (session 2026-07-29, 7 commit):
 5. **Tab "Kiểm toán mặt cắt"** (`586c926`, `81651f3`) — bảng nhập cốt thép + bảng kết quả bốn nhóm, `Section.rebars`/`check_opts` lưu vào `.mtbproj`, xuất Excel, phím **F7**. Xem mục *Tab Kiểm toán mặt cắt*.
 6. **Trình bày theo file mẫu Hà Tam** (`5c9f80d`, `3ceb25a`) — làm tròn theo `data/Transverse-HT.xls`, hệ số Mr/Mu thay cho % huy động, tô ô xanh/vàng/đỏ, bỏ hàng "Kết luận", Excel in được.
 7. **Nhận diện cáp DƯL** (`5c9f80d`, `3ceb25a`) — `src/pt_layout.py`; ô *Kể đến cáp DƯL* **mặc định TẮT**. Xem mục *Cáp DƯL trong kiểm toán*.
 8. **Biểu đồ bao nội lực** (`6ffa1a0`, `3ceb25a`) — `gui/force_diagram.py`, vẽ theo lối midas Civil. Xem mục *Biểu đồ bao nội lực*.
 9. **Thẻ Results table** (`6ffa1a0`) — zoom/pan, bảng theo số điểm thật + cuộn ngang, ký hiệu G/H vào trong bụng, ký hiệu co theo mật độ.
+10. **`tools/render_ui.py`** (`c5b15a7`) — chụp mọi thẻ bằng một lệnh. VuPQ chọn phương án này khi bàn cách giảm context cho các phiên UI/UX. Xem mục *Sửa giao diện thì chụp ảnh trước*.
 
 **Kiểm toán S1 trên số liệu Midas thật** (Bảng 5, D16@150 bản mặt / D19 bản đáy / D25 bụng, **không kể cáp**): 6/8 điểm đạt, hệ số thấp nhất D = 0,59 (uốn, chân cánh hẫng) — đây là cốt thép gõ thử, không phải cốt thép thiết kế.
 
 **Next Action cụ thể:**
-1. **Chạy `python run_gui.py`** làm một lượt thật đầu-cuối (đã kiểm từng phần bằng xuất ảnh, chưa dùng tay).
-2. **Bump v1.3.1 → v1.4.0** ở 5 chỗ: `installer/setup.iss`, `CLAUDE.md`, `README.md`, `docs/USER-GUIDE.txt` (sinh lại), `gui/main_window.py:VERSION`.
-3. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`.
-4. **Push 37 commit.**
-5. Tạo lại MCT cho **S20** (topo sinh trước khi có khối `geometry` nên ô mặt cắt ở Results table để trống; biểu đồ bao vẫn vẽ).
-6. `data/Transverse-HT.xls` đang untracked — quyết định commit vào repo hay để ngoài (đang dùng làm chuẩn trình bày cho bảng kiểm toán).
+1. **`python tools/render_ui.py`** rồi mở `docs/ui-snapshots/` — nhìn hiện trạng trước, đừng đọc lại code giao diện.
+2. **Chạy `python run_gui.py`** làm một lượt thật đầu-cuối (đã kiểm từng phần bằng xuất ảnh, chưa dùng tay).
+3. **Bump v1.3.1 → v1.4.0** ở 5 chỗ: `installer/setup.iss`, `CLAUDE.md`, `README.md`, `docs/USER-GUIDE.txt` (sinh lại), `gui/main_window.py:VERSION`.
+4. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`.
+5. **Push 39 commit.**
+6. Tạo lại MCT cho **S20** (topo sinh trước khi có khối `geometry` nên ô mặt cắt ở Results table để trống; biểu đồ bao vẫn vẽ).
+7. `data/Transverse-HT.xls` đang untracked — quyết định commit vào repo hay để ngoài (đang dùng làm chuẩn trình bày cho bảng kiểm toán).
+
+**Ba phương án giảm context còn để ngỏ** (đã bàn 2026-07-29, VuPQ chỉ chọn công cụ chụp ảnh): tách 10 mục giao diện sang `docs/UI-NOTES.md` để `CLAUDE.md` nhẹ đi (~36 KB → ~20 KB) · chẻ nhỏ `gui/check_tab.py` (961 dòng) thành check_tab + check_tables + point_header · checklist tự kiểm trước khi báo xong (nút cắt chữ · minimumSizeHint · mặt cắt 18 điểm · hai bảng màu · bảng có cuộn chưa).
 
 **Blocker:** không có.
 
@@ -303,7 +307,7 @@ installer\build.bat
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
-- 2026-07-29: **Tab Kiểm toán mặt cắt** (nhập cốt thép, hệ số Mr/Mu, tô ô xanh/vàng/đỏ, xuất Excel in được theo mẫu Hà Tam) + **nhận diện cáp DƯL** (`src/pt_layout.py`, mặc định KHÔNG kể) + **biểu đồ bao nội lực** kiểu midas (`gui/force_diagram.py`) + Results table zoom/pan, bảng theo số điểm thật.
+- 2026-07-29: **Tab Kiểm toán mặt cắt** (nhập cốt thép, hệ số Mr/Mu, tô ô xanh/vàng/đỏ, xuất Excel in được theo mẫu Hà Tam) + **nhận diện cáp DƯL** (`src/pt_layout.py`, mặc định KHÔNG kể) + **biểu đồ bao nội lực** kiểu midas (`gui/force_diagram.py`) + Results table zoom/pan, bảng theo số điểm thật + **`tools/render_ui.py`** chụp mọi thẻ bằng một lệnh.
 - 2026-07-28: **Kiểm toán tiết diện theo TCVN 11823** — tra bản chính thức, `src/section_check.py` (Bảng 4/5, pt.82/83/84), điểm kiểm toán tổng quát cho mặt cắt nhiều hộp, đọc HẾT sheet Beam Force, Results tab vẽ mặt cắt thật + ký hiệu vết cắt.
 - 2026-07-27: **Dọn tổ hợp tải trọng** (bảng dữ liệu, tên TCVN 11823, bỏ tổ hợp trùng, bộ kiểm tham chieu) + **giải mã mạch tính hoạt tải trong Excel** + xác minh trên Midas thật (`output/S1`); bỏ `lane` khỏi VCLASS; bump v1.3.1.
 - 2026-07-27: Hộp thoại **Tùy chọn** (3 trang, 3 bảng màu, đổi tức thì) + khoá mặc định lần đầu giống hệt v1.3.0 (`tests/test_theme.py`).
