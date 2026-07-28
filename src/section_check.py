@@ -329,12 +329,24 @@ def shear(h, forces, rebar, mat, flex, tendon=None, phi=0.9, b=1000.0):
 # Gộp
 # ─────────────────────────────────────────────────────
 
+# Bản mặt được MIỄN kiểm toán cắt: bản thiết kế theo phương pháp dải tương
+# đương không phải kiểm cắt (AASHTO LRFD 5.13.3.6 / TCVN 11823-5 tương ứng).
+# Nếu không miễn, công thức đóng của TCVN cho tiết diện KHÔNG cốt đai kèm hệ số
+# kích thước 51/(39+sxe) với sxe chặn dưới 300 mm — hệ số chỉ còn 0.15, sức
+# kháng tụt 6.6 lần và mọi tiết diện bản mỏng đều báo hỏng. Bản đáy và bụng
+# (E–H) vẫn kiểm đầy đủ.
+TOP_SLAB_POINTS = frozenset('ABCD')
+
+
 def check_point(h, forces, rebar, mat, tendon=None, standard='TCVN 11823',
-                phi_f=0.9, phi_v=0.9, gamma_e=1.0, fcpe=0.0, b=1000.0) -> dict:
+                phi_f=0.9, phi_v=0.9, gamma_e=1.0, fcpe=0.0, b=1000.0,
+                shear_exempt=False) -> dict:
     """Chạy cả bốn nhóm cho MỘT mặt cắt kiểm toán.
 
+    shear_exempt=True thì bỏ kiểm cắt kèm ghi chú (xem `TOP_SLAB_POINTS`).
+
     Returns: {'flexure', 'limits', 'crack', 'shear', 'ok'} — 'ok' là AND của
-    bốn nhóm.
+    các nhóm **có áp dụng**.
     """
     if standard not in STANDARDS:
         raise ValueError(f'tiêu chuẩn không nhận: {standard!r}; '
@@ -344,7 +356,11 @@ def check_point(h, forces, rebar, mat, tendon=None, standard='TCVN 11823',
     lim = reinforcement_limits(h, forces, fl, mat, standard, fcpe=fcpe, b=b)
     cr = crack(h, forces, rebar, mat, standard, gamma_e=gamma_e, b=b,
                tendon=tendon)
-    sh = shear(h, forces, rebar, mat, fl, tendon, phi=phi_v, b=b)
+    if shear_exempt:
+        sh = CheckResult('Kiểm toán cắt', {}, applicable=False,
+                         note='bản mặt theo dải tương đương — miễn kiểm cắt')
+    else:
+        sh = shear(h, forces, rebar, mat, fl, tendon, phi=phi_v, b=b)
 
     rs = (fl, lim, cr, sh)
     return {'flexure': fl, 'limits': lim, 'crack': cr, 'shear': sh,
@@ -367,5 +383,7 @@ def check_all(check_points: dict, rebars: dict, mat: Material,
         out[name] = check_point(
             cp['h'],
             Forces(Mu=cp['Mu'], Vu=cp['Vu'], Mser=cp['Mser']),
-            rb, mat, td, **kw)
+            rb, mat, td,
+            shear_exempt=name[0] in TOP_SLAB_POINTS,
+            **kw)
     return out
