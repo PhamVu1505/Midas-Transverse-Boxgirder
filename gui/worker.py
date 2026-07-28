@@ -16,7 +16,7 @@ from src.mct_frame_writer import write_mct
 from src.pt_property_reader import read_pt_properties
 from src.svg_export import export_frame_svg
 from src.result_reader import (parse_beam_force, _build_element_thickness,
-                               _classify_check_elements, extract_check_points)
+                               classify_check_elements, extract_check_points)
 
 
 class GenerateWorker(QThread):
@@ -205,16 +205,7 @@ class ResultsWorker(QThread):
                           f'{len(result_elems)} elements — OK')
 
             thick_map = _build_element_thickness(topo['elements'], topo['sections'])
-            top_eids = list(range(topo['eid_top_start'], topo['eid_top_end'] + 1))
-            bot_eids = list(range(topo['e_bot_first'], topo['e_bot_last'] + 1))
-            wL_eids = list(range(topo['eid_wL_start'], topo['eid_wL_end'] + 1))
-            wR_eids = list(range(topo['eid_wR_start'], topo['eid_wR_end'] + 1))
-
-            check_elems = _classify_check_elements(
-                topo['top_ids'], top_eids,
-                topo['wL_insert_idx'], topo['wR_insert_idx'],
-                topo['bot_ids'], bot_eids, wL_eids, wR_eids,
-                topo['eid_top_start'])
+            check_elems = classify_check_elements(topo)
 
             check_points = extract_check_points(results, check_elems, thick_map)
 

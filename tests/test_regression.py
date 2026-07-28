@@ -376,6 +376,81 @@ def test_vclass_contains_only_vehicles():
         'mv2 phải giữ đủ 4 dòng chất tải làn'
 
 
+def _topo_of(dxf_rel, name):
+    msp = ezdxf.readfile(os.path.join(ROOT, dxf_rel)).modelspace()
+    outpoly = _get_polyline_vertices(msp, 'OUTPOLY')
+    inpolys = read_inpolys(msp)
+    stype = section_type_from_inpolys(inpolys)
+    frame = build_frame(outpoly, inpolys if stype == 'twin_box' else inpolys[0])
+    _, topo = write_mct(frame, name, EXCEL)
+    return topo
+
+
+def test_check_points_single_box_unchanged():
+    """Mặt cắt một hộp phải ra ĐÚNG A–H như thuật toán cũ, không lệch phần tử nào.
+
+    Bộ phân nhóm được tổng quát hoá cho nhiều hộp; đây là chốt chặn để việc đó
+    không âm thầm đổi kết quả của mặt cắt một hộp.
+    """
+    from src.result_reader import classify_check_elements
+
+    topo = _topo_of('data/LT/S1.dxf', 'S1')
+    top = list(range(topo['eid_top_start'], topo['eid_top_end'] + 1))
+    bot = list(range(topo['e_bot_first'], topo['e_bot_last'] + 1))
+    wL = list(range(topo['eid_wL_start'], topo['eid_wL_end'] + 1))
+    wR = list(range(topo['eid_wR_start'], topo['eid_wR_end'] + 1))
+    iL, iR = topo['wL_insert_idx'], topo['wR_insert_idx']
+    mid, nb = top[iL:iR], len(bot)
+    n = len(mid)
+    haunch = [mid[0], mid[1], mid[-2], mid[-1]]
+    want = {'A': mid[n // 3: n - n // 3], 'B': haunch, 'C': haunch,
+            'D': top[:iL] + top[iR:],
+            'E': bot[nb // 3: nb - nb // 3],
+            'F': [bot[0], bot[1], bot[-2], bot[-1]],
+            'G': [wL[0], wR[0]], 'H': [wL[-1], wR[-1]]}
+
+    got = classify_check_elements(topo)
+    assert set(got) == set(want), f'một hộp không được sinh điểm phụ: {sorted(got)}'
+    for k in want:
+        assert got[k] == want[k], f'{k}: {got[k]} ≠ {want[k]}'
+
+
+def test_check_points_twin_box_covers_center_web():
+    """Mặt cắt hai hộp: phải phủ vách giữa và không lấy vùng gối làm giữa nhịp.
+
+    Bản cũ chỉ nhận vách trái/phải nên nhóm A trải từ vách trái sang vách phải,
+    trùm qua chân vách giữa (đo trên S1_V2: x = −2.20…+1.75, chứa x = 0) — chỗ
+    đó là mô men âm. Bụng giữa và bốn vút tại vách giữa thì không điểm nào chạm.
+    """
+    from src.result_reader import classify_check_elements, order_points
+
+    topo = _topo_of('data/TP_BL/S1_V2.dxf', 'S1_V2')
+    ce = classify_check_elements(topo)
+    t0 = topo['eid_top_start']
+    xs = [n['x'] for n in topo['top_nodes']]
+    x_wC = xs[topo['wC_insert_idx']]
+
+    # 1. không phần tử nào của A bắc qua chân vách giữa
+    for eid in ce['A']:
+        lo, hi = sorted((xs[eid - t0], xs[eid - t0 + 1]))
+        assert not (lo < x_wC < hi), f'A chứa phần tử {eid} vắt qua vách giữa'
+    assert ce['A'] == ce['A1'] + ce['A2'], 'A phải là bao của giữa từng khoang'
+
+    # 2. bụng giữa có mặt trong G và H
+    wC = list(range(topo['eid_wC_start'], topo['eid_wC_end'] + 1))
+    assert wC[0] in ce['G'] and wC[-1] in ce['H'], 'bỏ sót bụng giữa'
+    assert len(ce['G']) == len(ce['H']) == 3, 'phải có đủ 3 bụng'
+
+    # 3. vút: 2 khoang × 2 đầu × 2 phần tử = 8, gấp đôi mặt cắt một hộp
+    assert len(ce['B']) == 8 and ce['B'] == ce['C'], f"B={ce['B']}"
+    assert len(ce['F']) == 8, f"F={ce['F']}"
+
+    # 4. điểm phân giải theo khoang/vách
+    assert order_points(ce.keys()) == [
+        'A', 'A1', 'A2', 'B', 'C', 'D', 'E', 'E1', 'E2', 'F',
+        'G', 'G1', 'G2', 'G3', 'H', 'H1', 'H2', 'H3'], sorted(ce)
+
+
 class _FakeCell:
     def __init__(self, v): self.value = v
 
@@ -470,6 +545,8 @@ if __name__ == '__main__':
                       (test_load_combinations_resolve, 'tổ hợp không mồ côi'),
                       (test_combo_names_and_scope, 'tên tổ hợp theo TCVN'),
                       (test_vclass_contains_only_vehicles, 'VCLASS chỉ chứa xe'),
+                      (test_check_points_single_box_unchanged, 'điểm kiểm toán 1 hộp'),
+                      (test_check_points_twin_box_covers_center_web, 'điểm kiểm toán 2 hộp'),
                       (test_combo_validator_catches_orphan, 'bộ kiểm bắt được lỗi')):
         try:
             fn()
