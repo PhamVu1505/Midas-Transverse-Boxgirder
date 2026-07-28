@@ -118,6 +118,39 @@ Bốn nhóm: uốn (Đ.7.3.2) · giới hạn cốt thép (Đ.7.3.3) · nứt (�
 - **φ = 0,90 cho MỌI tiết diện.** Đ.5.4.2.1 cho phép 1,00 với tiết diện DƯL khống chế kéo; VuPQ chốt giữ 0,90 (thiên an toàn, thấp hơn 11%). Đừng tự nâng.
 - Ba chỗ cố ý khác file mẫu: trục trung hoà khi có cáp (file mẫu bỏ `As·fy` khỏi cân bằng nhưng cộng vào `Mn`, và thiếu `Aps` trong `k·Aps·fpu/dp`); diện tích thanh `π·d²/4` thay vì bảng tra ASTM; bỏ kiểm nứt khi có cáp hoặc khi ứng suất kéo chưa tới 80%·fr.
 
+### Tab Kiểm toán mặt cắt — `gui/check_tab.py` (v1.4.0)
+Nhập cốt thép → chạy `src.section_check` → bảng kết quả. Cốt thép và tuỳ chọn lưu vào `.mtbproj` theo từng mặt cắt (`Section.rebars`, `Section.check_opts`). Phím **F7**.
+
+- **Trình bày theo file mẫu `data/Transverse-HT.xls` sheet `Strength`** (VuPQ yêu cầu): cột A mô tả tiếng Việt · B ký hiệu · C đơn vị · D… các điểm. Làm tròn lấy đúng định dạng ô của file mẫu — nội lực/kích thước/diện tích/ứng suất **0 chữ số**, θ và β **1**, n/βs/hệ số **2**, β₁/c/de/m/k/j/εx×10³ **3**. Số 0 hiện thành gạch ngang (`0;\-0;"-"`).
+- **Không có hàng "Kết luận".** Kết luận nằm ở hàng **hệ số sức kháng/nội lực** (`Mr/Mu`, `Vr/Vu`, `s_max/s`) — nền xanh ≥1,05 · vàng 1,00–1,05 (dư <5%) · đỏ <1,00. Đọc theo cột thấy ngay điểm nào yếu.
+- **Hệ số chứ không phải % huy động**: kỹ sư đọc hệ số an toàn, và số càng lớn càng an toàn thì cùng chiều với mọi bảng kiểm toán khác trong hồ sơ.
+- **Toàn bộ nội dung nằm trong `QScrollArea`.** `QStackedWidget` lấy `minimumSizeHint` **lớn nhất** trong các trang, nên dải điều khiển của tab này từng kéo bề rộng tối thiểu của cả vùng trung tâm từ 488 lên 680 px — khung xem tab Model không co lại được nữa. Bọc scroll area thì tối thiểu còn 32 px.
+- **Tiêu đề cột vẽ tay** (`PointHeader`): cần cùng lúc ghim khi cuộn, nền theo bộ phận, và huy hiệu mang màu điểm. QSS đã đặt `QHeaderView::section` nên đặt màu qua `QTableWidgetItem` không ăn.
+- `QTableWidget` kế thừa `sizeHint` 256×192 của `QAbstractScrollArea` — trong splitter phải cho **hệ số giãn 1**, để 0 thì bảng đứng nguyên 192 px và cắt mất mấy hàng cuối. Chiều cao hàng lấy qua `verticalHeader().length()`, cộng tay từng `rowHeight()` thì lúc chưa bố trí xong ra thiếu.
+- Tên hàm của `LogView` là `info/success/**warning**/**error**/append_auto` — ghép tên bằng `getattr` từng làm văng ở mức `warn`, tức chỉ khi có điểm KHÔNG ĐẠT.
+
+### Cáp DƯL trong kiểm toán (v1.4.0)
+`src/pt_layout.py::detect(topo, check_points)` đọc `topo['tendons'][].path_mct` (cùng hệ toạ độ với node), nội suy cao độ cáp tại vị trí điểm kiểm toán rồi quy về `dp` theo **thớ chịu nén — suy từ dấu của Mu**.
+
+- **Ô "Kể đến cáp DƯL" mặc định TẮT** — bỏ cáp khỏi sức kháng là thiên về bất lợi, VuPQ chốt. Bật lên thì `Mr` tăng rất mạnh (điểm A của S1: hệ số 1,36 → **3,28**), nên nhật ký và dòng đầu file Excel phải ghi rõ đang chạy chế độ nào.
+- Bộ phận **không có cáp thì hai ô cáp bị khoá**: để mở thì sớm muộn cũng có người gõ `dp` vào cột bản đáy của mặt cắt chỉ căng cáp bản mặt.
+- **`Ap` trên 1 m = Ap một bó × 1000 / cự ly cáp dọc cầu**, cự ly mặc định **1000 mm**. Đó chính là giả thiết của mô hình đã sinh ra nội lực: `mct_frame_writer` dựng khung ngang thành dải rộng đúng 1 m (`W = 0.5`) và gán cho cáp `AREA = Ap` của một bó. Lấy cự ly khác thì bảng kiểm toán và mô hình Midas nói hai chuyện khác nhau.
+
+### Biểu đồ bao nội lực — `gui/force_diagram.py` (v1.4.0)
+Vẽ đường bao `str_all` / `ser_all` lên chính hình khung ngang, cạnh ô mặt cắt ở thẻ Results table. `build_envelope(results)` gom min/max My, Vz cho từng đầu phần tử.
+
+- **Dấu My đã liên tục qua nút** — kiểm trên số liệu thật của S1: `My` đầu J của phần tử n bằng đúng `My` đầu I của phần tử n+1. Vẽ thẳng giá trị đọc được, **không phải đổi dấu đầu nào**.
+- Vẽ theo lối **midas Civil**: kiểu tô mặc định là **"Line fill"** (nét kẻ vuông góc phần tử) chứ không phải mảng màu đặc; giá trị hiện theo kiểu **"Abs Max"** — một con số tại đúng chỗ nó xảy ra; hộp **Legend** ở góc. Tô đặc thì mảng màu che mất hình khung và hai cạnh dựng đứng ở mỗi phần tử thành hàng rào răng lược.
+- Trục khung vẽ **trước** bằng nét mảnh — đó là đường chuẩn số 0 của biểu đồ.
+- Zoom/pan dùng chung `gui/pan_zoom.py` với sơ đồ điểm kiểm toán: lăn chuột phóng **quanh con trỏ** (quanh tâm thì chỗ đang xem trôi ra ngoài từ nấc thứ hai).
+
+### Ký hiệu vết cắt ở thẻ Results table (v1.4.0)
+- Chật thì **thêm hàng so le trước, thu nhỏ sau** — chỉ thu bán kính thì chữ trong vòng tròn không đọc nổi, mà tên điểm là thứ duy nhất phải đọc được. Lề trên chặn ở **30% chiều cao**: để ký hiệu tự nới lề thì mặt cắt bị bóp còn một dải mỏng.
+- Mật độ tính **riêng cho bản mặt và bản đáy**: gộp chung thì A và E cùng `x = 0` → khoảng cách 0 → cả hình bị coi là chật cứng.
+- **G và H lấy đầu phía TRONG bụng**, không lấy điểm giữa phần tử — điểm giữa nằm sát chỗ giao nên ký hiệu đọc thành "cắt qua bản".
+- Bảng dựng **số cột theo số điểm thật**; quá 9 cột thì bỏ `Stretch` và cho cuộn ngang. Ghim cứng 8 cột A–H thì mặt cắt hai hộp mất 10 cột mà không có gì báo.
+- `ResultsTab.set_log()` phải **giấu** khung log riêng của tab: chỉ gán lại biến thì widget cũ vẫn chiếm 130 px trắng ngay dưới bảng nội lực.
+
 ### Sửa gối (v1.3.0 — Giai đoạn 3b)
 Gối **lưu theo toạ độ X**, không theo ID node: đổi `target_len` hay sửa DXF là ID node đổi hết, còn vị trí gối trên bản đáy thì không. `write_mct(..., supports=[{'x','kind'}])` mới quy về node đáy gần nhất lúc ghi.
 
@@ -227,22 +260,30 @@ installer\build.bat
 ## Current Sprint
 **Goal:** v1.4.0 — kiểm toán tiết diện theo TCVN 11823 trong app (điểm kiểm toán cho mặt cắt nhiều hộp, `src/section_check.py`, GUI mới).
 
-**Trạng thái:** `pytest tests -q` **40/40 pass**. **32 commit trên `feature/t13-twin-box` chưa push.** Backend kiểm toán xong và đã chạy trên số liệu Midas thật; còn **một** phần GUI.
+**Trạng thái:** `pytest tests -q` **43/43 pass**. **37 commit trên `feature/t13-twin-box` chưa push.** Toàn bộ v1.4.0 đã chạy trên số liệu Midas thật; **GUI xong**, chỉ còn việc bump phiên bản và push.
 
-Đã làm:
-1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử` (trong ngoặc vốn là số hiệu **nút**, nhãn cũ ghi "element" là sai).
-2. **Điểm kiểm toán tổng quát cho nhiều hộp** (`0d30002`) — `classify_check_elements(topo)`. Xem mục *Điểm kiểm toán mặt cắt nhiều hộp*.
-3. **`src/section_check.py`** (`0fd9168`, `21fef85`, `c31acfc`, `699c62f`) — bốn nhóm kiểm tra theo TCVN 11823-5 bản chính thức. Xem mục *Kiểm toán tiết diện*.
-4. **GUI Results tab** (`3f37e67`) — mặt cắt **thật từ DXF** lên trên, bảng xuống dưới, ký hiệu vết cắt chuẩn bản vẽ, dải nhắc cách xuất Beam Force.
+Đã làm (phần backend, các session trước):
+1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
+2. **Điểm kiểm toán tổng quát cho nhiều hộp** (`0d30002`) — `classify_check_elements(topo)`.
+3. **`src/section_check.py`** (`0fd9168`, `21fef85`, `c31acfc`, `699c62f`) — bốn nhóm kiểm tra theo TCVN 11823-5 bản chính thức.
+4. **GUI Results tab** (`3f37e67`) — mặt cắt thật từ DXF + ký hiệu vết cắt.
 
-**Kiểm toán S1 trên số liệu Midas thật** (phương pháp Bảng 5): 8/8 điểm ĐẠT. Huy động uốn 3.3–65.1% (cao nhất D — chân cánh hẫng), cắt 5.2–31.7%, nứt bỏ qua hết vì ứng suất kéo chưa tới 80%·fr.
+Đã làm (session 2026-07-29, 5 commit):
+5. **Tab "Kiểm toán mặt cắt"** (`586c926`, `81651f3`) — bảng nhập cốt thép + bảng kết quả bốn nhóm, `Section.rebars`/`check_opts` lưu vào `.mtbproj`, xuất Excel, phím **F7**. Xem mục *Tab Kiểm toán mặt cắt*.
+6. **Trình bày theo file mẫu Hà Tam** (`5c9f80d`, `3ceb25a`) — làm tròn theo `data/Transverse-HT.xls`, hệ số Mr/Mu thay cho % huy động, tô ô xanh/vàng/đỏ, bỏ hàng "Kết luận", Excel in được.
+7. **Nhận diện cáp DƯL** (`5c9f80d`, `3ceb25a`) — `src/pt_layout.py`; ô *Kể đến cáp DƯL* **mặc định TẮT**. Xem mục *Cáp DƯL trong kiểm toán*.
+8. **Biểu đồ bao nội lực** (`6ffa1a0`, `3ceb25a`) — `gui/force_diagram.py`, vẽ theo lối midas Civil. Xem mục *Biểu đồ bao nội lực*.
+9. **Thẻ Results table** (`6ffa1a0`) — zoom/pan, bảng theo số điểm thật + cuộn ngang, ký hiệu G/H vào trong bụng, ký hiệu co theo mật độ.
+
+**Kiểm toán S1 trên số liệu Midas thật** (Bảng 5, D16@150 bản mặt / D19 bản đáy / D25 bụng, **không kể cáp**): 6/8 điểm đạt, hệ số thấp nhất D = 0,59 (uốn, chân cánh hẫng) — đây là cốt thép gõ thử, không phải cốt thép thiết kế.
 
 **Next Action cụ thể:**
-1. **Tab "Kiểm toán mặt cắt"** — phần duy nhất còn lại. Backend đã đủ: `section_check.check_all(check_points, rebars, mat, tendons)`. Cần: bảng nhập cốt thép (Ø, cự ly, lớp bảo vệ, cốt đai) lưu vào `.mtbproj`, chọn tiêu chuẩn TCVN 11823 / 22TCN 272-05, chọn phương pháp cắt `bảng`/`công thức`, một bảng cuộn chia nhóm bằng dải tiêu đề, dải "mức huy động". Mockup đã duyệt: https://claude.ai/code/artifact/34b2a9ec-089b-4bdf-902e-91070f97da37
-2. **Đóng workbook `Midas-Transverse-Boxgirder-analysis.xls` trong Excel mà KHÔNG lưu**, rồi `git checkout -- data/Midas-Transverse-Boxgirder-analysis.xls`. File đang lệch byte so với HEAD do Excel COM ghi lại; **số liệu nguyên vẹn** (42 khoá đọc từ HEAD và bản hiện tại giống hệt).
-3. Chạy `python run_gui.py` xem tab Results thật (đã kiểm bằng xuất ảnh, chưa mở app).
-4. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`.
-5. Push 32 commit.
+1. **Chạy `python run_gui.py`** làm một lượt thật đầu-cuối (đã kiểm từng phần bằng xuất ảnh, chưa dùng tay).
+2. **Bump v1.3.1 → v1.4.0** ở 5 chỗ: `installer/setup.iss`, `CLAUDE.md`, `README.md`, `docs/USER-GUIDE.txt` (sinh lại), `gui/main_window.py:VERSION`.
+3. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`.
+4. **Push 37 commit.**
+5. Tạo lại MCT cho **S20** (topo sinh trước khi có khối `geometry` nên ô mặt cắt ở Results table để trống; biểu đồ bao vẫn vẽ).
+6. `data/Transverse-HT.xls` đang untracked — quyết định commit vào repo hay để ngoài (đang dùng làm chuẩn trình bày cho bảng kiểm toán).
 
 **Blocker:** không có.
 
@@ -252,12 +293,12 @@ installer\build.bat
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-07-29: **Tab Kiểm toán mặt cắt** (nhập cốt thép, hệ số Mr/Mu, tô ô xanh/vàng/đỏ, xuất Excel in được theo mẫu Hà Tam) + **nhận diện cáp DƯL** (`src/pt_layout.py`, mặc định KHÔNG kể) + **biểu đồ bao nội lực** kiểu midas (`gui/force_diagram.py`) + Results table zoom/pan, bảng theo số điểm thật.
 - 2026-07-28: **Kiểm toán tiết diện theo TCVN 11823** — tra bản chính thức, `src/section_check.py` (Bảng 4/5, pt.82/83/84), điểm kiểm toán tổng quát cho mặt cắt nhiều hộp, đọc HẾT sheet Beam Force, Results tab vẽ mặt cắt thật + ký hiệu vết cắt.
 - 2026-07-27: **Dọn tổ hợp tải trọng** (bảng dữ liệu, tên TCVN 11823, bỏ tổ hợp trùng, bộ kiểm tham chieu) + **giải mã mạch tính hoạt tải trong Excel** + xác minh trên Midas thật (`output/S1`); bỏ `lane` khỏi VCLASS; bump v1.3.1.
 - 2026-07-27: Hộp thoại **Tùy chọn** (3 trang, 3 bảng màu, đổi tức thì) + khoá mặc định lần đầu giống hệt v1.3.0 (`tests/test_theme.py`).
 - 2026-07-27: Sửa **`path_mct`** vẽ cáp sai chỗ (BOT lên đỉnh dầm, WEB nằm ngang); `src/preview.py` xem trước từ DXF; kéo thả DXF/thư mục/`.mtbproj`.
 - 2026-07-27: Cáp DƯL tách hình học khỏi vật liệu (vẫn hiện khi chưa có template, kèm cảnh báo); mở rộng nhận diện layer cáp; nút "..." hết tàng hình.
 - 2026-07-26: Sửa lỗi Midas `(null)` (STLDCASE/LOADCOMB ghi vô điều kiện); dựng lại bố cục đúng mockup; sửa gối kiểu Fast Restraints; cửa sổ Hướng dẫn tiếng Việt.
-- 2026-07-26: GĐ3 khung xem tương tác (zoom/pan/fit, 3 chế độ, truy vấn node) + GĐ3b sửa gối xuyên suốt.
 
 Lịch sử đầy đủ: `git log --oneline`.
