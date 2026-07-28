@@ -54,3 +54,6 @@ scratch/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Anh giao dien sinh boi tools/render_ui.py - doi moi lan sua UI, khong version
+docs/ui-snapshots/

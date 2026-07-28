@@ -253,9 +253,19 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 ```bash
 python run_gui.py
 python -m pytest tests/test_regression.py -q     # regression: single + twin box
+python tools/render_ui.py                        # ảnh mọi thẻ → docs/ui-snapshots/
 python tools/make_user_guide.py                  # sinh lại docs/USER-GUIDE.txt
 installer\build.bat
 ```
+
+### Sửa giao diện thì chụp ảnh trước, đừng đọc lại code
+`tools/render_ui.py` dựng project mẫu từ dữ liệu thật trong `output/`, đi qua **mọi thẻ**, hai bảng màu, cả mặt cắt một hộp lẫn hai hộp, rồi ghi ~26 ảnh vào `docs/ui-snapshots/` (đã gitignore vì đổi mỗi lần sửa UI).
+
+- Lỗi bố cục Qt **không có traceback** — nút cắt chữ, bảng còn một dòng, `minimumSizeHint` của một trang kéo rộng cả vùng trung tâm. Chỉ nhìn mới thấy. Xem `[[feedback_verify_gui_by_rendering]]`.
+- Mở thư mục ảnh là biết hiện trạng, không phải đọc lại nghìn dòng widget hay dựng lại script nháp. `--only check`, `--themes dark`, `--out` để chụp một phần.
+- Công cụ **vô hiệu hoá `Prefs.save`** trong lúc chạy: bảng màu và project gần đây của người dùng không bị đụng.
+- Mặt cắt chưa có Beam Force thì dựng nội lực **giả** để còn nhìn bố cục — ảnh mang hậu tố `-demo`, đừng lấy số trong đó ra dùng.
+- Phải `repaint()` trước `grab()`: chỉ `processEvents()` thì có lúc chụp trúng khung hình dở, thanh trạng thái ra ba dòng chồng nhau trông y như lỗi bố cục.
 
 ## Current Sprint
 **Goal:** v1.4.0 — kiểm toán tiết diện theo TCVN 11823 trong app (điểm kiểm toán cho mặt cắt nhiều hộp, `src/section_check.py`, GUI mới).
