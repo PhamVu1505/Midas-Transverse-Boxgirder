@@ -497,6 +497,34 @@ def test_section_check_skips_crack_when_prestressed():
     assert no_pt['crack'].applicable, 'không cáp thì phải kiểm nứt'
 
 
+def test_shear_keeps_concrete_capacity_when_exempt():
+    """Bản mặt được miễn kiểm cắt nhưng VẪN phải tính và hiện Vc của bê tông.
+
+    Giấu số đi thì người đọc báo cáo không biết bê tông gánh được bao nhiêu và
+    không thấy chỗ nào đang sát ngưỡng. Điều khoản miễn chỉ có nghĩa là không
+    lấy nó làm căn cứ kết luận, không phải là không tính.
+    """
+    from src.section_check import Material, Rebar, Tendon, Forces, check_point
+
+    mat = Material(fc=50.0, fy=420.0, Ec=38006.9895)
+    rb = Rebar(dia=16, spacing=150, cover=65)
+    fo = Forces(Mu=95.88, Vu=120.67, Mser=98.83)
+
+    ex = check_point(300.0, fo, rb, mat, Tendon(dp=180, Ap=700),
+                     shear_exempt=True)
+    sh = ex['shear']
+    assert not sh.applicable, 'miễn thì không được tính vào kết luận'
+    assert sh.values.get('Vc', 0) > 0, 'miễn nhưng vẫn phải có Vc'
+    for key in ('dv', 'β', 'θ', 'Vc', 'Vs', 'Vn'):
+        assert key in sh.values, f'thiếu {key} trong bảng cắt'
+    assert sh.capacity > 0 and sh.demand > 0, 'phải còn Vr và Vu để so'
+
+    # cùng số liệu, không miễn → y hệt giá trị, chỉ khác chỗ tính vào kết luận
+    full = check_point(300.0, fo, rb, mat, Tendon(dp=180, Ap=700))
+    assert full['shear'].applicable
+    assert abs(full['shear'].values['Vc'] - sh.values['Vc']) < 1e-9
+
+
 def test_section_check_flexure_is_conservative_vs_template():
     """Sức kháng uốn của tiết diện có cáp phải THẤP HƠN file mẫu.
 
@@ -613,6 +641,7 @@ if __name__ == '__main__':
                       (test_check_points_twin_box_covers_center_web, 'điểm kiểm toán 2 hộp'),
                       (test_section_check_matches_template, 'kiểm toán khớp file mẫu'),
                       (test_section_check_skips_crack_when_prestressed, 'bỏ kiểm nứt khi có cáp'),
+                      (test_shear_keeps_concrete_capacity_when_exempt, 'miễn cắt vẫn có Vc'),
                       (test_section_check_flexure_is_conservative_vs_template, 'uốn thiên an toàn'),
                       (test_combo_validator_catches_orphan, 'bộ kiểm bắt được lỗi')):
         try:

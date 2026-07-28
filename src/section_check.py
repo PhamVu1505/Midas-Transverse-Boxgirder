@@ -356,11 +356,15 @@ def check_point(h, forces, rebar, mat, tendon=None, standard='TCVN 11823',
     lim = reinforcement_limits(h, forces, fl, mat, standard, fcpe=fcpe, b=b)
     cr = crack(h, forces, rebar, mat, standard, gamma_e=gamma_e, b=b,
                tendon=tendon)
-    if shear_exempt:
-        sh = CheckResult('Kiểm toán cắt', {}, applicable=False,
-                         note='bản mặt theo dải tương đương — miễn kiểm cắt')
-    else:
-        sh = shear(h, forces, rebar, mat, fl, tendon, phi=phi_v, b=b)
+    # Bản mặt được miễn kiểm cắt, nhưng VẪN TÍNH ĐỦ Vc/Vs/Vn/Vr rồi hiện ra —
+    # giấu số đi thì người đọc báo cáo không biết bê tông gánh được bao nhiêu,
+    # và cũng không thấy được chỗ nào đang sát ngưỡng. Chỉ đặt applicable=False
+    # để nó không quyết định kết luận đạt/không đạt.
+    sh = shear(h, forces, rebar, mat, fl, tendon, phi=phi_v, b=b)
+    if shear_exempt and sh.applicable:
+        sh.applicable = False
+        sh.note = ('bản mặt theo dải tương đương — miễn kiểm cắt, '
+                   'số liệu chỉ để tham khảo')
 
     rs = (fl, lim, cr, sh)
     return {'flexure': fl, 'limits': lim, 'crack': cr, 'shear': sh,
