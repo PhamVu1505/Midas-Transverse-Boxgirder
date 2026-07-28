@@ -23,13 +23,14 @@ Hai chỗ đáng nói:
 
 import os
 
-from PyQt6.QtCore import Qt, QRectF, pyqtSignal
+from PyQt6.QtCore import Qt, QRectF, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QBrush
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QComboBox, QPushButton, QDoubleSpinBox,
                              QTableWidget, QTableWidgetItem, QHeaderView,
                              QStyledItemDelegate, QAbstractItemView,
-                             QFileDialog, QMessageBox, QSizePolicy)
+                             QFileDialog, QMessageBox, QSizePolicy,
+                             QScrollArea, QSplitter, QFrame)
 
 from src import section_check as sc
 from src.result_reader import order_points
@@ -186,7 +187,21 @@ class CheckTab(QWidget):
     # Dựng giao diện
     # ─────────────────────────────────────────
     def _init_ui(self):
-        lay = QVBoxLayout(self)
+        # Toàn bộ nội dung nằm trong QScrollArea. Không phải để cuộn cho đẹp:
+        # QStackedWidget lấy minimumSizeHint LỚN NHẤT trong các trang, nên dải
+        # điều khiển rộng của tab này kéo bề rộng tối thiểu của cả vùng trung
+        # tâm từ 488 lên 680 px — kết quả là khung xem ở tab Model không co lại
+        # được nữa và không kéo rộng dock ra được. Bọc trong scroll area thì
+        # tối thiểu của trang trở lại nhỏ, chật quá thì hiện thanh cuộn ngang.
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        inner = QWidget()
+        scroll.setWidget(inner)
+        outer.addWidget(scroll)
+        lay = QVBoxLayout(inner)
 
         row = QHBoxLayout()
         row.addWidget(QLabel('Tiêu chuẩn:'))
@@ -250,17 +265,12 @@ class CheckTab(QWidget):
         self.tb_in.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection)
         self.tb_in.itemChanged.connect(self._on_input_edited)
-        self.tb_in.setSizePolicy(QSizePolicy.Policy.Expanding,
-                                 QSizePolicy.Policy.Fixed)
-        lay.addWidget(self.tb_in)
-
         self.lb_in = QLabel(
             'Ô nền nhấn là ô nhập — As tự tính từ Ø và cự ly. Bỏ trống các điểm '
             'phân giải (A1, E2…) thì tự dùng theo chữ cái đầu. '
             'Lưu vào <tt>.mtbproj</tt> theo từng mặt cắt.')
         self.lb_in.setWordWrap(True)
         self.lb_in.setTextFormat(Qt.TextFormat.RichText)
-        lay.addWidget(self.lb_in)
 
         # ── bảng kết quả ──
         self.tb_out = QTableWidget(0, 1)
@@ -272,7 +282,27 @@ class CheckTab(QWidget):
             QAbstractItemView.SelectionMode.SingleSelection)
         self.util_delegate = UtilDelegate(self.t, self.tb_out)
         self.tb_out.setItemDelegate(self.util_delegate)
-        lay.addWidget(self.tb_out, 1)
+
+        # Hai bảng ngăn bằng splitter: mặt cắt nhiều hộp có 18 cột và bảng nhập
+        # cao 8 hàng, ai muốn xem kết quả nhiều hơn thì kéo lên được.
+        self._top_pane = top = QWidget()
+        tl = QVBoxLayout(top)
+        tl.setContentsMargins(0, 0, 0, 0)
+        tl.setSpacing(4)
+        # Bảng nhập phải có hệ số giãn: QTableWidget kế thừa sizeHint mặc định
+        # 256×192 của QAbstractScrollArea, để hệ số 0 thì nó đứng nguyên 192 px
+        # và cắt mất ba hàng cuối dù maximumHeight đã đủ. Chặn trên của cả ngăn
+        # (`_fit_input_pane`) lo phần còn lại — kéo to hơn nội dung thì hở
+        # khoảng trắng giữa bảng và dòng chú thích.
+        tl.addWidget(self.tb_in, 1)
+        tl.addWidget(self.lb_in)
+        self.split = QSplitter(Qt.Orientation.Vertical)
+        self.split.addWidget(top)
+        self.split.addWidget(self.tb_out)
+        self.split.setStretchFactor(0, 0)
+        self.split.setStretchFactor(1, 1)
+        self.split.setChildrenCollapsible(False)
+        lay.addWidget(self.split, 1)
 
         foot = QHBoxLayout()
         self.lb_sum = QLabel('')
@@ -326,15 +356,26 @@ class CheckTab(QWidget):
         self.project = project
         self.refresh()
 
+    # Tên hàm của LogView: info · success · warning · error · append_auto.
+    # Gọi sai tên chỉ nổ lúc CHẠY THẬT (mức 'warn' chỉ xuất hiện khi có điểm
+    # không đạt), nên tra thẳng vào hàm chứ không ghép chuỗi bằng getattr.
     def _log(self, msg, level='info'):
         if self.log_area is None:
             return
-        getattr(self.log_area, {'ok': 'success', 'warn': 'warn',
-                                'err': 'error'}.get(level, 'append_auto'))(msg)
+        fn = {'ok': self.log_area.success,
+              'warn': self.log_area.warning,
+              'err': self.log_area.error}.get(level, self.log_area.append_auto)
+        fn(msg)
 
     def refresh(self):
-        """Dựng lại danh sách mặt cắt; giữ nguyên lựa chọn nếu còn."""
-        names = [s.name for s in self.project if s.topo and os.path.exists(s.topo)]
+        """Dựng lại danh sách mặt cắt; giữ nguyên lựa chọn nếu còn.
+
+        Liệt kê **mọi** mặt cắt của project, kể cả chưa tạo MCT. Lọc bớt thì
+        người dùng mở project 5 mặt cắt mà ô này chỉ hiện 1, không có gì nói cho
+        biết vì sao — cứ hiện đủ rồi báo lý do ở dòng nhắc, như danh sách của
+        thẻ Results table vẫn làm.
+        """
+        names = [s.name for s in self.project]
         cur = [self.cb_sec.itemText(i) for i in range(self.cb_sec.count())]
         if names != cur:
             keep = self.cb_sec.currentText()
@@ -364,16 +405,28 @@ class CheckTab(QWidget):
         self._set_columns(self.tb_out, self._points)
         self._placeholder('Chưa kiểm toán — nhập cốt thép ở bảng trên '
                           'rồi bấm “Kiểm toán”.')
+        sec = self.project.find(name) if name else None
+        has_topo = bool(sec and sec.topo and os.path.exists(sec.topo))
+        has_forces = bool(name and name in self.results_provider())
         self.btn_xlsx.setEnabled(False)
-        self.btn_run.setEnabled(bool(name))
+        self.btn_run.setEnabled(has_forces)
+        # Trả dòng tóm tắt về kiểu chữ nhắc — sau một lượt kiểm toán nó đang là
+        # chữ đậm xanh/đỏ, để nguyên thì dòng nhắc của mặt cắt kế tiếp trông
+        # như một kết luận.
+        self.lb_sum.setStyleSheet(f'color: {self.t["ink_2"]};')
         if not name:
-            self.lb_sum.setText('Chưa có mặt cắt nào đã tạo MCT.')
-        elif name in self.results_provider():
-            self.lb_sum.setText('Đã có nội lực — bấm “Kiểm toán”.')
-        else:
+            self.lb_sum.setText('Project chưa có mặt cắt nào.')
+        elif not has_topo:
             self.lb_sum.setText(
-                f'Chưa có nội lực cho {name} — sang tab “Results table”, '
+                f'{name} chưa tạo MCT — bấm “Tạo MCT toàn bộ” (F5) trước. '
+                f'Cột bên trên đang là bộ điểm mặc định A–H; mặt cắt nhiều hộp '
+                f'sẽ có thêm cột sau khi tạo MCT.')
+        elif not has_forces:
+            self.lb_sum.setText(
+                f'Chưa có nội lực cho {name} — sang thẻ “Results table”, '
                 f'gán Beam Force rồi bấm “Xử lý tất cả”.')
+        else:
+            self.lb_sum.setText('Đã có nội lực — bấm “Kiểm toán”.')
 
     def _points_for(self, name) -> list:
         """Danh sách điểm kiểm toán: ưu tiên kết quả đã xử lý, không thì đọc
@@ -494,13 +547,32 @@ class CheckTab(QWidget):
                 it.setTextAlignment(Qt.AlignmentFlag.AlignRight
                                     | Qt.AlignmentFlag.AlignVCenter)
                 self.tb_in.setItem(r, j, it)
-            self.tb_in.setFixedHeight(
-                self.tb_in.horizontalHeader().height()
-                + sum(self.tb_in.rowHeight(i)
-                      for i in range(self.tb_in.rowCount())) + 4)
         finally:
             self._loading = False
         self._update_as()
+        self._fit_input_pane()
+        # Gọi lại sau khi vòng lặp sự kiện bố trí xong: lúc dựng widget lần đầu
+        # (và ngay sau khi đổi số cột) chiều cao hàng lẫn chiều cao splitter
+        # đều chưa có giá trị thật.
+        QTimer.singleShot(0, self._fit_input_pane)
+
+    def _fit_input_pane(self):
+        """Bảng nhập cao vừa đúng nội dung, phần còn lại dành cho bảng kết quả.
+
+        Chiều cao hàng lấy qua `verticalHeader().length()` — tổng do chính
+        header tính, đúng cả khi header đang ẩn; cộng tay từng `rowHeight()` thì
+        lúc chưa bố trí xong ra thiếu và bảng bị cắt mất mấy hàng cuối.
+        """
+        t = self.tb_in
+        hh = t.horizontalHeader().height()
+        fw = 2 * t.frameWidth()
+        nat = hh + t.verticalHeader().length() + fw
+        t.setMaximumHeight(nat)
+        t.setMinimumHeight(min(nat, hh + 2 * t.verticalHeader()
+                               .defaultSectionSize() + fw))
+        top = nat + self.lb_in.heightForWidth(max(self.lb_in.width(), 200)) + 10
+        self._top_pane.setMaximumHeight(top)
+        self.split.setSizes([top, max(self.split.height() - top, 240)])
 
     def _cell_val(self, row, col) -> float:
         it = self.tb_in.item(row, col)
