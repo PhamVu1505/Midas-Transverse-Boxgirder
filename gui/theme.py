@@ -57,6 +57,7 @@ LIGHT = {
     # sơ đồ điểm kiểm toán (Results tab): viền · nền bê tông · chú thích
     'dia_edge':    '#505050',
     'dia_fill':    '#DCDCDC',
+    'dia_hatch':   '#9AA3AE',   # nét gạch bê tông 45° trong sơ đồ mặt cắt
     'dia_note':    '#646464',
 }
 
@@ -93,6 +94,7 @@ DARK = {
 
     'dia_edge':    '#8A94A2',
     'dia_fill':    '#333944',
+    'dia_hatch':   '#5D6773',
     'dia_note':    '#727C8A',
 }
 
@@ -128,6 +130,7 @@ CONTRAST = {
 
     'dia_edge':    '#000000',
     'dia_fill':    '#DCDCDC',
+    'dia_hatch':   '#000000',
     'dia_note':    '#3D3D3D',
 }
 

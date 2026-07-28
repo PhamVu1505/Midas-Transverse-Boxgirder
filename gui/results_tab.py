@@ -1,5 +1,6 @@
 """Results tab - Beam Force XLS to check table + Excel."""
 
+import json
 import os
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
@@ -7,7 +8,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                               QTableWidgetItem, QPlainTextEdit, QFileDialog,
                               QHeaderView, QSplitter, QListWidget,
                               QAbstractItemView, QMessageBox)
-from PyQt6.QtCore import Qt, QRectF, pyqtSignal
+from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QFontMetrics
 
 from .worker import ResultsWorker
@@ -61,119 +62,177 @@ def point_color(pt: str, t: dict) -> QColor:
 
 
 class CheckPointDiagram(QWidget):
-    """Simple schematic of box girder cross-section with check points A-H."""
+    """Mặt cắt ngang THẬT (đọc từ topo, tức từ DXF) kèm ký hiệu vết cắt A–H.
+
+    Bản trước vẽ một hình hộp tượng trưng với tỉ lệ cố định — không phản ánh mặt
+    cắt đang xem, nên nhìn không biết vút ở đâu, bụng nghiêng bao nhiêu. Nay vẽ
+    thẳng từ `topo['geometry']`, cùng nguồn với khung xem của tab Model.
+
+    Ký hiệu vết cắt theo quy ước bản vẽ: đường cắt **nét mảnh vuông góc với cấu
+    kiện** bị cắt (bản nằm ngang → cắt đứng; bụng thẳng đứng → cắt ngang), mũi
+    tên tam giác đặc **vuông góc với đường cắt** chỉ hướng nhìn, vòng tròn mang
+    tên mặt cắt ở đầu đường cắt.
+    """
+
+    # Lề phải đủ cho HAI hàng ký hiệu so le: 13 (nhô ra) + 15 (bán kính)
+    #                     + 2.3×15 (hàng thứ hai) + 15 = 77 px.
+    MARGIN = (58, 88, 58, 88)     # trái, trên, phải, dưới
+    R_BUBBLE = 15                 # bán kính vòng tròn tên, pixel
+    CUT_OUT = 13                  # đường cắt nhô ra ngoài mặt bê tông, pixel
 
     def __init__(self, theme=None):
         super().__init__()
         self.t = theme or LIGHT
-        self.setMinimumSize(320, 220)
+        # Cao tối thiểu 300: lề trên = 26% chiều cao phải đạt 77 px mới xếp
+        # được hai hàng ký hiệu so le, thấp hơn thì B bị D che.
+        self.setMinimumSize(380, 300)
+        self._geom = None          # {'outpoly', 'inpolys', 'H'}
+        self._marks = {}           # {tên: {'x','z','dir'}}
+        self._name = ''
 
     def apply_theme(self, theme: dict):
         self.t = theme
         self.update()
 
+    def set_section(self, name: str, geometry: dict, marks: dict):
+        """Nạp hình học và vị trí ký hiệu. geometry=None thì xoá hình."""
+        self._name = name or ''
+        self._geom = geometry or None
+        self._marks = marks or {}
+        self.update()
+
+    # ── quy đổi toạ độ ──
+    def _mapper(self):
+        """Trả (fn, scale). fn(x, z) → QPointF pixel, giữ đúng tỉ lệ hình học."""
+        g = self._geom
+        xs = [p[0] for p in g['outpoly']]
+        zs = [p[1] for p in g['outpoly']]
+        x0, x1 = min(xs), max(xs)
+        z0, z1 = min(zs), max(zs)
+        # Lề co theo kích thước: để cứng 88 px thì khi panel thấp (splitter kéo
+        # nhỏ) lề ăn hết chỗ và mặt cắt bị bóp còn vài pixel.
+        # Lề co theo kích thước: để cứng 88 px thì khi panel thấp (splitter kéo
+        # nhỏ) lề ăn hết chỗ và mặt cắt bị bóp còn vài pixel.
+        ml, mt, mr, mb = self.MARGIN
+        ml = mr = min(ml, self.width() * 0.14)
+        mt = mb = min(mt, self.height() * 0.26)
+        cw = max(self.width() - ml - mr, 1)
+        ch = max(self.height() - mt - mb, 1)
+        # Ký hiệu cũng phải co theo: bán kính và độ nhô ra vừa đúng lề còn lại,
+        # và chỉ xếp hai hàng khi lề đủ chỗ — không thì hàng thứ hai bị cắt.
+        self._r = max(8.0, min(self.R_BUBBLE, (mt - 6) / 2.2))
+        self._out = max(5.0, min(self.CUT_OUT, mt - 2 * self._r - 2))
+        self._two_rows = (self._out + self._r * (2 + 2.3)) <= mt
+        sx = cw / max(x1 - x0, 1e-9)
+        sz = ch / max(z1 - z0, 1e-9)
+        s = min(sx, sz)
+        ox = ml + (cw - (x1 - x0) * s) / 2
+        oz = mt + (ch - (z1 - z0) * s) / 2
+
+        def fn(x, z):
+            return QPointF(ox + (x - x0) * s, oz + (z1 - z) * s)
+        return fn, s
+
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w = self.width()
-        h = self.height()
+        # Tự tô nền theo token: dựa vào QSS của widget cha thì bản Tối sẽ ra hình
+        # vẽ trên nền sáng khi widget đứng riêng (xuất ảnh, in báo cáo).
+        p.fillRect(self.rect(), QColor(self.t['panel']))
+        if not self._geom or not self._geom.get('outpoly'):
+            p.setPen(QPen(QColor(self.t['ink_3'])))
+            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
+                       'Chưa có kết quả — bấm “Xử lý tất cả” sau khi gán Beam Force')
+            p.end()
+            return
 
-        mx, my = 40, 25
-        cw = w - 2 * mx
-        ch = h - 2 * my
+        fn, _ = self._mapper()      # đặt luôn self._r / _out / _two_rows
+        from PyQt6.QtGui import QPainterPath
 
-        bw = 0.56
-        bh = 0.65
-        tt = 0.06
-        tb = 0.05
-        tw = 0.03
-        cant_drop = 0.08
+        # bê tông = biên ngoài trừ lỗ rỗng, gạch 45° theo quy ước bản vẽ
+        path = QPainterPath()
+        path.setFillRule(Qt.FillRule.OddEvenFill)
+        for poly in [self._geom['outpoly']] + list(self._geom.get('inpolys') or []):
+            if len(poly) < 3:
+                continue
+            path.moveTo(fn(*poly[0]))
+            for x, z in poly[1:]:
+                path.lineTo(fn(x, z))
+            path.closeSubpath()
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(QColor(self.t['dia_hatch']), Qt.BrushStyle.BDiagPattern))
+        p.drawPath(path)
 
-        def px(rx): return mx + rx * cw
-        def py(ry): return my + ry * ch
+        # nét bao mặt cắt: đậm
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(self.t['dia_edge']), 2.0))
+        p.drawPath(path)
 
-        x_left = 0.0
-        x_right = 1.0
-        x_wL = (1.0 - bw) / 2
-        x_wR = (1.0 + bw) / 2
-        y_top = 0.0
-        y_tip = cant_drop
-        y_wj = cant_drop + 0.02
-        y_bot = bh
+        # tim mặt cắt: nét gạch-chấm
+        zs = [q[1] for q in self._geom['outpoly']]
+        pen = QPen(QColor(self.t['dia_note']), 0.8)
+        pen.setDashPattern([12, 3, 2, 3])
+        p.setPen(pen)
+        p.drawLine(fn(0.0, max(zs)) + QPointF(0, -18),
+                   fn(0.0, min(zs)) + QPointF(0, 18))
 
+        # Ký hiệu cắt đứng xếp thành hai hàng so le: các mặt cắt bản mặt cách
+        # nhau chưa tới 1 m nên để một hàng là bubble chen nhau.
+        vert = sorted((n for n, m in self._marks.items() if m['dir'] == 'v'),
+                      key=lambda n: self._marks[n]['x'])
+        rank = {n: (i % 2 if self._two_rows else 0) for i, n in enumerate(vert)}
+        for name in sorted(self._marks, key=lambda n: (n[0], n[1:])):
+            self._draw_mark(p, fn, name, self._marks[name], rank.get(name, 0))
+        p.end()
+
+    def _draw_mark(self, p, fn, name, mk, row=0):
+        """Một ký hiệu vết cắt: đường cắt · mũi tên · vòng tròn tên."""
+        col = QColor(point_color(name[0], self.t))
+        c = fn(mk['x'], mk['z'])
+        zs = [q[1] for q in self._geom['outpoly']]
+        r, out = self._r, self._out
+
+        if mk['dir'] == 'v':
+            # cắt thẳng đứng; ký hiệu ở phía gần mặt hơn (trên nếu z ở nửa trên)
+            up = mk['z'] > (max(zs) + min(zs)) / 2
+            sgn = -1 if up else 1
+            reach = out + r + row * 2.3 * r
+            end = QPointF(c.x(), c.y() + sgn * reach)
+            far = QPointF(c.x(), c.y() - sgn * out)
+            tri = [QPointF(end.x() + r, end.y() - r * 0.8),
+                   QPointF(end.x() + r, end.y() + r * 0.8),
+                   QPointF(end.x() + r + r * 1.5, end.y())]
+        else:
+            # bụng thẳng đứng → cắt nằm ngang; ký hiệu ra phía ngoài mặt cắt
+            sgn = 1 if mk['x'] > 0 else -1
+            end = QPointF(c.x() + sgn * (out + r), c.y())
+            far = QPointF(c.x() - sgn * out, c.y())
+            tri = [QPointF(end.x() - r * 0.8, end.y() + r),
+                   QPointF(end.x() + r * 0.8, end.y() + r),
+                   QPointF(end.x(), end.y() + r + r * 1.5)]
+
+        p.setPen(QPen(col, 1.1))          # đường cắt: nét MẢNH
+        p.drawLine(far, end)
+
+        p.setPen(Qt.PenStyle.NoPen)       # mũi tên đặc, vuông góc đường cắt
+        p.setBrush(QBrush(col))
         from PyQt6.QtGui import QPolygonF
-        from PyQt6.QtCore import QPointF
-
-        outer = QPolygonF([
-            QPointF(px(x_left), py(y_top)),
-            QPointF(px(x_right), py(y_top)),
-            QPointF(px(x_right), py(y_tip)),
-            QPointF(px(x_wR), py(y_wj)),
-            QPointF(px(x_wR), py(y_bot)),
-            QPointF(px(x_wL), py(y_bot)),
-            QPointF(px(x_wL), py(y_wj)),
-            QPointF(px(x_left), py(y_tip)),
-        ])
-
-        ix_L = x_wL + tw
-        ix_R = x_wR - tw
-        iy_top = tt
-        iy_bot = bh - tb
-        inner = QPolygonF([
-            QPointF(px(ix_L), py(iy_top + 0.02)),
-            QPointF(px(0.5 - 0.12), py(iy_top)),
-            QPointF(px(0.5 + 0.12), py(iy_top)),
-            QPointF(px(ix_R), py(iy_top + 0.02)),
-            QPointF(px(ix_R), py(iy_bot - 0.02)),
-            QPointF(px(ix_R - 0.01), py(iy_bot)),
-            QPointF(px(ix_L + 0.01), py(iy_bot)),
-            QPointF(px(ix_L), py(iy_bot - 0.02)),
-        ])
-
-        p.setPen(QPen(QColor(self.t['dia_edge']), 1.5))
-        p.setBrush(QBrush(QColor(self.t['dia_fill'])))
-        p.drawPolygon(outer)
+        p.drawPolygon(QPolygonF(tri))
 
         p.setBrush(QBrush(QColor(self.t['panel'])))
-        p.drawPolygon(inner)
+        p.setPen(QPen(col, 1.6))
+        p.drawEllipse(QRectF(end.x() - r, end.y() - r, 2 * r, 2 * r))
 
-        font = QFont('Arial', 9, QFont.Weight.Bold)
-        p.setFont(font)
-        fm = QFontMetrics(font)
-        r = 10
-
-        points_pos = {
-            'A': (0.50, tt / 2, 0, -16),
-            'B': (x_wL + tw / 2 + 0.03, tt / 2 + 0.01, -20, -16),
-            'C': (x_wR - tw / 2 - 0.03, tt / 2 + 0.01, 8, -16),
-            'D': (x_left + 0.06, y_tip / 2, -18, -14),
-            'E': (0.50, bh - tb / 2, 0, 14),
-            'F': (x_wL + tw / 2 + 0.03, bh - tb / 2 - 0.01, -20, 14),
-            'G': (x_wR, (y_wj + 0.5 * (y_wj + iy_top)) / 2 + 0.06, 14, -4),
-            'H': (x_wL, (iy_bot + y_bot) / 2 - 0.02, -24, -4),
-        }
-
-        for pt, (rx, ry, lox, loy) in points_pos.items():
-            cx = px(rx)
-            cy = py(ry)
-            color = point_color(pt, self.t)
-
-            p.setPen(QPen(color, 2))
-            p.setBrush(QBrush(color))
-            p.drawEllipse(QRectF(cx - r/2, cy - r/2, r, r))
-
-            p.setPen(QPen(color, 1))
-            label = f'{pt}'
-            lw = fm.horizontalAdvance(label)
-            p.drawText(int(cx + lox - lw / 2), int(cy + loy), label)
-
-        ly = h - 12
-        p.setFont(QFont('Arial', 7))
-        p.setPen(QPen(QColor(self.t['dia_note'])))
-        legend = 'A-D: Top slab | E-F: Bottom slab | G-H: Web'
-        p.drawText(mx, ly, legend)
-
-        p.end()
+        # Phông lấy từ widget (theo theme) chứ không ghim 'Arial': ghim cứng thì
+        # máy thiếu phông đó sẽ vẽ ra ô vuông, và cũng lệch với phần còn lại.
+        f = self.font()
+        f.setBold(True)
+        f.setPointSizeF(max(6.0, min(f.pointSizeF(), r * 0.62)
+                            - (1 if len(name) > 1 else 0)))
+        p.setFont(f)
+        p.setPen(QPen(col))
+        p.drawText(QRectF(end.x() - r, end.y() - r, 2 * r, 2 * r),
+                   Qt.AlignmentFlag.AlignCenter, name)
 
 
 class ResultsTab(QWidget):
@@ -210,6 +269,19 @@ class ResultsTab(QWidget):
         self.pair_list.itemDoubleClicked.connect(self._assign_bf_from_item)
         layout.addWidget(self.pair_list)
 
+        # Dải nhắc cách xuất Beam Force. Đặt cố định chứ không chỉ để chữ chìm:
+        # thiếu một tổ hợp là bảng kiểm toán không dựng được, mà lỗi đó chỉ lộ ra
+        # ở cuối quy trình.
+        self.lb_hint = QLabel(
+            '⚠  File Beam Force phải xuất mặc định từ Midas: '
+            '<b>Results → Result Tables → Beam → Beam Force</b>, chọn '
+            '<b>tất cả trường hợp tải và tổ hợp</b> rồi <b>Export → Excel</b>. '
+            'Thiếu <tt>str_all</tt> hoặc <tt>ser_all</tt> thì không dựng được '
+            'bảng kiểm toán. Công cụ tự đọc <b>mọi sheet</b> trong file.')
+        self.lb_hint.setWordWrap(True)
+        self.lb_hint.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(self.lb_hint)
+
         row_btn = QHBoxLayout()
         self.lb_ready = QLabel('')
         self.lb_ready.setStyleSheet(
@@ -235,8 +307,12 @@ class ResultsTab(QWidget):
         row_view.addStretch()
         layout.addLayout(row_view)
 
-        # Table + Diagram
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        # Mặt cắt TRÊN, bảng DƯỚI. Trước đây chia ngang nên mặt cắt bị bó vào
+        # một cột hẹp, không vẽ nổi tỉ lệ thật; bảng 8 cột thì bị nén.
+        splitter = QSplitter(Qt.Orientation.Vertical)
+
+        self.diagram = CheckPointDiagram(self.t)
+        splitter.addWidget(self.diagram)
 
         self.table = QTableWidget(len(DATA_ROWS), 8)
         self.table.setHorizontalHeaderLabels(POINTS)
@@ -246,11 +322,9 @@ class ResultsTab(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._style_table_headers()
         splitter.addWidget(self.table)
-
-        self.diagram = CheckPointDiagram(self.t)
-        splitter.addWidget(self.diagram)
-
-        splitter.setSizes([550, 320])
+        splitter.setSizes([380, 240])
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
         layout.addWidget(splitter, 1)
 
         # Log
@@ -448,8 +522,26 @@ class ResultsTab(QWidget):
         self.log_area.success(f'Hoàn tất {count} mặt cắt')
 
     def _on_section_changed(self, name):
-        if name and name in self.all_results:
-            self._fill_table(self.all_results[name])
+        if not name or name not in self.all_results:
+            return
+        self._fill_table(self.all_results[name])
+        self.diagram.set_section(name, *self._section_geometry(name))
+
+    def _section_geometry(self, name):
+        """(geometry, marks) đọc từ topo.json của mặt cắt — cùng nguồn với MCT."""
+        from src.result_reader import check_point_marks
+        sec = self.project.find(name)
+        path = sec.topo if sec else None
+        if not path or not os.path.exists(path):
+            return None, {}
+        try:
+            with open(path, encoding='utf-8') as f:
+                topo = json.load(f)
+            topo['elements'] = [tuple(e) for e in topo['elements']]
+            return topo.get('geometry'), check_point_marks(topo)
+        except Exception as e:
+            self.log_area.warn(f'[{name}] không vẽ được mặt cắt: {e}')
+            return None, {}
 
     def _fill_table(self, check_points):
         bold_font = QFont()

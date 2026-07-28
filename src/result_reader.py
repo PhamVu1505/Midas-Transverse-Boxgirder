@@ -424,3 +424,57 @@ def format_check_table(section_name: str, check_points: dict) -> str:
     lines.append(row_ms_ref)
 
     return '\n'.join(lines)
+
+# Phía đặt ký hiệu cho các nhóm phủ cả hai bên: −1 trái, +1 phải.
+_MARK_SIDE = {'B': -1, 'C': +1, 'D': -1, 'F': +1, 'G': +1, 'H': -1}
+
+
+def node_coords(topo: dict) -> dict:
+    """{node_id: (x, z)} gộp từ mọi chuỗi node của topo."""
+    m = {}
+    for k_ids, k_nodes in (('top_ids', 'top_nodes'), ('bot_ids', 'bot_nodes'),
+                           ('wL_ids', 'wL_nodes'), ('wC_ids', 'wC_nodes'),
+                           ('wR_ids', 'wR_nodes')):
+        for i, nd in zip(topo.get(k_ids) or [], topo.get(k_nodes) or []):
+            m[int(i)] = (nd['x'], nd['z'])
+    return m
+
+
+def check_point_marks(topo: dict) -> dict:
+    """Vị trí và hướng đường cắt của từng mặt cắt kiểm toán, để vẽ ký hiệu.
+
+    Trả {tên điểm: {'x','z','dir'}} với toạ độ MCT (m) và `dir` là hướng ĐƯỜNG
+    CẮT — vuông góc với cấu kiện bị cắt:
+        'v' cắt thẳng đứng (bản mặt, bản đáy — cấu kiện nằm ngang)
+        'h' cắt nằm ngang  (bụng — cấu kiện thẳng đứng)
+
+    Điểm đại diện lấy phần tử GIỮA nhóm chứ không phải phần tử đầu: nhóm vút
+    gồm hai đầu của khoang nên phần tử đầu nằm lệch hẳn về một bên.
+    """
+    coords = node_coords(topo)
+    elem = {e[0]: (e[1], e[2]) for e in topo['elements']}
+    out = {}
+    for name, eids in classify_check_elements(topo).items():
+        pts = []
+        for eid in eids:
+            if eid not in elem:
+                continue
+            n1, n2 = elem[eid]
+            if n1 in coords and n2 in coords:
+                (x1, z1), (x2, z2) = coords[n1], coords[n2]
+                pts.append(((x1 + x2) / 2, (z1 + z2) / 2,
+                            abs(x2 - x1), abs(z2 - z1)))
+        if not pts:
+            continue
+        # 'v' khi phần tử nằm ngang (dx > dz) — đường cắt vuông góc nên thẳng đứng
+        horizontal = sum(p[2] for p in pts) >= sum(p[3] for p in pts)
+        pts.sort(key=lambda p: p[0] if horizontal else p[1])
+        x, z = pts[len(pts) // 2][:2]
+        # Quy ước hiển thị: nhóm nào phủ cả hai bên mặt cắt (vút, cánh hẫng,
+        # bụng) thì đẩy ký hiệu về một phía cố định, nếu không B và C — vốn dò
+        # cực trị trên CÙNG một nhóm phần tử — sẽ vẽ chồng lên nhau.
+        side = _MARK_SIDE.get(name[0])
+        if side and abs(x) > 1e-6:
+            x = side * abs(x)
+        out[name] = {'x': x, 'z': z, 'dir': 'v' if horizontal else 'h'}
+    return out
