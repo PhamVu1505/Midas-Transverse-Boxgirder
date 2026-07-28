@@ -458,14 +458,19 @@ def test_section_check_matches_template():
     có chỗ nào để giấu sai số. Dùng đúng diện tích thanh của file mẫu (bảng tra
     ASTM 284 mm² cho D19) vì π·d²/4 ra 283.5, lệch 0.2%.
     """
-    from src.section_check import Material, Rebar, Forces, check_point
+    from src.section_check import (Material, Rebar, Forces, check_point,
+                                   crack)
 
     mat = Material(fc=50.0, fy=420.0, Ec=38006.9895)
     assert abs(mat.beta1 - 0.6929) < 1e-4, mat.beta1
 
-    r = check_point(760.0, Forces(Mu=181.41, Vu=80.10, Mser=142.65),
-                    Rebar(dia=19, spacing=150, cover=65, bar_area=284.0), mat)
-    fl, cr, sh, lim = r['flexure'], r['crack'], r['shear'], r['limits']
+    rb = Rebar(dia=19, spacing=150, cover=65, bar_area=284.0)
+    fo = Forces(Mu=181.41, Vu=80.10, Mser=142.65)
+    # 22TCN mới có c/de; TCVN 11823 không có giới hạn đó (xem test riêng)
+    r = check_point(760.0, fo, rb, mat, standard='22TCN 272-05')
+    fl, sh, lim = r['flexure'], r['shear'], r['limits']
+    # tiết diện này chưa nứt (ứng suất kéo < 80% fr) nên phải buộc kiểm mới so được
+    cr = crack(760.0, fo, rb, mat, skip_if_uncracked=False)
 
     want = [('As', fl.values['As'], 1893.3333), ('ds', fl.values['ds'], 695.0),
             ('c', fl.values['c'], 27.0050), ('a', fl.values['a'], 18.7106),
@@ -497,12 +502,38 @@ def test_section_check_skips_crack_when_prestressed():
     assert no_pt['crack'].applicable, 'không cáp thì phải kiểm nứt'
 
 
-def test_shear_keeps_concrete_capacity_when_exempt():
-    """Bản mặt được miễn kiểm cắt nhưng VẪN phải tính và hiện Vc của bê tông.
+def test_shear_tables_match_template():
+    """Bảng 4/Bảng 5 gõ từ TCVN phải tái lập đúng θ, β của file mẫu.
 
-    Giấu số đi thì người đọc báo cáo không biết bê tông gánh được bao nhiêu và
-    không thấy chỗ nào đang sát ngưỡng. Điều khoản miễn chỉ có nghĩa là không
-    lấy nó làm căn cứ kết luận, không phải là không tính.
+    Đây là chốt chặn cho việc gõ bảng: sai một ô là sức kháng cắt lệch mà không
+    có gì báo. Bốn điểm của S1 trong sheet `Strength` đều tra Bảng 5 (mặt cắt có
+    ít hơn cốt đai tối thiểu) và khớp tới 4 chữ số thập phân — đó cũng là bằng
+    chứng file mẫu dùng phương pháp (b) của TCVN 11823 hiện hành.
+    """
+    from src.section_check import _interp2, _T5, _SXE_T5, _EX_T5, _T4, _VU_T4, _EX_T4
+
+    for lbl, sxe, ex1000, th_x, be_x in (
+            ('A', 128.0488, -0.0113, 26.2869, 5.2427),
+            ('B', 128.0488, 0.9642, 33.5139, 2.6201),
+            ('E', 128.0488, 0.8641, 32.9933, 2.7322),
+            ('G', 128.0488, 1.0148, 33.7563, 2.5690)):
+        th, be = _interp2(_T5, _SXE_T5, _EX_T5, sxe, ex1000)
+        assert abs(th - th_x) < 1e-3, f'{lbl}: θ {th} ≠ {th_x}'
+        assert abs(be - be_x) < 1e-3, f'{lbl}: β {be} ≠ {be_x}'
+
+    # vài ô góc của cả hai bảng, chống gõ lệch hàng/cột
+    assert _interp2(_T4, _VU_T4, _EX_T4, 0.075, -0.20) == (22.3, 6.32)
+    assert _interp2(_T4, _VU_T4, _EX_T4, 0.250, 1.00) == (35.8, 1.50)
+    assert _interp2(_T5, _SXE_T5, _EX_T5, 130, -0.20) == (25.4, 6.36)
+    assert _interp2(_T5, _SXE_T5, _EX_T5, 2000, 2.00) == (72.4, 0.62)
+
+
+def test_no_shear_exemption_and_no_c_de_in_tcvn():
+    """TCVN không miễn kiểm cắt bản mặt, và không có giới hạn c/de ≤ 0.42.
+
+    Hai chỗ này tôi từng làm sai: viện một điều khoản miễn không có trong tiêu
+    chuẩn, và kiểm một giới hạn mà TCVN 11823 đã bỏ (soi cả 192 trang bản chính
+    thức, chuỗi "0,42" không xuất hiện). Giới hạn c/de chỉ còn ở chế độ 22TCN.
     """
     from src.section_check import Material, Rebar, Tendon, Forces, check_point
 
@@ -510,19 +541,42 @@ def test_shear_keeps_concrete_capacity_when_exempt():
     rb = Rebar(dia=16, spacing=150, cover=65)
     fo = Forces(Mu=95.88, Vu=120.67, Mser=98.83)
 
-    ex = check_point(300.0, fo, rb, mat, Tendon(dp=180, Ap=700),
-                     shear_exempt=True)
-    sh = ex['shear']
-    assert not sh.applicable, 'miễn thì không được tính vào kết luận'
-    assert sh.values.get('Vc', 0) > 0, 'miễn nhưng vẫn phải có Vc'
-    for key in ('dv', 'β', 'θ', 'Vc', 'Vs', 'Vn'):
-        assert key in sh.values, f'thiếu {key} trong bảng cắt'
-    assert sh.capacity > 0 and sh.demand > 0, 'phải còn Vr và Vu để so'
+    r_tcvn = check_point(300.0, fo, rb, mat, Tendon(dp=180, Ap=700))
+    assert 'c/de' not in r_tcvn['limits'].values, 'TCVN không có giới hạn c/de'
+    # kiểm cắt vẫn áp dụng cho bản mặt, không miễn
+    assert r_tcvn['shear'].applicable, 'không được miễn kiểm cắt'
+    assert r_tcvn['shear'].values['Vc'] > 0
 
-    # cùng số liệu, không miễn → y hệt giá trị, chỉ khác chỗ tính vào kết luận
-    full = check_point(300.0, fo, rb, mat, Tendon(dp=180, Ap=700))
-    assert full['shear'].applicable
-    assert abs(full['shear'].values['Vc'] - sh.values['Vc']) < 1e-9
+    r_old = check_point(300.0, fo, rb, mat, Tendon(dp=180, Ap=700),
+                        standard='22TCN 272-05')
+    assert 'c/de' in r_old['limits'].values, '22TCN phải còn giới hạn c/de'
+
+    # phân loại tiết diện thay cho c/de; φ chặn ở 0.90 theo quyết định của VuPQ
+    ctrl = r_tcvn['control']
+    assert ctrl['loại'] == 'khống chế kéo', ctrl
+    assert abs(ctrl['φ'] - 0.90) < 1e-9, f"φ phải là 0.90, đang {ctrl['φ']}"
+
+
+def test_shear_table_method_beats_closed_form():
+    """Hai phương pháp của Đ.8.3.4.2 lệch nhau rất nhiều — chốt lại chiều lệch.
+
+    Phương pháp (a) chặn εs ≥ 0 nên β ≤ 4.8 rồi còn nhân 51/(39+sxe) với sxe
+    chặn dưới 294 mm; Bảng 5 cho εx xuống −0.20×10⁻³ với β tới 6.36. Bản mặt S1
+    KHÔNG ĐẠT theo (a) nhưng ĐẠT theo (b). Cả hai đều hợp lệ; mặc định là (b).
+    """
+    from src.section_check import Material, Rebar, Tendon, Forces, check_point
+
+    mat = Material(fc=50.0, fy=420.0, Ec=38006.9895)
+    rb = Rebar(dia=16, spacing=150, cover=65)
+    fo = Forces(Mu=95.88, Vu=120.67, Mser=98.83)
+    td = Tendon(dp=180, Ap=700)
+
+    tab = check_point(300.0, fo, rb, mat, td, shear_method='bảng')['shear']
+    cf = check_point(300.0, fo, rb, mat, td, shear_method='công thức')['shear']
+
+    assert tab.capacity > 4 * cf.capacity,         f'bảng {tab.capacity:.1f} phải lớn hơn nhiều công thức {cf.capacity:.1f}'
+    assert tab.ok and not cf.ok, 'chiều lệch đã đổi — xem lại'
+    assert tab.values['sxe'] < 294 and cf.values['sxe'] == 294.0,         'chặn sxe phải khác nhau giữa hai phương pháp'
 
 
 def test_section_check_flexure_is_conservative_vs_template():
@@ -641,7 +695,9 @@ if __name__ == '__main__':
                       (test_check_points_twin_box_covers_center_web, 'điểm kiểm toán 2 hộp'),
                       (test_section_check_matches_template, 'kiểm toán khớp file mẫu'),
                       (test_section_check_skips_crack_when_prestressed, 'bỏ kiểm nứt khi có cáp'),
-                      (test_shear_keeps_concrete_capacity_when_exempt, 'miễn cắt vẫn có Vc'),
+                      (test_shear_tables_match_template, 'Bảng 4/5 khớp file mẫu'),
+                      (test_no_shear_exemption_and_no_c_de_in_tcvn, 'TCVN: bỏ c/de, không miễn cắt'),
+                      (test_shear_table_method_beats_closed_form, 'hai phương pháp cắt'),
                       (test_section_check_flexure_is_conservative_vs_template, 'uốn thiên an toàn'),
                       (test_combo_validator_catches_orphan, 'bộ kiểm bắt được lỗi')):
         try:
