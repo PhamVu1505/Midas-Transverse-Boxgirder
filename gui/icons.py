@@ -5,6 +5,8 @@ Không phụ thuộc file ảnh ngoài nên PyInstaller không cần bundle thê
 Nếu môi trường thiếu PyQt6.QtSvg thì trả về QIcon rỗng — nút vẫn hiện chữ.
 """
 
+import os
+
 from PyQt6.QtCore import Qt, QByteArray
 from PyQt6.QtGui import QIcon, QPixmap, QPainter
 
@@ -43,6 +45,7 @@ _P = {
 }
 
 _cache = {}
+_arrow_cache = {}
 
 
 def icon(name: str, tone: str = 'ink', size: int = 18, theme: dict = None) -> QIcon:
@@ -79,6 +82,62 @@ def icon(name: str, tone: str = 'ink', size: int = 18, theme: dict = None) -> QI
 
     _cache[key] = ic
     return ic
+
+
+def spin_arrows(theme: dict = None):
+    """Hai file PNG mũi tên của ô xoay — trả về ``(url_lên, url_xuống)``.
+
+    Đây là ngoại lệ duy nhất của nguyên tắc "không file ảnh ngoài", và có lý do:
+    khi QSS đã đặt ``border``/``background`` lên ``QSpinBox`` thì Qt thôi nhờ
+    style vẽ mũi tên, mà ``QSpinBox::up-arrow`` **chỉ** nhận ``image: url(...)``
+    — không nhận SVG nội tuyến, không nhận QIcon, và mẹo tam giác bằng viền
+    trong suốt của CSS thì Qt vẽ ra ô vuông. Không có ảnh thì ô xoay còn trơ hai
+    vạch ngang, đúng như đã thấy ở mọi ô nhập số của bản v1.3.1.
+
+    Ảnh ghi vào thư mục tạm, tên theo mã màu nên mỗi bảng màu chỉ ghi một lần.
+    Chưa có ``QGuiApplication`` (lúc chạy test QSS) thì trả ``(None, None)``,
+    phần QSS mũi tên được bỏ qua chứ không nổ.
+    """
+    t = theme or LIGHT
+    col = t.get('ink_2', '#667085')
+    if col in _arrow_cache:
+        return _arrow_cache[col]
+
+    from PyQt6.QtGui import QGuiApplication
+    if QGuiApplication.instance() is None:
+        return None, None
+
+    from PyQt6.QtCore import QStandardPaths, QPointF
+    from PyQt6.QtGui import QColor, QPolygonF
+    root = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.TempLocation)
+    folder = os.path.join(root or '.', 'MidasTransverseBoxgirder', 'qss')
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except OSError:                                   # pragma: no cover
+        return None, None
+
+    out = []
+    tag = col.lstrip('#')
+    for up in (True, False):
+        path = os.path.join(folder, f'spin-{"up" if up else "down"}-{tag}.png')
+        if not os.path.exists(path):
+            pm = QPixmap(14, 14)
+            pm.fill(Qt.GlobalColor.transparent)
+            p = QPainter(pm)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            p.setBrush(QColor(col))
+            p.setPen(Qt.PenStyle.NoPen)
+            pts = ([QPointF(3, 8.5), QPointF(11, 8.5), QPointF(7, 4.5)] if up
+                   else [QPointF(3, 5.5), QPointF(11, 5.5), QPointF(7, 9.5)])
+            p.drawPolygon(QPolygonF(pts))
+            p.end()
+            if not pm.save(path):                     # pragma: no cover
+                return None, None
+        out.append(path.replace('\\', '/'))
+
+    _arrow_cache[col] = (out[0], out[1])
+    return _arrow_cache[col]
 
 
 # Ký hiệu gối — dùng chung cho nút bấm và chú giải, vẽ giống hệt trên canvas

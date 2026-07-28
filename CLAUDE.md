@@ -15,7 +15,7 @@ Tự động hóa toàn bộ quy trình phân tích khung ngang tại các mặt
 
 Kiến trúc chi tiết: xem `docs/ARCHITECTURE.md`.
 
-## Trạng thái hiện tại (v1.3.1)
+## Trạng thái hiện tại (v1.4.0)
 
 Toàn bộ pipeline đã hoàn thiện. **Tested**: S1, S7, S12, S16, S20, SLT, S1_V2 (Twin Box).
 
@@ -158,6 +158,8 @@ Gối **lưu theo toạ độ X**, không theo ID node: đổi `target_len` hay 
 - Trong khung xem: bật **Sửa gối** → bấm node đáy để đặt, kéo tam giác để dời, chuột phải để xóa. Dải dưới khung đổi loại từng gối.
 - Ký hiệu: gối cố định = tam giác đặc, gối di động = tam giác rỗng + 2 bánh lăn, ngàm = khối đặc kề nền gạch chéo (phải khác hẳn nhau).
 - `tests/test_regression.py::test_custom_supports` khoá hành vi này.
+- **Dựng lại danh sách gối phải `setParent(None)` chứ không chỉ `deleteLater()`.** Widget đã bị `takeAt` khỏi layout thì không ai đặt lại kích thước, mà `deleteLater` phải đợi vòng lặp sự kiện — trong khoảng đó nó vẫn là con của editor, giữ nguyên 640×480 mặc định và **vẽ đè lên cả dock Properties**. Mỗi lần rebuild (nạp mô hình, đổi bảng màu) chồng thêm một cặp `GỐI (n)` / `Chưa nạp mô hình` bóng ma. Ảnh chụp chỉ lộ ra hai chữ "Ch" thò khỏi mép nhãn thật, còn `pytest` thì im lặng — dò bằng cách duyệt `findChildren(QWidget)` rồi in `inLayout`.
+- Nút **✕ xóa gối** phải đặt `padding:0`: QSS chung cho `QToolButton` có `padding: 5px 10px`, nút ghim cứng 21×21 nên chữ còn 1px và Qt rút gọn dấu ✕ thành một chấm mờ.
 
 ### Boundary Condition
 | Vị trí | Code (Dx,Dy,Dz,Rx,Ry,Rz) | Ghi chú |
@@ -245,6 +247,7 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 - `LogView` giữ `_lines` thô để **vẽ lại** khi đổi theme: màu nằm trong `QTextCharFormat` đã chèn, không vẽ lại thì log cũ là chữ đen trên nền than.
 - `run_gui.py` áp theme đã lưu **trước** khi dựng `MainWindow` — dựng sáng rồi mới đổi tối thì thấy một nháy trắng.
 - `'scroll'` là token riêng: bản Tương phản cao có `border` đen thuần, dùng nó cho tay nắm thanh cuộn thì thành vệt đen sì chạy dọc panel.
+- **Mũi tên ô xoay phải là ảnh thật** (`icons.spin_arrows()` → PNG trong thư mục tạm, tên theo mã màu). Đặt `border`/`background` lên `QSpinBox` là Qt thôi nhờ style vẽ mũi tên, mà `QSpinBox::up-arrow` **chỉ** nhận `image: url(...)` — không nhận SVG nội tuyến, không nhận QIcon, còn mẹo tam giác bằng viền trong suốt của CSS thì Qt vẽ ra **ô vuông**. Không có ảnh thì mọi ô nhập số trong app chỉ còn hai vạch ngang (đúng hiện trạng v1.3.1). `_spin_qss()` tách riêng và trả chuỗi rỗng khi chưa có `QGuiApplication`, nên `tests/test_theme.py` (dựng QSS không cần Qt app) không đổi.
 
 ### Tài liệu hướng dẫn
 `docs/USER-GUIDE.txt` **sinh tự động** từ `gui/help_dialog._topics()` — đừng sửa tay. Sửa nội dung trong app rồi chạy `python tools/make_user_guide.py`. Installer đóng gói file .txt này và tạo lối tắt "User Guide" ở Start Menu, nên hai bản phải luôn khớp.

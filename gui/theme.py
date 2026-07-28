@@ -282,6 +282,41 @@ def color(name: str, theme: dict = None) -> QColor:
 # QSS
 # ─────────────────────────────────────────────────────────────
 
+def _spin_qss(t: dict) -> str:
+    """Quy tắc cho ô xoay (QSpinBox / QDoubleSpinBox).
+
+    Tách riêng vì phải sinh ảnh mũi tên lúc chạy — xem `icons.spin_arrows()`.
+    Chưa có QGuiApplication (test QSS thuần) thì phần này rỗng, QSS còn lại
+    không đổi một ký tự nào.
+    """
+    from .icons import spin_arrows              # nạp muộn: icons import theme
+    up, down = spin_arrows(t)
+    if not up:
+        return ''
+    return f"""
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+    subcontrol-origin: border; subcontrol-position: top right;
+    width: 16px; border-left: 1px solid {t['border_soft']};
+    border-top-right-radius: 3px;
+}}
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: border; subcontrol-position: bottom right;
+    width: 16px; border-left: 1px solid {t['border_soft']};
+    border-bottom-right-radius: 3px;
+}}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+    background: {t['accent_soft']};
+}}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+    image: url({up}); width: 14px; height: 14px;
+}}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+    image: url({down}); width: 14px; height: 14px;
+}}
+"""
+
+
 def build_qss(t: dict = None, s: dict = None, family: str = '') -> str:
     """Sinh stylesheet từ bảng token."""
     t = t or make_theme()
@@ -516,7 +551,7 @@ QToolTip {{
     border: 0;
     padding: 5px 8px;
 }}
-"""
+""" + _spin_qss(t)
 
 
 def apply_theme(app, theme: dict = None, size: dict = None, family: str = ''):

@@ -45,10 +45,17 @@ class SupportEditor(QWidget):
 
     # ─────────────────────────────────────────
     def _clear(self):
+        # `deleteLater()` một mình là chưa đủ: widget vẫn là con của editor cho
+        # tới khi vòng lặp sự kiện xử lý DeferredDelete, mà đã bị gỡ khỏi layout
+        # thì không ai đặt lại kích thước — nó giữ nguyên 640×480 mặc định và vẽ
+        # đè lên cả panel. Rebuild vài lần liên tiếp (nạp mô hình, đổi bảng màu)
+        # là chồng thêm bấy nhiêu bóng ma. Cắt cha ngay thì hết vẽ tức thì.
         while self._lay.count():
             it = self._lay.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
+            w = it.widget()
+            if w:
+                w.setParent(None)
+                w.deleteLater()
 
     def rebuild(self):
         self._clear()
@@ -134,7 +141,11 @@ class SupportEditor(QWidget):
         bx.setText('✕')
         bx.setFixedSize(21, 21)
         bx.setToolTip('Xóa gối này')
-        bx.setStyleSheet(f'QToolButton{{border:0;color:{self.t["ink_3"]}}}'
+        # `padding:0` là bắt buộc: QSS chung cho QToolButton đặt padding 5×10px,
+        # nút này lại ghim cứng 21×21 nên chữ chỉ còn 1px bề ngang và Qt rút gọn
+        # dấu ✕ thành một chấm mờ — nhìn tưởng nút hỏng chứ không phải nút xóa.
+        bx.setStyleSheet(f'QToolButton{{border:0;padding:0;min-height:0;'
+                         f'color:{self.t["ink_3"]}}}'
                          f'QToolButton:hover{{color:{self.t["err"]}}}')
         bx.clicked.connect(lambda _=False, k=idx: self._remove(k))
         top.addWidget(bx)
