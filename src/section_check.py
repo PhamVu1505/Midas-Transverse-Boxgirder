@@ -485,6 +485,9 @@ def shear(h, forces, rebar, mat, flex, tendon=None, phi=0.9, b=1000.0,
 
     if method == 'công thức':
         # Phương pháp (a): pt. 77–79; sxe chặn 294…2000 (pt. 81)
+        # pt. 80. Trang 65: âm thì "coi giá trị bằng không HOẶC tính lại với
+        # mẫu thức thay bằng (Es·As + Ep·Aps + Ec·Act)". Lấy 0 — chọn thiên về
+        # an toàn trong hai cách mà tiêu chuẩn cho.
         eps = max((Mu_eff / dv + Vu_N - Ap * fpo) / den_ax, 0.0)
         eps = min(eps, 6.0e-3)
         sxe = min(max(sx * 35.0 / (AGG_SIZE + 16.0), 294.0), 2000.0)
@@ -497,12 +500,21 @@ def shear(h, forces, rebar, mat, flex, tendon=None, phi=0.9, b=1000.0,
         # Bảng 5 có hàng ≤130 nên không có chặn dưới 294 như phương pháp (a).
         sxe = min(sx * 35.0 / (AGG_SIZE + 16.0), 2000.0)
         vu_ratio = Vu_N / (phi * dv * b) / mat.fc
+        # Ac = diện tích bê tông phía chịu kéo do uốn; Đ.8.3.4.2 lấy phía chịu
+        # kéo bằng NỬA chiều cao mặt cắt chứa vùng kéo (trang 67).
+        Ac = 0.5 * h * b
+        eps_cap = 0.001 if enough else 0.002        # pt. 82 / pt. 83
         theta, beta, eps = 34.3, 0.0, 0.0
         for _ in range(20):
             cot = 1.0 / math.tan(math.radians(theta))
             num = Mu_eff / dv + 0.5 * Vu_N * cot - Ap * fpo
-            # Bảng 4 dùng 2(Es·As + Ep·Ap) ở mẫu, Bảng 5 dùng (Es·As + Ep·Ap)
-            eps = num / ((2.0 if enough else 1.0) * den_ax)
+            # pt. 82 (đủ cốt đai) dùng 2(Es·As + Ep·Ap); pt. 83 (thiếu) dùng
+            # (Es·As + Ep·Ap). Giá trị ban đầu không nên vượt eps_cap.
+            eps = min(num / ((2.0 if enough else 1.0) * den_ax), eps_cap)
+            if eps < 0:
+                # pt. 84: âm thì tính lại với mẫu 2(Ec·Ac + Es·As + Ep·Ap).
+                # KHÔNG lấy 0 như phương pháp (a) — Đ.8.3.4.2 chỉ định pt. 84.
+                eps = num / (2.0 * (mat.Ec * Ac + den_ax))
             if enough:
                 th_new, beta = _interp2(_T4, _VU_T4, _EX_T4, vu_ratio, eps * 1000.0)
             else:

@@ -502,6 +502,37 @@ def test_section_check_skips_crack_when_prestressed():
     assert no_pt['crack'].applicable, 'không cáp thì phải kiểm nứt'
 
 
+def test_shear_negative_eps_uses_eq84():
+    """εx âm thì phương pháp (b) phải tính lại theo pt. 84, không lấy 0.
+
+    Đ.8.3.4.2: nếu εx từ pt. 82/83 là âm thì lấy
+        εx = (cùng tử) / (2·(Ec·Ac + Es·As + Ep·Aps))
+    với Ac = diện tích bê tông phía chịu kéo do uốn = nửa chiều cao mặt cắt.
+    Lấy 0 (như phương pháp (a) được phép) sẽ cho β nhỏ hơn đáng kể.
+
+    Đối chiếu like-for-like với đúng số liệu vào của file mẫu (điểm A của S1):
+    dv khớp tuyệt đối; εx/β/θ lệch nhỏ vì file mẫu dùng fpo = 1000 MPa cứng
+    thay vì 0.7·fpu = 1302, và bỏ hệ số 2 của pt. 84 rồi lấy Ac = b·h thay vì
+    b·h/2 — hai chỗ đó bù nhau gần hết.
+    """
+    from src.section_check import (Material, Rebar, Tendon, Forces, flexure,
+                                   shear)
+
+    mat = Material(fc=50.0, fy=420.0, Ec=38006.9895)
+    rb = Rebar(dia=16, spacing=150, cover=65, bar_area=199.0)
+    td = Tendon(dp=180, Ap=700)
+    fo = Forces(Mu=95.88, Vu=120.67, Mser=98.83)
+    fl = flexure(300.0, fo, rb, mat, td)
+    sh = shear(300.0, fo, rb, mat, fl, td)
+
+    assert abs(sh.values['dv'] - 216.0) < 1e-6, sh.values['dv']
+    # εx phải ÂM và rất nhỏ — nếu bị kẹp về 0 thì β tụt hẳn
+    assert -1e-4 < sh.values['εx'] < 0, f"εx = {sh.values['εx']}"
+    assert abs(sh.values['β'] - 5.2427) < 0.2, f"β = {sh.values['β']}"
+    assert abs(sh.values['θ'] - 26.2869) < 0.5, f"θ = {sh.values['θ']}"
+    assert abs(sh.capacity - 598.16) / 598.16 < 0.05, f'Vr = {sh.capacity}'
+
+
 def test_shear_tables_match_template():
     """Bảng 4/Bảng 5 gõ từ TCVN phải tái lập đúng θ, β của file mẫu.
 
@@ -696,6 +727,7 @@ if __name__ == '__main__':
                       (test_section_check_matches_template, 'kiểm toán khớp file mẫu'),
                       (test_section_check_skips_crack_when_prestressed, 'bỏ kiểm nứt khi có cáp'),
                       (test_shear_tables_match_template, 'Bảng 4/5 khớp file mẫu'),
+                      (test_shear_negative_eps_uses_eq84, 'εx âm dùng pt.84'),
                       (test_no_shear_exemption_and_no_c_de_in_tcvn, 'TCVN: bỏ c/de, không miễn cắt'),
                       (test_shear_table_method_beats_closed_form, 'hai phương pháp cắt'),
                       (test_section_check_flexure_is_conservative_vs_template, 'uốn thiên an toàn'),
