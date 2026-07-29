@@ -190,7 +190,12 @@ rộng dải phụ thuộc thẳng vào cự ly sườn <b>S</b> và cánh hẫn
 mặt cắt đó. Dùng một template cho nhiều DXF khác hình học thì tải sai.</p>
 <p>Khi bấm <b>Tạo MCT</b>, chương trình suy ngược S và X mà template đã dùng rồi
 so với hình học thật của từng mặt cắt. Lệch nhiều thì hiện hộp thoại liệt kê rõ
-mặt cắt nào lệch bao nhiêu, cho chọn <b>Vẫn tạo</b> hoặc <b>Huỷ</b>.</p>
+mặt cắt nào lệch bao nhiêu, cho chọn <b>Vẫn tạo</b> hoặc <b>Huỷ</b>. Mọi dòng
+cảnh báo mở đầu bằng <b>KIỂM TRA SỐ LIỆU FILE TEMPLATE</b>.</p>
+<p><b>S</b> và <b>X</b> đo tới <b>tim sườn</b> — quy phạm định nghĩa S là cự ly
+tim–tim của bộ phận đỡ (TCVN 11823-4 Điều 4.6.2.1). Thông báo có in kèm trị
+thông thuỷ, vì chênh lệch đúng bằng một bề dày sườn thường chính là chỗ gõ nhầm
+khi lập template. Mặt cắt nhiều bụng thì so với <b>nhịp ngắn nhất</b>.</p>
 {note(f'Đọc kỹ chiều của sai số. Mặt cắt có S <b>nhỏ hơn</b> template thì dải '
       f'rộng hơn thực tế nên tải bánh bị <b>THIẾU</b> — sai về phía không an '
       f'toàn. S lớn hơn thì tải dư, thiên về an toàn, chỉ ghi chú.',

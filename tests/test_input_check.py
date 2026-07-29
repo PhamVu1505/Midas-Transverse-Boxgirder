@@ -20,8 +20,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.input_check import (P_TRUCK, check_shared_template, check_template,
-                             frame_metrics, strip_width,
+from src.input_check import (CHECK_TEMPLATE, P_TRUCK, check_shared_template,
+                             check_template, frame_metrics, strip_width,
                              template_strip_geometry)
 from src.mct_frame_writer import _write_tendon_prestress_block
 
@@ -108,6 +108,36 @@ def test_larger_span_is_only_informative():
     assert any('thiên về an toàn' in n['text'] for n in notes)
 
 
+def test_S_is_compared_to_web_centreline():
+    """`S` đo TIM–TIM (TCVN 11823-4 Đ.4.6.2.1), không phải thông thuỷ.
+
+    Template khai đúng trị thông thuỷ (tim–tim trừ một bề dày sườn) thì vẫn phải
+    báo: bản đầu chấp nhận cả dải nên ca này lọt lưới.
+    """
+    m = _metrics(8000.0, 3900.0, t_web=0.5)      # tim–tim 8000, thông thuỷ 7500
+    notes = check_template(_template(7500.0, 3900.0), m, 'S1')
+    assert any('S (sheet Load)' in n['text'] for n in notes), notes
+    # trị thông thuỷ vẫn được in kèm để người dùng nhận ra vì sao lệch
+    assert any('thông thuỷ 7500' in n['text'] for n in notes), notes
+
+
+def test_multi_web_compares_shortest_span():
+    """Nhiều bụng thì so với nhịp NGẮN NHẤT — nhịp dễ thiếu tải nhất."""
+    m = _metrics(9000.0, 3900.0)
+    m['spans_centre'] = [9000.0, 5000.0]
+    m['spans_clear'] = [8500.0, 4500.0]
+    m['n_webs'] = 3
+    notes = check_template(_template(9000.0, 3900.0), m, 'V2')
+    assert any(n['level'] == 'warn' and 'KHÔNG an toàn' in n['text']
+               for n in notes), notes
+
+
+def test_warnings_say_check_the_template():
+    d = _template(6468.0, 3632.0)
+    notes = check_template(d, _metrics(5550.0, 3375.0), 'S20')
+    assert notes and all(CHECK_TEMPLATE in n['text'] for n in notes), notes
+
+
 def test_barrier_wider_than_cantilever():
     d = dict(_template(8000.0, 3900.0), d_L=4.5, d_R=0.35)
     notes = check_template(d, _metrics(8000.0, 3900.0), 'S1')
@@ -126,6 +156,7 @@ def test_shared_template_different_geometry_warns():
     out = check_shared_template(e)
     assert len(out) == 1 and out[0]['level'] == 'warn'
     assert 'a' in out[0]['text'] and 'b' in out[0]['text']
+    assert CHECK_TEMPLATE in out[0]['text']
 
 
 def test_one_section_per_template_is_silent():

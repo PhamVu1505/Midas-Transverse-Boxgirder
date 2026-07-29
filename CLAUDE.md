@@ -69,11 +69,13 @@ Toàn bộ 40 khóa đọc từ **một sheet `INPUT`** bố cục khóa–giá 
 Hoạt tải trong template tính theo **dải tương đương**, mà bề rộng dải phụ thuộc thẳng vào cự ly sườn `S` và cánh hẫng `X` của **đúng mặt cắt đó**. Dùng chung một template cho nhiều DXF khác hình học là tải sai, và **không có gì khác trong cả quy trình lộ ra** — mô hình vẫn chạy, bảng kiểm toán vẫn ra số đẹp.
 
 - **Suy ngược `S`/`X` từ chính các khoá bắt buộc**, không đọc ô `Load!G39/G40`: toạ độ ô cứng chính là thứ đã lệch 12 dòng ở `input_reader._KEYS`, mà template khác thì bố cục sheet lại khác. Phép suy ngược **tự kiểm chứng**: `+M` (`E = 660+0,55S`) và `−M` (`E = 1220+0,25S`) là hai công thức khác hẳn nhau, cùng ra một `S` thì chắc chắn đúng; lệch nhau thì template không lập theo phương pháp này và bỏ qua thay vì báo bừa.
-- **Không đoán quy ước `S`.** Excel không ghi đo tim–tim sườn hay thông thuỷ, hai trị chênh nhau đúng một bề dày sườn. Hàm trả **cả hai** và chỉ báo khi trị của template nằm ngoài cả hai, cộng dung sai 5% (hoặc 100 mm).
+- **`S` và `X` đo tới TIM SƯỜN** — quy phạm định nghĩa `S` là cự ly tim–tim của bộ phận đỡ (TCVN 11823-4 Đ.4.6.2.1), `X` cũng đo từ mép bản tới tim sườn ngoài. Chốt một quy ước làm phép kiểm **chặt hơn** bản đầu (bản đầu nhận cả dải thông thuỷ→tim–tim rồi chỉ báo khi nằm ngoài cả hai, nên template khai đúng trị thông thuỷ thì lọt lưới). Trị thông thuỷ vẫn in kèm vì chênh đúng một bề dày sườn thường chính là lý do gõ nhầm. Dung sai 5% hoặc 100 mm.
+- Mặt cắt nhiều bụng thì so với **nhịp ngắn nhất**: nhịp ngắn cho dải hẹp nhất, tức tải bánh lớn nhất, nên dễ bị template làm thiếu tải nhất.
+- Mọi cảnh báo mở đầu bằng **`KIỂM TRA SỐ LIỆU FILE TEMPLATE`** (hằng `CHECK_TEMPLATE`) — quét mắt qua Messages là biết ngay phải sửa file Excel chứ không phải sửa bản vẽ.
 - **Phân biệt chiều của sai số**: `S` mặt cắt **nhỏ hơn** template ⇒ dải rộng hơn thực tế ⇒ tải bánh **THIẾU** ⇒ mức `warn`. Lớn hơn ⇒ tải dư ⇒ chỉ `info`. Cảnh báo không phân biệt chiều thì kêu suốt và người dùng thôi đọc.
 - `frame_metrics()` nhận **cả** `topo` đã ghi (`wL_nodes`/`wC_nodes`/`wR_nodes`) lẫn `frame` vừa ra khỏi `build_frame` (`web_left`/`web_center`/`web_right`) — nhờ vậy hộp thoại hỏi-trước-khi-tạo không phải chạy hết `write_mct` chỉ để lấy hai con số.
 - `GenerateController.preflight()` chạy trước khi dựng worker; có cảnh báo mức `warn` thì hộp thoại **Vẫn tạo / Huỷ**. Dùng lại `topo.json` khi đã có nên tốn ~0,01 s cho 6 mặt cắt.
-- **Template `data/Midas-Transverse-Boxgirder-analysis.xls` mang `S = 6468 mm`, `X = 3632 mm` — không khớp mặt cắt nào** đang có (S1 8450/3945 · S16 8650/3845 · S20 5550/3375 · S10 6977/3294 · SLT 16311/4155 · S1_V2 6347/4503). S1/S16/SLT thì thiên an toàn, còn **S10 và S20 đang thiếu tải 5–18%**.
+- **Template `data/Midas-Transverse-Boxgirder-analysis.xls` mang `S = 6468 mm`, `X = 3632 mm` — không khớp mặt cắt nào** đang có (tim–tim: S1 8450/3945 · S16 8650/3845 · S20 5550/3375 · S10 6977/3294 · SLT 16311/3834 · S1_V2 6347/4503). S1/S16/SLT/S1_V2 thiên an toàn, còn **S20 thiếu 14% (S) và 5% (X)**, **S10 thiếu 8% (X)**.
 
 ### Căng cáp một đầu / hai đầu (v1.4.1)
 `Section.pt_jacking` (`'begin'` mặc định | `'both'`) → trường `JACKING` của `*TDN-PRESTRESS`. Lưu **riêng từng mặt cắt** trong `.mtbproj`, ô chọn nằm ở dock Properties, `run.py generate --pt-jacking both` cho CLI.
@@ -193,7 +195,7 @@ Vỏ ứng dụng theo lối phần mềm kỹ thuật (midas / CSI / LUSAS): me
 - `gui/theme.py` — **toàn bộ** token màu/cỡ chữ/mật độ + QSS. Không đặt `setStyleSheet` rải rác trong tab nữa.
 - Ba bảng màu (Sáng / Tối / Tương phản cao) dùng **chung một bộ khóa token** — xem mục *Tùy chọn* bên dưới.
 - `gui/icons.py` — icon SVG nội tuyến, tô theo token; không cần bundle file ảnh.
-- `gui/widgets/log_view.py` — log phân cấp màu (info/ok/cảnh báo/lỗi), tự đoán mức từ nội dung.
+- `gui/widgets/log_view.py` — log phân cấp màu (info/ok/cảnh báo/lỗi), tự đoán mức từ nội dung. Huy hiệu đầu dòng là **ảnh vẽ tay** (`icons.level_image`): cảnh báo = tam giác vàng có chữ `i`, lỗi = tròn đỏ dấu `×`. Dùng `QTextEdit` chứ không phải `QPlainTextEdit` vì văn bản thuần không chèn được ảnh; ký tự `⚠` thì phụ thuộc phông hệ thống, máy thiếu là ra ô vuông — mà đây đúng là thứ người dùng quét mắt tìm. Khoá ảnh trong tài liệu phải gồm **mã màu thật**, không thì đổi bảng màu xong huy hiệu vẫn giữ màu cũ.
 - `gui/widgets/step_bar.py` — 5 bước; bước ③ chạy Midas vẽ **nét đứt + chữ nghiêng** vì nằm ngoài app.
 - Tab phát `progress_changed(done, total)` → thanh bước và status bar tự cập nhật.
 - Chuỗi hiển thị thống nhất tiếng Việt.

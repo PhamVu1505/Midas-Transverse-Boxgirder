@@ -195,7 +195,13 @@ template cho nhiều DXF khác hình học thì tải sai.
 
 Khi bấm Tạo MCT, chương trình suy ngược S và X mà template đã dùng rồi so với
 hình học thật của từng mặt cắt. Lệch nhiều thì hiện hộp thoại liệt kê rõ mặt
-cắt nào lệch bao nhiêu, cho chọn Vẫn tạo hoặc Huỷ.
+cắt nào lệch bao nhiêu, cho chọn Vẫn tạo hoặc Huỷ. Mọi dòng cảnh báo mở đầu
+bằng KIỂM TRA SỐ LIỆU FILE TEMPLATE.
+
+S và X đo tới tim sườn — quy phạm định nghĩa S là cự ly tim–tim của bộ phận đỡ
+(TCVN 11823-4 Điều 4.6.2.1). Thông báo có in kèm trị thông thuỷ, vì chênh lệch
+đúng bằng một bề dày sườn thường chính là chỗ gõ nhầm khi lập template. Mặt
+cắt nhiều bụng thì so với nhịp ngắn nhất.
 
 LƯU Ý: Đọc kỹ chiều của sai số. Mặt cắt có S nhỏ hơn template thì dải rộng hơn
   thực tế nên tải bánh bị THIẾU — sai về phía không an toàn. S lớn hơn thì tải

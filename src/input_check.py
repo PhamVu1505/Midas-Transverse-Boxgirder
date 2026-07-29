@@ -26,18 +26,27 @@ suy ngược từ chính các khóa **bắt buộc** (`truck_can`, `truck_pos`, 
 nhau, nếu cùng ra một `S` thì chắc chắn đã suy đúng, còn lệch nhau thì template
 không lập theo phương pháp này và ta bỏ qua thay vì báo bừa.
 
-Không đối chiếu `S` theo một quy ước duy nhất
-─────────────────────────────────────────────
-Sheet Excel không ghi `S` đo tim–tim sườn hay thông thuỷ giữa hai sườn, mà hai
-trị số này chênh nhau đúng bằng một bề dày sườn. Nên hàm trả về **cả hai** và
-chỉ báo động khi trị số của template nằm ngoài **cả hai**, cộng thêm dung sai.
-Đoán bừa một quy ước thì cảnh báo sai chỗ, mà cảnh báo sai vài lần là người dùng
-thôi đọc nó.
+`S` và `X` đo tới **TIM SƯỜN**
+─────────────────────────────
+Quy phạm định nghĩa `S` là cự ly **tim–tim của các bộ phận đỡ** (TCVN 11823-4
+Điều 4.6.2.1), nên đây là quy ước dùng để đối chiếu, không phải khoảng thông
+thuỷ giữa hai mặt sườn. `X` cũng đo từ mép bản tới **tim sườn ngoài**.
+
+Chốt một quy ước như vậy làm phép kiểm **chặt hơn** so với bản đầu (chấp nhận cả
+một dải từ thông thuỷ tới tim–tim rồi chỉ báo khi nằm ngoài cả hai): mỗi mặt cắt
+giờ có đúng một trị số để so, nên template khai lệch là lộ ra ngay. Trị thông
+thuỷ vẫn được in kèm trong thông báo, vì chênh lệch đúng bằng một bề dày sườn
+thường chính là lý do người lập template gõ nhầm.
 """
 
 # Nửa trục thiết kế HL93 — TCVN 11823-3 Điều 3.6.1.2 (kN)
 P_TRUCK = 72.5      # nửa trục 145 kN của xe tải
 P_TANDEM = 55.0     # nửa trục 110 kN của xe hai trục
+
+# Câu mở đầu chung cho mọi cảnh báo về số liệu template. Đặt ngay đầu dòng để
+# quét mắt qua cửa sổ Messages là thấy ngay việc phải làm, không phải đọc hết
+# câu mới hiểu là đang nói về file Excel chứ không phải về bản vẽ.
+CHECK_TEMPLATE = 'KIỂM TRA SỐ LIỆU FILE TEMPLATE'
 
 # Lệch quá ngần này thì báo. Bề rộng dải chỉ phụ thuộc S theo hệ số 0,55 (+M) và
 # 0,25 (−M) nên lệch S vài phần trăm gần như không đổi kết quả — ngưỡng đặt thấp
@@ -163,16 +172,6 @@ def strip_width(S=None, X=None):
 # Đối chiếu
 # ─────────────────────────────────────────────────────────────
 
-def _off(value, lo, hi):
-    """Độ lệch của `value` so với khoảng [lo, hi]; 0 nghĩa là nằm trong."""
-    lo, hi = min(lo, hi), max(lo, hi)
-    if value < lo:
-        return value - lo
-    if value > hi:
-        return value - hi
-    return 0.0
-
-
 def check_template(data: dict, metrics: dict, name: str = '') -> list:
     """So số liệu hoạt tải của template với hình học mặt cắt.
 
@@ -196,16 +195,18 @@ def check_template(data: dict, metrics: dict, name: str = '') -> list:
         return out
 
     # ── Cự ly sườn ──
+    # So với nhịp NGẮN NHẤT: nhịp ngắn cho dải hẹp nhất, tức tải bánh lớn nhất,
+    # nên đó là nhịp dễ bị template làm cho thiếu tải nhất.
     centre, clear = metrics['spans_centre'], metrics['spans_clear']
-    lo, hi = min(clear), max(centre)
-    d = _off(tpl['S'], lo, hi)
-    if abs(d) > max(TOL_ABS_MM, TOL_REL * max(lo, 1.0)):
-        real = (f'{centre[0]:.0f} mm (tim–tim) / {clear[0]:.0f} mm (thông thuỷ)'
+    S_real = min(centre)
+    if abs(tpl['S'] - S_real) > max(TOL_ABS_MM, TOL_REL * S_real):
+        real = (f'{centre[0]:.0f} mm (tim–tim; thông thuỷ {clear[0]:.0f} mm)'
                 if len(centre) == 1 else
-                f'{lo:.0f}…{hi:.0f} mm cho {len(centre)} nhịp')
+                f'{min(centre):.0f}…{max(centre):.0f} mm tim–tim '
+                f'cho {len(centre)} nhịp')
         # E nhỏ hơn ⇒ tải bánh lớn hơn ⇒ thiên về an toàn
         e_tpl = strip_width(S=tpl['S'])
-        e_real = strip_width(S=(lo + hi) / 2.0)
+        e_real = strip_width(S=S_real)
         unsafe = e_tpl['pos'] > e_real['pos'] or e_tpl['neg'] > e_real['neg']
         ratio = max(e_tpl['pos'] / e_real['pos'], e_tpl['neg'] / e_real['neg'])
         hq = (f'tải bánh đang THIẾU khoảng {(ratio - 1) * 100:.0f}% — '
@@ -213,15 +214,16 @@ def check_template(data: dict, metrics: dict, name: str = '') -> list:
               f'tải bánh đang dư khoảng {(1 / ratio - 1) * 100:.0f}% — '
               f'thiên về an toàn')
         out.append({'level': 'warn' if unsafe else 'info', 'text': (
-            f'{tag}hoạt tải trong template tính cho cự ly sườn S ≈ '
-            f'{tpl["S"]:.0f} mm, mặt cắt này là {real}. {hq}.')})
+            f'{tag}{CHECK_TEMPLATE} — ô S (sheet Load) đang khai '
+            f'{tpl["S"]:.0f} mm, cự ly sườn của mặt cắt này là {real}. {hq}.')})
 
     # ── Cánh hẫng ──
+    # `X` đo từ mép bản tới TIM sườn ngoài, cùng quy ước với `S`.
     cl, cr = metrics['cantilever_left'], metrics['cantilever_right']
-    d = _off(tpl['X'], min(cl, cr), max(cl, cr))
-    if abs(d) > max(TOL_ABS_MM, TOL_REL * max(min(cl, cr), 1.0)):
+    X_real = min(cl, cr)
+    if abs(tpl['X'] - X_real) > max(TOL_ABS_MM, TOL_REL * X_real):
         e_tpl = strip_width(X=tpl['X'])
-        e_real = strip_width(X=(cl + cr) / 2.0)
+        e_real = strip_width(X=X_real)
         unsafe = e_tpl > e_real
         ratio = e_tpl / e_real
         hq = (f'tải bánh trên cánh hẫng đang THIẾU khoảng '
@@ -231,8 +233,9 @@ def check_template(data: dict, metrics: dict, name: str = '') -> list:
         span = (f'{cl:.0f} mm' if abs(cl - cr) < 1 else
                 f'{min(cl, cr):.0f}…{max(cl, cr):.0f} mm')
         out.append({'level': 'warn' if unsafe else 'info', 'text': (
-            f'{tag}hoạt tải cánh hẫng trong template tính cho X ≈ '
-            f'{tpl["X"]:.0f} mm, cánh hẫng của mặt cắt này là {span}. {hq}.')})
+            f'{tag}{CHECK_TEMPLATE} — ô X (sheet Load) đang khai '
+            f'{tpl["X"]:.0f} mm, cánh hẫng tới tim sườn của mặt cắt này là '
+            f'{span}. {hq}.')})
 
     # ── Bề rộng đoạn lan can không được vượt cánh hẫng ──
     for key, cant, side in (('d_L', cl, 'trái'), ('d_R', cr, 'phải')):
@@ -242,9 +245,9 @@ def check_template(data: dict, metrics: dict, name: str = '') -> list:
             continue
         if d_mm > cant:
             out.append({'level': 'warn', 'text': (
-                f'{tag}bề rộng đoạn lan can {key} = {d_mm:.0f} mm lớn hơn cánh '
-                f'hẫng {side} ({cant:.0f} mm) — tĩnh tải lan can đang đặt ra '
-                f'ngoài mặt cắt.')})
+                f'{tag}{CHECK_TEMPLATE} — bề rộng đoạn lan can {key} = '
+                f'{d_mm:.0f} mm lớn hơn cánh hẫng {side} ({cant:.0f} mm), '
+                f'tĩnh tải lan can đang đặt ra ngoài mặt cắt.')})
     return out
 
 
@@ -271,7 +274,7 @@ def check_shared_template(entries: list) -> list:
         for m in members:
             g = m['metrics']
             rows.append(f'  · {m["name"]}: B {g["B"]:.0f} · {g["n_webs"]} bụng · '
-                        f'S {g["spans_centre"][0]:.0f} · '
+                        f'S {g["spans_centre"][0]:.0f} (tim–tim) · '
                         f'hẫng {g["cantilever_left"]:.0f}/'
                         f'{g["cantilever_right"]:.0f} mm')
             if (g['n_webs'] != ref['n_webs']
@@ -282,7 +285,7 @@ def check_shared_template(entries: list) -> list:
         if differ:
             import os
             out.append({'level': 'warn', 'text': (
-                f'{len(members)} mặt cắt dùng chung template '
+                f'{CHECK_TEMPLATE} — {len(members)} mặt cắt dùng chung template '
                 f'{os.path.basename(tpl)} nhưng hình học khác nhau — hoạt tải và '
                 f'tĩnh tải lan can trong template chỉ đúng cho MỘT mặt cắt:\n'
                 + '\n'.join(rows))})
