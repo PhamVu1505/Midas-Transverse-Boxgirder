@@ -69,8 +69,12 @@ def write_mct(frame: dict, section_name: str = 'Section',
               pt_cables: list = None,
               pt_props: TendonProperty = None,
               include_pt: bool = None,
-              supports: list = None) -> str:
+              supports: list = None,
+              pt_jacking: str = 'begin') -> str:
     """Tạo file MCT từ frame data.
+
+    pt_jacking: 'begin' = căng một đầu · 'both' = căng hai đầu. Chỉ có nghĩa
+    khi thực sự ghi khối cáp.
 
     Node numbering:
       Bottom slab:  1 .. N_bot
@@ -98,7 +102,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
 
     if frame.get('section_type') == 'twin_box':
         return _write_mct_twin(frame, section_name, excel_path, pt_cables,
-                               pt_props, include_pt, supports)
+                               pt_props, include_pt, supports, pt_jacking)
 
     # ── Material ──
     if excel_path and os.path.exists(excel_path):
@@ -519,7 +523,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
 
     # ── Load data ──
     if pt_written:
-        _write_tendon_prestress_block(blocks, tendons, pt_props)
+        _write_tendon_prestress_block(blocks, tendons, pt_props, pt_jacking)
 
     if ld:
         _write_load_data(blocks, ld, elements, top_ids, top_nodes,
@@ -607,7 +611,8 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                     pt_cables: list = None,
                     pt_props: TendonProperty = None,
                     include_pt: bool = None,
-              supports: list = None) -> tuple:
+                    supports: list = None,
+                    pt_jacking: str = 'begin') -> tuple:
     """MCT cho mặt cắt 2 hộp: 3 bụng (ngoài L/R + vách giữa), bản đáy liên tục."""
     # Thiếu thuộc tính cáp vẫn dựng hình học — xem chú thích ở write_mct.
     pt_warnings = []
@@ -985,7 +990,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
         blocks.append('')
 
     if pt_written:
-        _write_tendon_prestress_block(blocks, tendons, pt_props)
+        _write_tendon_prestress_block(blocks, tendons, pt_props, pt_jacking)
     if ld:
         _write_load_data(blocks, ld, elements, top_ids, top_nodes,
                          eid_top_start, eid_top_end,
@@ -1929,15 +1934,31 @@ def _write_tendon_profile_blocks(blocks, tendons, prop):
     blocks.append('')
 
 
-def _write_tendon_prestress_block(blocks, tendons, prop):
-    """Write *USE-STLD, Prestress + *TDN-PRESTRESS block."""
+def _write_tendon_prestress_block(blocks, tendons, prop, jacking='begin'):
+    """Write *USE-STLD, Prestress + *TDN-PRESTRESS block.
+
+    `jacking`:
+      'begin' — căng một đầu: ô JACKING = BEGIN, chỉ đầu đầu có ứng suất.
+      'both'  — căng hai đầu: ô JACKING = BOTH, **cả hai** ô BEGIN và END mang
+                ứng suất căng. Để trống ô END mà vẫn khai BOTH thì Midas hiểu
+                đầu kia căng bằng 0.
+
+    Bó ngang dài (bản mặt hộp rộng) căng hai đầu thì tổn hao ma sát đối xứng và
+    ứng suất giữa nhịp cao hơn hẳn — khác biệt thật, không phải tuỳ chọn hình
+    thức, nên mặc định giữ 'begin' đúng như bản cũ và bắt người dùng chủ động
+    chọn.
+    """
     stress_kpa = prop.fpj * 1000  # MPa → kPa
+    both = str(jacking).lower() == 'both'
+    field = 'BOTH' if both else 'BEGIN'
+    end_kpa = stress_kpa if both else 0
     blocks.append('*USE-STLD, Prestress')
     blocks.append('')
     blocks.append('*TDN-PRESTRESS    ; Tendon Prestress Loads')
     blocks.append('; TDN-NAME, FORCE/STRESS, JACKING, BEGIN, END, iGROUTING, GROUP')
     for t in tendons:
-        blocks.append(f' {t.name}, STRESS, BEGIN, {stress_kpa:g}, 0, 0, Load')
+        blocks.append(
+            f' {t.name}, STRESS, {field}, {stress_kpa:g}, {end_kpa:g}, 0, Load')
     blocks.append('')
 
 

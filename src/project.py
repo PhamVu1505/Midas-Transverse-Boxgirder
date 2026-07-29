@@ -71,6 +71,10 @@ class Section:
     # Tuỳ chọn kiểm toán riêng của mặt cắt: tiêu chuẩn, phương pháp cắt, φ, fy…
     check_opts: dict = field(default_factory=dict)
 
+    # Căng cáp một đầu ('begin') hay hai đầu ('both') — vào ô JACKING của
+    # *TDN-PRESTRESS. Mặc định 'begin' để MCT của project cũ giống hệt bản trước.
+    pt_jacking: str = 'begin'
+
     status: str = NEW
     note: str = ''
 
@@ -209,6 +213,18 @@ class Project:
         if s is None:
             return
         s.rebars = {k: dict(v) for k, v in (rebars or {}).items()}
+        self._dirty = True
+
+    def set_pt_jacking(self, name: str, jacking: str):
+        """Căng một đầu ('begin') hay hai đầu ('both').
+
+        Chỉ đổi ô JACKING trong MCT sắp sinh, không đụng trạng thái quy trình —
+        MCT đã sinh vẫn còn đó, người dùng tự tạo lại khi muốn áp thay đổi.
+        """
+        s = self.find(name)
+        if s is None or jacking not in ('begin', 'both'):
+            return
+        s.pt_jacking = jacking
         self._dirty = True
 
     def set_check_opts(self, name: str, opts: dict):

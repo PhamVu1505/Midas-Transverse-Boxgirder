@@ -171,6 +171,30 @@ thức bị dán thành số cứng.</p>
 {note(f'Chưa gán template thì MCT chỉ có hình học, vật liệu và gối; toàn bộ '
       f'khối tải trọng cùng tổ hợp bị bỏ qua. Chương trình ghi rõ điều này vào '
       f'đầu file và vào Messages.', warn, t["warn_bg"])}
+
+<h3 style="color:{ink}">Căng cáp một đầu hay hai đầu</h3>
+<p>Mặt cắt có cáp DƯL thì panel <b>Properties</b> bên phải có ô <b>Căng cáp</b>.
+Ô này đi thẳng vào trường <code>JACKING</code> của khối
+<code>*TDN-PRESTRESS</code>:</p>
+<ul>
+<li><b>Căng một đầu</b> (mặc định) — chỉ đầu đầu bó có ứng suất căng</li>
+<li><b>Căng hai đầu</b> — cả hai đầu cùng căng, tổn hao ma sát đối xứng và ứng
+suất giữa bó cao hơn</li>
+</ul>
+<p>Lựa chọn lưu riêng cho <b>từng mặt cắt</b> trong file project. Đổi xong phải
+<b>tạo lại MCT</b> thì mới có hiệu lực. Mặt cắt không có cáp thì ô này bị khoá.</p>
+
+<h3 style="color:{ink}">Cảnh báo số liệu đầu vào không khớp hình học</h3>
+<p>Hoạt tải trong template tính theo <b>phương pháp dải tương đương</b>, mà bề
+rộng dải phụ thuộc thẳng vào cự ly sườn <b>S</b> và cánh hẫng <b>X</b> của đúng
+mặt cắt đó. Dùng một template cho nhiều DXF khác hình học thì tải sai.</p>
+<p>Khi bấm <b>Tạo MCT</b>, chương trình suy ngược S và X mà template đã dùng rồi
+so với hình học thật của từng mặt cắt. Lệch nhiều thì hiện hộp thoại liệt kê rõ
+mặt cắt nào lệch bao nhiêu, cho chọn <b>Vẫn tạo</b> hoặc <b>Huỷ</b>.</p>
+{note(f'Đọc kỹ chiều của sai số. Mặt cắt có S <b>nhỏ hơn</b> template thì dải '
+      f'rộng hơn thực tế nên tải bánh bị <b>THIẾU</b> — sai về phía không an '
+      f'toàn. S lớn hơn thì tải dư, thiên về an toàn, chỉ ghi chú.',
+      warn, t["warn_bg"])}
 '''),
 
         ('Gối', f'''

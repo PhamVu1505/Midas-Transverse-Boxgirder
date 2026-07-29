@@ -97,7 +97,8 @@ class GenerateWorker(QThread):
                 mct_text, topo = write_mct(frame, name, excel,
                                            pt_cables=pt_cables, pt_props=pt_props,
                                            include_pt=include_pt,
-                                           supports=job.get('supports') or None)
+                                           supports=job.get('supports') or None,
+                                           pt_jacking=job.get('pt_jacking', 'begin'))
                 mct_path = os.path.join(section_dir, f'{name}_frame.mct')
                 with open(mct_path, 'w', encoding='utf-8') as f:
                     f.write(mct_text)
@@ -119,6 +120,21 @@ class GenerateWorker(QThread):
                 # "load name ((null)) does not exist" lúc import. Nói ở đây.
                 for w in topo.get('combo_warnings', []):
                     self.log.emit(f'[{name}] LỖI TỔ HỢP: {w}')
+                # Hoạt tải trong template tính theo dải tương đương của MỘT mặt
+                # cắt cụ thể — dùng lại cho mặt cắt khác thì tải sai, mà sai về
+                # phía thiếu thì không có gì khác lộ ra.
+                if ld:
+                    from src.input_reader import read_inputs
+                    from src.input_check import frame_metrics, check_template
+                    try:
+                        for w in check_template(read_inputs(excel),
+                                                frame_metrics(topo), name):
+                            self.log.emit(
+                                f'[{name}] {"WARNING: " if w["level"] == "warn" else ""}'
+                                f'{w["text"]}')
+                    except Exception as e:
+                        self.log.emit(f'[{name}] không đối chiếu được số liệu '
+                                      f'đầu vào với hình học — {e}')
 
                 n_elem = len(topo['elements'])
                 n_node = sum(len(topo.get(k, []))

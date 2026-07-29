@@ -442,6 +442,7 @@ class MainWindow(QMainWindow):
         self.viewer.view.node_hovered.connect(self.props.show_node)
         self.props.sup_editor.set_view(self.viewer.view)
         self.props.sup_editor.changed.connect(self.gen_tab.on_supports_changed)
+        self.props.pt_jacking_changed.connect(self._on_pt_jacking)
         self.props.sup_editor.message.connect(self.viewer.query.setText)
         self.viewer.supports_changed.connect(
             lambda _: self.props.sup_editor.rebuild())
@@ -482,6 +483,12 @@ class MainWindow(QMainWindow):
         v = self.gen_tab.view
         self.props.show_section(name, v.stats(),
                                 [dict(sp, id=v._sup_node(sp)) for sp in v.supports])
+
+    def _on_pt_jacking(self, name, jacking):
+        self.project.set_pt_jacking(name, jacking)
+        label = 'hai đầu' if jacking == 'both' else 'một đầu'
+        self.log.info(f'{name}: căng cáp {label} — tạo lại MCT để áp thay đổi')
+        self._update_title()
 
     def _on_project_changed(self):
         self.panel.refresh()

@@ -7,6 +7,7 @@ chạy worker, ghi kết quả ngược vào project. Thiết lập (template, t
 quả) nằm ở panel Project bên trái; khung xem là `ViewerPanel` dùng chung.
 """
 
+import json
 import os
 
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -132,6 +133,100 @@ class GenerateController(QObject):
             return f'Không đọc được {sec.mct}:\n{e}'
 
     # ─────────────────────────────────────────
+    # Tiền kiểm số liệu đầu vào
+    # ─────────────────────────────────────────
+    def _metrics_for(self, sec):
+        """Hình học của một mặt cắt, lấy đường rẻ nhất còn dùng được.
+
+        Đã sinh MCT rồi thì đọc `topo.json` (chỉ là đọc JSON). Chưa thì dựng
+        khung từ DXF — tốn hơn nhưng vẫn chỉ vài chục mili giây, và đây đúng là
+        lúc cần cảnh báo nhất: mặt cắt mới thêm mà vớ nhầm template.
+        """
+        from src.input_check import frame_metrics
+        if sec.topo and os.path.exists(sec.topo):
+            try:
+                with open(sec.topo, encoding='utf-8') as f:
+                    return frame_metrics(json.load(f))
+            except Exception:
+                pass
+        if not sec.dxf or not os.path.exists(sec.dxf):
+            return {}
+        try:
+            import ezdxf
+            from src.dxf_reader import (_get_polyline_vertices, read_inpolys,
+                                        section_type_from_inpolys)
+            from src.frame_builder import build_frame, build_twin_frame
+            from src.load_reader import read_loads
+            msp = ezdxf.readfile(sec.dxf).modelspace()
+            out = _get_polyline_vertices(msp, 'OUTPOLY')
+            ins = read_inpolys(msp)
+            excel = self.project.template_for(sec)
+            ld = read_loads(excel) if (excel and os.path.exists(excel)) else None
+            d_L = ld['d_L'] if ld else 0.4
+            d_R = ld['d_R'] if ld else 0.4
+            if section_type_from_inpolys(ins) == 'twin_box':
+                frame = build_twin_frame(out, ins[0], ins[1], d_L=d_L, d_R=d_R)
+            else:
+                frame = build_frame(out, ins[0], d_L=d_L, d_R=d_R)
+            return frame_metrics(frame)
+        except Exception:
+            # DXF hỏng thì để bước sinh MCT báo lỗi cho tử tế, đừng chết ở đây.
+            return {}
+
+    def preflight(self, secs) -> bool:
+        """Đối chiếu template với hình học trước khi sinh. False = người dùng huỷ.
+
+        Hoạt tải trong template tính theo phương pháp dải tương đương cho MỘT
+        mặt cắt cụ thể. Dùng lại cho mặt cắt khác thì tải sai, và nếu sai về phía
+        thiếu thì không có gì khác trong cả quy trình lộ ra — mô hình vẫn chạy,
+        bảng kiểm toán vẫn ra số đẹp.
+        """
+        from src.input_check import check_template, check_shared_template
+        from src.input_reader import read_inputs
+
+        entries, notes = [], []
+        for s in secs:
+            excel = self.project.template_for(s)
+            metrics = self._metrics_for(s)
+            entries.append({'name': s.name, 'template': excel, 'metrics': metrics})
+            if not (excel and os.path.exists(excel) and metrics):
+                continue
+            try:
+                notes += check_template(read_inputs(excel), metrics, s.name)
+            except Exception:
+                pass
+        notes += check_shared_template(entries)
+
+        if self.log_area:
+            for n in notes:
+                if n['level'] == 'warn':
+                    self.log_area.warning(n['text'])
+                else:
+                    self.log_area.info(n['text'])
+
+        hard = [n for n in notes if n['level'] == 'warn']
+        if not hard:
+            return True
+
+        from PyQt6.QtWidgets import QMessageBox
+        box = QMessageBox(self.viewer)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle('Số liệu đầu vào không khớp hình học')
+        box.setText(f'{len(hard)} cảnh báo về số liệu đầu vào.')
+        box.setInformativeText(
+            'Hoạt tải trong template tính theo dải tương đương cho một mặt cắt '
+            'cụ thể — dùng cho mặt cắt khác thì tải sai.')
+        box.setDetailedText('\n\n'.join(n['text'] for n in hard))
+        go = box.addButton('Vẫn tạo', QMessageBox.ButtonRole.AcceptRole)
+        box.addButton('Huỷ', QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(go)
+        box.exec()
+        if box.clickedButton() is not go:
+            self.status_bar.showMessage('Đã huỷ tạo MCT — số liệu đầu vào chưa khớp')
+            return False
+        return True
+
+    # ─────────────────────────────────────────
     def generate(self, names=None):
         if self.worker is not None:
             return
@@ -143,10 +238,14 @@ class GenerateController(QObject):
                 'Chưa có mặt cắt nào — thêm DXF ở panel bên trái.')
             return
 
+        if not self.preflight(secs):
+            return
+
         jobs = [{'name': s.name, 'dxf': s.dxf,
                  'excel': self.project.template_for(s),
                  'include_pt': self.include_pt and s.include_pt,
-                 'supports': list(s.supports)}
+                 'supports': list(s.supports),
+                 'pt_jacking': s.pt_jacking}
                 for s in secs]
 
         if self.log_area:

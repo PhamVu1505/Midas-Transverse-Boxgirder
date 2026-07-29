@@ -65,6 +65,23 @@ Toàn bộ 40 khóa đọc từ **một sheet `INPUT`** bố cục khóa–giá 
 - Biến `pt_written` (chứ không phải `bool(tendons)`) quyết định ghi `*TDN-*`, `*STAGE`, `ELEM-DEPMATL`, `*ANAL-CTRL`, `Prestress` trong STLDCASE và `has_pt` của tổ hợp — tránh đúng kiểu lỗi tổ hợp mồ côi đã gặp.
 - Thiếu thuộc tính cáp thì ghi chú thích ngay trong file MCT và trả `topo['pt_warnings']` để CLI/GUI log cảnh báo.
 
+### Đối chiếu số liệu template với hình học — `src/input_check.py` (v1.4.1)
+Hoạt tải trong template tính theo **dải tương đương**, mà bề rộng dải phụ thuộc thẳng vào cự ly sườn `S` và cánh hẫng `X` của **đúng mặt cắt đó**. Dùng chung một template cho nhiều DXF khác hình học là tải sai, và **không có gì khác trong cả quy trình lộ ra** — mô hình vẫn chạy, bảng kiểm toán vẫn ra số đẹp.
+
+- **Suy ngược `S`/`X` từ chính các khoá bắt buộc**, không đọc ô `Load!G39/G40`: toạ độ ô cứng chính là thứ đã lệch 12 dòng ở `input_reader._KEYS`, mà template khác thì bố cục sheet lại khác. Phép suy ngược **tự kiểm chứng**: `+M` (`E = 660+0,55S`) và `−M` (`E = 1220+0,25S`) là hai công thức khác hẳn nhau, cùng ra một `S` thì chắc chắn đúng; lệch nhau thì template không lập theo phương pháp này và bỏ qua thay vì báo bừa.
+- **Không đoán quy ước `S`.** Excel không ghi đo tim–tim sườn hay thông thuỷ, hai trị chênh nhau đúng một bề dày sườn. Hàm trả **cả hai** và chỉ báo khi trị của template nằm ngoài cả hai, cộng dung sai 5% (hoặc 100 mm).
+- **Phân biệt chiều của sai số**: `S` mặt cắt **nhỏ hơn** template ⇒ dải rộng hơn thực tế ⇒ tải bánh **THIẾU** ⇒ mức `warn`. Lớn hơn ⇒ tải dư ⇒ chỉ `info`. Cảnh báo không phân biệt chiều thì kêu suốt và người dùng thôi đọc.
+- `frame_metrics()` nhận **cả** `topo` đã ghi (`wL_nodes`/`wC_nodes`/`wR_nodes`) lẫn `frame` vừa ra khỏi `build_frame` (`web_left`/`web_center`/`web_right`) — nhờ vậy hộp thoại hỏi-trước-khi-tạo không phải chạy hết `write_mct` chỉ để lấy hai con số.
+- `GenerateController.preflight()` chạy trước khi dựng worker; có cảnh báo mức `warn` thì hộp thoại **Vẫn tạo / Huỷ**. Dùng lại `topo.json` khi đã có nên tốn ~0,01 s cho 6 mặt cắt.
+- **Template `data/Midas-Transverse-Boxgirder-analysis.xls` mang `S = 6468 mm`, `X = 3632 mm` — không khớp mặt cắt nào** đang có (S1 8450/3945 · S16 8650/3845 · S20 5550/3375 · S10 6977/3294 · SLT 16311/4155 · S1_V2 6347/4503). S1/S16/SLT thì thiên an toàn, còn **S10 và S20 đang thiếu tải 5–18%**.
+
+### Căng cáp một đầu / hai đầu (v1.4.1)
+`Section.pt_jacking` (`'begin'` mặc định | `'both'`) → trường `JACKING` của `*TDN-PRESTRESS`. Lưu **riêng từng mặt cắt** trong `.mtbproj`, ô chọn nằm ở dock Properties, `run.py generate --pt-jacking both` cho CLI.
+
+- `'both'` ghi ứng suất vào **cả** ô BEGIN và END. Khai `BOTH` mà để trống ô END thì Midas hiểu đầu kia căng bằng 0.
+- Mặc định `'begin'` cho ra **đúng từng byte** dòng cũ — `tests/test_input_check.py` khoá lại.
+- Mặt cắt không có cáp thì ô bị khoá: để mở thì sớm muộn cũng có người đổi rồi tưởng đã đổi được gì đó.
+
 ### Bẫy đã gặp khi ghi MCT
 - **`*STLDCASE` và `*LOADCOMB` phải phụ thuộc `ld`.** Trước đây ghi vô điều kiện, còn khối tải trọng + hoạt tải di động chỉ ghi `if ld`. Không có template → tổ hợp `mv_all` trỏ tới `mv1`/`mv2` chưa hề định nghĩa → Midas báo *"The specified load name ((null)) does not exist"*. Đọc `ld` **trước** khối STLDCASE ở cả hai nhánh.
 - **Khung xem phải đọc section thật từ `topo['sections']`**, không suy offset từ bộ phận của node: phần tử nối (connector) mang offset `CC` và chiều dày của **bụng**, trong khi node đầu của nó thuộc bản mặt (`CT`).
@@ -248,7 +265,7 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 - `LogView` giữ `_lines` thô để **vẽ lại** khi đổi theme: màu nằm trong `QTextCharFormat` đã chèn, không vẽ lại thì log cũ là chữ đen trên nền than.
 - `run_gui.py` áp theme đã lưu **trước** khi dựng `MainWindow` — dựng sáng rồi mới đổi tối thì thấy một nháy trắng.
 - `'scroll'` là token riêng: bản Tương phản cao có `border` đen thuần, dùng nó cho tay nắm thanh cuộn thì thành vệt đen sì chạy dọc panel.
-- **Mũi tên ô xoay phải là ảnh thật** (`icons.spin_arrows()` → PNG trong thư mục tạm, tên theo mã màu). Đặt `border`/`background` lên `QSpinBox` là Qt thôi nhờ style vẽ mũi tên, mà `QSpinBox::up-arrow` **chỉ** nhận `image: url(...)` — không nhận SVG nội tuyến, không nhận QIcon, còn mẹo tam giác bằng viền trong suốt của CSS thì Qt vẽ ra **ô vuông**. Không có ảnh thì mọi ô nhập số trong app chỉ còn hai vạch ngang (đúng hiện trạng v1.3.1). `_spin_qss()` tách riêng và trả chuỗi rỗng khi chưa có `QGuiApplication`, nên `tests/test_theme.py` (dựng QSS không cần Qt app) không đổi.
+- **Mũi tên ô xoay và ô xổ phải là ảnh thật** (`icons.spin_arrows()` → PNG trong thư mục tạm, tên theo mã màu). Đặt `border`/`background` lên `QSpinBox`/`QComboBox` là Qt thôi nhờ style vẽ mũi tên, mà `QSpinBox::up-arrow` / `QComboBox::down-arrow` **chỉ** nhận `image: url(...)` — không nhận SVG nội tuyến, không nhận QIcon, còn mẹo tam giác bằng viền trong suốt của CSS thì Qt vẽ ra **ô vuông**. Không có ảnh thì mọi ô nhập số chỉ còn hai vạch ngang và **mọi ô xổ trông y như ô chỉ đọc** (đúng hiện trạng v1.3.1). `_spin_qss()` tách riêng và trả chuỗi rỗng khi chưa có `QGuiApplication`, nên `tests/test_theme.py` (dựng QSS không cần Qt app) không đổi.
 
 ### Tài liệu hướng dẫn
 `docs/USER-GUIDE.txt` **sinh tự động** từ `gui/help_dialog._topics()` — đừng sửa tay. Sửa nội dung trong app rồi chạy `python tools/make_user_guide.py`. Installer đóng gói file .txt này và tạo lối tắt "User Guide" ở Start Menu, nên hai bản phải luôn khớp.
@@ -296,11 +313,15 @@ installer\build.bat
 11. **Ba nhóm lỗi hiển thị chỉ thấy được bằng ảnh chụp** (`778f5eb`, `67c4fb4`) — bóng ma widget trong dock Properties · nút ✕ xóa gối rút thành chấm mờ · mũi tên mọi ô xoay biến mất · thanh trạng thái chồng ba dòng chữ. `pytest` im lặng cả bốn. Xem mục *Sửa gối* và *Tùy chọn giao diện*.
 12. **Bump v1.4.0** (`fb25cc0`) + `data/Transverse-HT.xls` vào repo (`3a13a4f`).
 
+Đã làm (session 2026-07-29 tối):
+13. **Căng cáp một đầu / hai đầu** + **cảnh báo template không khớp hình học** — VuPQ yêu cầu sau khi chạy tay xong. Xem hai mục riêng ở trên. `tests/test_input_check.py` 18 bài.
+
 **Next Action cụ thể:**
-1. **Chạy `python run_gui.py`** làm một lượt thật đầu-cuối (mới kiểm từng phần bằng xuất ảnh, chưa dùng tay).
-2. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`.
-3. Cân nhắc **merge `feature/t13-twin-box` → `master`** (nhánh đã đẩy lên remote, chưa mở PR).
-4. `installer\build.bat` cho bản v1.4.0 — chỉ sau khi đã chạy tay và kiểm `*TDN-*` (xem `[[feedback_test_before_installer]]`).
+1. **Quyết xem có sửa hoạt tải trong template không** — S10 và S20 đang thiếu tải 5–18% (xem mục *Đối chiếu số liệu template*). Hoặc lập template riêng cho từng mặt cắt, hoặc sửa `S`/`X` ở sheet `Load` rồi tạo lại MCT.
+2. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`. Bản S1 **có cáp** không còn trong `output/S1` nữa (lượt chạy thử bỏ trống template ngày 2026-07-29 đã ghi đè); sinh lại từ `data/LT/S1.dxf`, đừng dùng `input/dxf/S1.dxf` vì bản đó **không có layer cáp nào**.
+3. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
+4. Cân nhắc **merge `feature/t13-twin-box` → `master`** (nhánh đã đẩy lên remote, chưa mở PR).
+5. `installer\build.bat` cho bản v1.4.0 — chỉ sau khi đã kiểm `*TDN-*` (xem `[[feedback_test_before_installer]]`).
 
 **S20 — VuPQ chốt CHƯA tạo lại** (2026-07-29). Đã sinh thử ra thư mục tạm rồi so với `output/S20`: số hiệu node/phần tử **không đổi**, nhưng 8 node bản mặt đổi toạ độ (−5.75 → −5.8…), 32 dòng chiều dày tiết diện lệch (0.2686 → 0.2663), và ràng buộc gối cũ là `101000`/`001000` — tức bản S20 đang lưu **có trước cả bản sửa khoá Dy**. Tạo lại thì `Beam Force_S20.xls` hiện có hết khớp mô hình, phải chạy lại Midas. Hệ quả để nguyên: ô mặt cắt ở Results table của S20 trống (topo thiếu khối `geometry`), biểu đồ bao vẫn vẽ.
 
@@ -314,6 +335,7 @@ installer\build.bat
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-07-29: **Căng cáp một đầu/hai đầu** (`Section.pt_jacking`, ô chọn ở dock Properties, `--pt-jacking` cho CLI) + **`src/input_check.py`** đối chiếu template với hình học: suy ngược `S`/`X` từ tải bánh (tự kiểm chứng bằng hai công thức độc lập), phân biệt sai số **thiếu tải** với **dư tải**, hộp thoại hỏi trước khi tạo MCT. Phát hiện template chung mang `S = 6468 mm` không khớp mặt cắt nào — S10 và S20 **thiếu tải 5–18%**. Sửa nốt mũi tên `QComboBox`.
 - 2026-07-29: **Bump v1.4.0 + push cả nhánh** (44 commit) + sửa **bốn lỗi hiển thị chỉ lộ ra trong ảnh chụp**: bóng ma widget đè lên dock Properties (`deleteLater` không đủ, phải `setParent(None)`) · nút ✕ xóa gối bị QSS `padding` bóp thành chấm mờ · mũi tên mọi `QSpinBox` biến mất (phải sinh PNG lúc chạy, `image: url()` là cách duy nhất) · thanh trạng thái chồng ba dòng chữ (bỏ thông điệp tạm của `QStatusBar`). Chốt **chưa tạo lại S20**; đưa `data/Transverse-HT.xls` vào repo.
 - 2026-07-29: **Tab Kiểm toán mặt cắt** (nhập cốt thép, hệ số Mr/Mu, tô ô xanh/vàng/đỏ, xuất Excel in được theo mẫu Hà Tam) + **nhận diện cáp DƯL** (`src/pt_layout.py`, mặc định KHÔNG kể) + **biểu đồ bao nội lực** kiểu midas (`gui/force_diagram.py`) + Results table zoom/pan, bảng theo số điểm thật + **`tools/render_ui.py`** chụp mọi thẻ bằng một lệnh.
 - 2026-07-28: **Kiểm toán tiết diện theo TCVN 11823** — tra bản chính thức, `src/section_check.py` (Bảng 4/5, pt.82/83/84), điểm kiểm toán tổng quát cho mặt cắt nhiều hộp, đọc HẾT sheet Beam Force, Results tab vẽ mặt cắt thật + ký hiệu vết cắt.

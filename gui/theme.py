@@ -283,11 +283,15 @@ def color(name: str, theme: dict = None) -> QColor:
 # ─────────────────────────────────────────────────────────────
 
 def _spin_qss(t: dict) -> str:
-    """Quy tắc cho ô xoay (QSpinBox / QDoubleSpinBox).
+    """Quy tắc mũi tên cho ô xoay và ô xổ (QSpinBox / QDoubleSpinBox / QComboBox).
 
     Tách riêng vì phải sinh ảnh mũi tên lúc chạy — xem `icons.spin_arrows()`.
     Chưa có QGuiApplication (test QSS thuần) thì phần này rỗng, QSS còn lại
     không đổi một ký tự nào.
+
+    `QComboBox` dính đúng bệnh của `QSpinBox`: QSS đã đặt `border`/`background`
+    nên Qt thôi vẽ mũi tên xổ, ô còn trơ như một ô chỉ đọc — nhìn không ra là
+    bấm được. Dùng lại chính ảnh mũi tên xuống.
     """
     from .icons import spin_arrows              # nạp muộn: icons import theme
     up, down = spin_arrows(t)
@@ -314,6 +318,10 @@ QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
 QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
     image: url({down}); width: 14px; height: 14px;
 }}
+QComboBox::down-arrow {{
+    image: url({down}); width: 14px; height: 14px;
+}}
+QComboBox::down-arrow:disabled {{ image: none; }}
 """
 
 

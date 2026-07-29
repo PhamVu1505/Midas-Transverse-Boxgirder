@@ -175,6 +175,32 @@ LƯU Ý: Chưa gán template thì MCT chỉ có hình học, vật liệu và g�
   khối tải trọng cùng tổ hợp bị bỏ qua. Chương trình ghi rõ điều này vào đầu
   file và vào Messages.
 
+Căng cáp một đầu hay hai đầu
+
+Mặt cắt có cáp DƯL thì panel Properties bên phải có ô Căng cáp. Ô này đi thẳng
+vào trường JACKING của khối *TDN-PRESTRESS:
+
+- Căng một đầu (mặc định) — chỉ đầu đầu bó có ứng suất căng
+- Căng hai đầu — cả hai đầu cùng căng, tổn hao ma sát đối xứng và ứng suất
+  giữa bó cao hơn
+
+Lựa chọn lưu riêng cho từng mặt cắt trong file project. Đổi xong phải tạo lại
+MCT thì mới có hiệu lực. Mặt cắt không có cáp thì ô này bị khoá.
+
+Cảnh báo số liệu đầu vào không khớp hình học
+
+Hoạt tải trong template tính theo phương pháp dải tương đương, mà bề rộng dải
+phụ thuộc thẳng vào cự ly sườn S và cánh hẫng X của đúng mặt cắt đó. Dùng một
+template cho nhiều DXF khác hình học thì tải sai.
+
+Khi bấm Tạo MCT, chương trình suy ngược S và X mà template đã dùng rồi so với
+hình học thật của từng mặt cắt. Lệch nhiều thì hiện hộp thoại liệt kê rõ mặt
+cắt nào lệch bao nhiêu, cho chọn Vẫn tạo hoặc Huỷ.
+
+LƯU Ý: Đọc kỹ chiều của sai số. Mặt cắt có S nhỏ hơn template thì dải rộng hơn
+  thực tế nên tải bánh bị THIẾU — sai về phía không an toàn. S lớn hơn thì tải
+  dư, thiên về an toàn, chỉ ghi chú.
+
 ==============================================================================
 6. GỐI
 ==============================================================================

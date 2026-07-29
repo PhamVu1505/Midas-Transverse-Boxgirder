@@ -10,15 +10,21 @@ vấn đề đã gặp lúc dựng mockup.
 
 import os
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QLabel,
-                             QScrollArea, QFrame)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
+                             QLabel, QScrollArea, QFrame, QComboBox)
 
 from .support_editor import SupportEditor
 from .theme import LIGHT, FONT_MONO
 
+# Ô JACKING của *TDN-PRESTRESS. Căng hai đầu thì tổn hao ma sát đối xứng và ứng
+# suất giữa bó cao hơn hẳn — khác biệt thật, nên để người dùng chọn thay vì ghim.
+JACKING = [('begin', 'Căng một đầu'), ('both', 'Căng hai đầu')]
+
 
 class PropertiesPanel(QWidget):
+    pt_jacking_changed = pyqtSignal(str, str)     # tên mặt cắt, 'begin'|'both'
+
     def __init__(self, theme: dict = None, parent=None):
         super().__init__(parent)
         self.t = theme or LIGHT
@@ -58,11 +64,59 @@ class PropertiesPanel(QWidget):
         lb.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         v.addWidget(lb)
         if with_supports:
+            v.addWidget(self._pt_box())
             self.sup_editor = SupportEditor(self.t)
             v.addWidget(self.sup_editor)
         v.addStretch()
         area.setWidget(host)
         return area, lb
+
+    def _pt_box(self):
+        """Hàng chọn cách căng cáp — chỉ mở khi mặt cắt thật sự có cáp.
+
+        Để mở sẵn thì sớm muộn cũng có người đổi sang "căng hai đầu" cho một mặt
+        cắt không có bó nào rồi tưởng đã đổi được gì đó.
+        """
+        box = QWidget()
+        h = QHBoxLayout(box)
+        h.setContentsMargins(11, 6, 11, 0)
+        h.setSpacing(6)
+        self.lb_pt = QLabel('Căng cáp')
+        h.addWidget(self.lb_pt)
+        self.cb_jacking = QComboBox()
+        for key, text in JACKING:
+            self.cb_jacking.addItem(text, key)
+        self._pt_tip = ('Ô JACKING của *TDN-PRESTRESS trong MCT.\n'
+                        'Căng hai đầu: tổn hao ma sát đối xứng, ứng suất giữa '
+                        'bó cao hơn.')
+        self.cb_jacking.setToolTip(self._pt_tip)
+        self.cb_jacking.currentIndexChanged.connect(self._on_jacking)
+        h.addWidget(self.cb_jacking, 1)
+        self._pt_row = box
+        return box
+
+    def _on_jacking(self, _idx):
+        sec = self.project.find(self._section) if (self.project and self._section) else None
+        if not sec:
+            return
+        val = self.cb_jacking.currentData()
+        if val and val != sec.pt_jacking:
+            self.pt_jacking_changed.emit(sec.name, val)
+
+    def _sync_pt(self, sec):
+        """Bật/tắt và đặt lại ô căng cáp theo mặt cắt đang chọn."""
+        has_pt = bool(sec and sec.pt_cables)
+        self._pt_row.setVisible(bool(sec))
+        self.lb_pt.setEnabled(has_pt)
+        self.cb_jacking.setEnabled(has_pt)
+        self.cb_jacking.setToolTip(
+            self._pt_tip if has_pt else 'Mặt cắt này không có cáp DƯL')
+        want = (sec.pt_jacking if sec else 'begin') or 'begin'
+        idx = self.cb_jacking.findData(want)
+        if idx >= 0 and idx != self.cb_jacking.currentIndex():
+            self.cb_jacking.blockSignals(True)
+            self.cb_jacking.setCurrentIndex(idx)
+            self.cb_jacking.blockSignals(False)
 
     # ─────────────────────────────────────────
     def apply_theme(self, theme: dict):
@@ -121,6 +175,7 @@ class PropertiesPanel(QWidget):
                                ', '.join(str(e) for e in i['elems']) or '—'))
 
         sec = self.project.find(self._section) if (self.project and self._section) else None
+        self._sync_pt(sec)
         if sec:
             h.append(self._grp('Mặt cắt'))
             h.append(self._row('Tên', sec.name, True))

@@ -35,10 +35,12 @@ EXCEL_PATH = os.path.join(os.path.dirname(__file__),
 # Generate: DXF → MCT + SVG
 # ─────────────────────────────────────────────
 
-def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
+def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
+                  pt_jacking: str = 'begin'):
     """Generate MCT + SVG for one DXF file into output_dir/name/.
 
     include_pt: True/False/None (None = auto-detect from DXF layers).
+    pt_jacking: 'begin' căng một đầu · 'both' căng hai đầu.
     """
     name = os.path.splitext(os.path.basename(dxf_path))[0]
     section_dir = os.path.join(output_dir, name)
@@ -78,12 +80,23 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
     print(f'[{name}] Writing MCT...')
     mct_text, topo = write_mct(frame, name, excel,
                                pt_cables=pt_cables, pt_props=pt_props,
-                               include_pt=include_pt)
+                               include_pt=include_pt, pt_jacking=pt_jacking)
 
     for w in topo.get('pt_warnings', []):
         print(f'[{name}] WARNING: {w}')
     for w in topo.get('combo_warnings', []):
         print(f'[{name}] LỖI TỔ HỢP: {w}')
+    # Hoạt tải của template tính theo dải tương đương cho MỘT mặt cắt — dùng lại
+    # cho mặt cắt khác thì tải sai, mà sai về phía thiếu thì không gì khác lộ ra.
+    if excel:
+        from src.input_reader import read_inputs
+        from src.input_check import frame_metrics, check_template
+        try:
+            for w in check_template(read_inputs(excel), frame_metrics(topo), name):
+                head = 'WARNING: ' if w['level'] == 'warn' else ''
+                print(f'[{name}] {head}{w["text"]}')
+        except Exception as e:
+            print(f'[{name}] không đối chiếu được số liệu đầu vào — {e}')
 
     mct_path = os.path.join(section_dir, f'{name}_frame.mct')
     with open(mct_path, 'w', encoding='utf-8') as f:
@@ -124,7 +137,8 @@ def cmd_generate(args):
     print(f'Generating {len(dxf_files)} section(s)...\n')
     for dxf_path in dxf_files:
         try:
-            _generate_one(dxf_path, output_dir, include_pt=include_pt)
+            _generate_one(dxf_path, output_dir, include_pt=include_pt,
+                          pt_jacking=getattr(args, 'pt_jacking', 'begin'))
         except Exception as e:
             print(f'  [ERROR] {dxf_path}: {e}')
             import traceback
@@ -400,6 +414,9 @@ def main():
                            help='Output root directory (default: output)')
     gen_parser.add_argument('--no-pt', action='store_true',
                            help='Skip PT tendon detection even if DXF has PT-* layers')
+    gen_parser.add_argument('--pt-jacking', choices=('begin', 'both'),
+                           default='begin',
+                           help='Căng cáp một đầu (begin, mặc định) hay hai đầu (both)')
 
     # results
     res_parser = subparsers.add_parser('results', help='Beam Force → check table + Excel')
