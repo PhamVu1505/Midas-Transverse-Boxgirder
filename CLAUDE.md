@@ -278,11 +278,21 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 ## Lệnh thường dùng
 ```bash
 python run_gui.py
-python -m pytest tests/test_regression.py -q     # regression: single + twin box
+python -m pytest tests -q                        # 67 bài: MCT, kiểm toán, số liệu đầu vào
+python tools/check_gui.py                        # bấm thật rồi đối chiếu (skill kiem-gui)
 python tools/render_ui.py                        # ảnh mọi thẻ → docs/ui-snapshots/
 python tools/make_user_guide.py                  # sinh lại docs/USER-GUIDE.txt
 installer\build.bat
 ```
+
+### Ba công cụ, ba việc khác nhau
+| Công cụ | Trả lời câu hỏi |
+|---|---|
+| `pytest tests -q` | Phép tính có đúng không |
+| `tools/check_gui.py` | **Bấm vào thì có đúng không** |
+| `tools/render_ui.py` | Nhìn có ổn không |
+
+`tools/check_gui.py` dựng cửa sổ thật, bấm thật (`textActivated` chứ không phải `setCurrentText`), rồi so cái **người dùng đọc được**: chữ trong dock, mục đang chọn trong cây, chữ ở thanh trạng thái. Mỗi phép kiểm gắn với **một lỗi đã xảy ra thật**, và đã được chứng minh là bắt được lỗi đó bằng cách dựng lại lỗi cũ. Sửa xong lỗi giao diện nào thì thêm phép kiểm cho đúng lỗi đó — xem `.claude/skills/kiem-gui/SKILL.md`.
 
 ### Sửa giao diện thì chụp ảnh trước, đừng đọc lại code
 `tools/render_ui.py` dựng project mẫu từ dữ liệu thật trong `output/`, đi qua **mọi thẻ**, hai bảng màu, cả mặt cắt một hộp lẫn hai hộp, rồi ghi ~26 ảnh vào `docs/ui-snapshots/` (đã gitignore vì đổi mỗi lần sửa UI).

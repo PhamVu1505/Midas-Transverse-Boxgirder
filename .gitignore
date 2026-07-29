@@ -48,7 +48,12 @@ gui/assets/app_logo_preview.png
 scratch/
 
 # Claude Code settings (personal)
-.claude/
+# Loại NỘI DUNG chứ không loại thư mục: git không đi vào thư mục đã bị loại nên
+# `.claude/` sẽ chặn luôn mọi ngoại lệ bên dưới. Skills là quy trình làm việc
+# của dự án, cùng loại với CLAUDE.md nên phải theo repo; settings.local.json thì
+# vẫn nằm ngoài.
+.claude/*
+!.claude/skills/
 
 # OS
 Thumbs.db
