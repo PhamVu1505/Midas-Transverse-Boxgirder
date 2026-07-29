@@ -401,11 +401,16 @@ def tao_hop_cat(p: Phien):
 
 
 def chay_lenh(p: Phien, alias: str) -> bool:
-    """Phát một lệnh qua ô dòng lệnh của Midas."""
-    if not dat_chu(p.hwnd_cmd, alias):
+    """Phát một lệnh qua ô dòng lệnh của Midas.
+
+    Chèn bằng `EM_REPLACESEL` chứ không `WM_SETTEXT`: ô lệnh là RichEdit mang
+    sẵn dấu nhắc `>>`, đặt đè cả ô sẽ xoá mất dấu nhắc — mà đó vừa là mốc Midas
+    dùng, vừa là mốc công cụ này dùng để tìm lại ô ở lần chạy sau.
+    """
+    if not _chen_cuoi(p.hwnd_cmd, alias):
         return False
     go_phim(p.hwnd_cmd, VK_RETURN)
-    time.sleep(0.4)
+    time.sleep(0.5)
     return True
 
 
@@ -614,37 +619,138 @@ def do_command_line(p):
 do_command_line.muc = TRONG
 
 
+def _uia(p):
+    """Cửa sổ chính dưới góc nhìn UI Automation.
+
+    UIA ở đây **nhanh bất ngờ** — 0,2 s để nối, 0,3 s để liệt kê mức 1, khác hẳn
+    nỗi lo ban đầu về ribbon BCGPro. Nhưng vẫn giữ nguyên tắc: chỉ hỏi đúng nhánh
+    cần, không bao giờ duyệt cả cây.
+    """
+    from pywinauto import Desktop
+    if not getattr(p, '_uia_w', None):
+        p._uia_w = Desktop(backend='uia').window(handle=p.hwnd)
+    return p._uia_w
+
+
+def _thanh_ung_dung(p):
+    """`ToolBar` không tên ở mức 1 — chứa `Application menu` và `Ribbon Tabs`."""
+    for c in _uia(p).children():
+        ei = c.element_info
+        if ei.control_type == 'ToolBar' and not ei.name.strip():
+            return c
+    raise AssertionError('không thấy thanh chứa Application menu')
+
+
+def _bam_chuoi_menu(p, *ten_muc, cho=1.6):
+    """Bấm lần lượt một chuỗi mục menu, trả về các hwnd mới mọc ra.
+
+    Dùng `click_input()` chứ không `invoke()`: submenu của BCGPro chỉ bung ra khi
+    có thao tác chuột thật — `invoke()` chạy không lỗi nhưng không mở gì, và
+    "không lỗi" thì rất dễ bị đọc nhầm thành "đã mở".
+    """
+    from pywinauto import Desktop
+    truoc = tap_hwnd(p.pid)
+    goc = _thanh_ung_dung(p)
+    muc = [c for c in goc.children() if c.element_info.name == ten_muc[0]]
+    if not muc:
+        raise AssertionError(f'không thấy {ten_muc[0]!r} trên thanh ứng dụng')
+    muc[0].click_input()
+    time.sleep(cho)
+
+    for ten in ten_muc[1:]:
+        moi = [h for h in tap_hwnd(p.pid) - truoc if u32.IsWindowVisible(h)]
+        tim = None
+        for h in moi:
+            try:
+                for k in Desktop(backend='uia').window(handle=h).descendants():
+                    if k.element_info.name == ten:
+                        tim = k
+                        break
+            except Exception:
+                continue
+            if tim:
+                break
+        if tim is None:
+            raise AssertionError(f'không thấy mục {ten!r} sau khi mở '
+                                 f'{" › ".join(ten_muc[:ten_muc.index(ten)])}')
+        tim.click_input()
+        time.sleep(cho)
+
+    return [h for h in tap_hwnd(p.pid) - truoc if u32.IsWindowVisible(h)]
+
+
+def dong_menu(p, lan=4):
+    """Gửi ESC vài lần — không bao giờ để menu mở lại cho người dùng."""
+    for _ in range(lan):
+        go_phim(p.hwnd, VK_ESCAPE)
+        time.sleep(0.3)
+
+
 def do_nap_mct(p):
-    """**A4** — nạp file MCT vào phiên đang mở bằng đường nào."""
+    """**A4** — nạp file MCT vào phiên đang mở.
+
+    Đường đã dò ra: `Application menu` › `Import` › `MIDAS/Civil MCT File...`.
+    Không đi bằng alias được — hệ alias của Midas chỉ phủ các thẻ ribbon
+    (Results, View, Load, Analysis…), **không mục nào trỏ tới menu File**.
+    Kéo-thả cũng không: Midas dùng OLE drop target nên bỏ qua `WM_DROPFILES`.
+
+    **Phải `New Project...` trước.** Ở màn hình Start Page, toàn bộ submenu
+    Import bị khoá xám — bấm vào không có gì xảy ra và cũng không báo lỗi, nên
+    nhìn từ phía mã thì y hệt "đã bấm xong". Chỉ ảnh chụp mới lộ ra. Đây đúng
+    loại bẫy mà giai đoạn 0 sinh ra để bắt.
+    """
     tao_hop_cat(p)
+    p.ghi('nap_mct', 'cach',
+          'uia:Application menu › New Project… rồi › Import › MIDAS/Civil MCT File...')
+
+    if '[Untitled]' not in p.tieu_de():
+        _bam_chuoi_menu(p, 'Application menu', 'New Project...')
+        for _ in range(20):
+            time.sleep(0.5)
+            if '[Untitled]' in p.tieu_de():
+                break
+        else:
+            dong_menu(p)
+            raise AssertionError(f'New Project… không tạo được tài liệu mới — '
+                                 f'tiêu đề vẫn {p.tieu_de()!r}')
     truoc_td = p.tieu_de()
 
-    # (a) alias Import MCT nếu có trong bảng alias
-    with open(ALIAS_FILE, encoding='utf-8', errors='replace') as f:
-        alias_txt = f.read()
-    co_import = 'Import' in alias_txt and 'MCT' in alias_txt
-    p.ghi('nap_mct', 'co_alias_import', co_import)
+    try:
+        moi = _bam_chuoi_menu(p, 'Application menu', 'Import',
+                              'MIDAS/Civil MCT File...')
+    except AssertionError:
+        dong_menu(p)
+        raise
 
-    truoc = tap_hwnd(p.pid)
-    da_mo = None
-    if co_import:
-        for al in ('ImMCT', 'FImMCT', 'ImM'):
-            if chay_lenh(p, al):
-                da_mo = cua_so_moi(truoc, p.pid, han_s=6)
-                if da_mo:
-                    p.ghi('nap_mct', 'alias', al)
-                    break
-
-    if da_mo is None:
-        raise AssertionError(
-            f'chưa mở được hộp thoại Import MCT bằng alias. '
-            f'Tiêu đề hiện tại {truoc_td!r}. Cần dò tay đường ribbon: '
-            f'File › Import › MIDAS/Civil MCT File, rồi thêm alias.')
-
-    ta = _ta_hop_thoai(da_mo)
-    p.ghi('nap_mct', 'hop_thoai', ta['tieu_de'])
+    hop = [h for h in moi if _lop(h) == '#32770']
+    if not hop:
+        dong_menu(p)
+        raise AssertionError(f'bấm hết chuỗi menu mà không có hộp thoại chọn file; '
+                             f'cửa sổ mới: {[hex(h) for h in moi]}')
+    h = hop[0]
+    p.ghi('nap_mct', 'hop_thoai', doc_chu(h))
     p.chup('nap_mct_hop_thoai')
-    return f'hộp thoại {ta["tieu_de"]!r} mở được — {len(ta["control"])} control'
+
+    # Ô tên file của common dialog. Đặt bằng WM_SETTEXT, không gõ phím: đường dẫn
+    # đầy `\`, `_` và chữ hoa — đúng loại chuỗi mà bộ gõ tiếng Việt hay ăn mất.
+    o = [c for c in liet_ke_cua_so(p.pid, h)
+         if c['lop'] == 'Edit' and c['rect'][2] > 100]
+    if not o:
+        dong_menu(p)
+        raise AssertionError('không thấy ô nhập tên file trong hộp thoại')
+    if not dat_chu(o[0]['hwnd'], p.mct):
+        dong_menu(p)
+        raise AssertionError('đặt đường dẫn vào ô tên file không ăn')
+    go_phim(o[0]['hwnd'], VK_RETURN)
+
+    for _ in range(60):
+        time.sleep(1)
+        td = p.tieu_de()
+        if td != truoc_td and '[Start Page]' not in td:
+            p.ghi('nap_mct', 'tieu_de_sau_khi_nap', td)
+            return f'nạp xong — tiêu đề {td!r}'
+    dong_menu(p)
+    raise AssertionError(f'60 s sau khi Enter mà tiêu đề vẫn {p.tieu_de()!r}')
 
 
 do_nap_mct.muc = TRONG
