@@ -26,7 +26,8 @@
     "tu_chay_sau_khi_luu": true,
     "tin_hieu_xong": {
       "kieu": "chuỗi trong file .OUT",
-      "chuoi": "OVERALL TIME LOG",
+      "chuoi": "TOTAL ELAPSED TIME",
+      "canh_bao": "ĐỪNG tìm 'OVERALL TIME LOG' — Midas in tiêu đề khối dưới dạng chữ giãn cách 'O V E R A L L   T I M E   L O G', không bao giờ khớp",
       "kem_theo": [".CA1", ".CA3", ".CA3B1", ".CA6"]
     },
     "giay_S1": 0.55

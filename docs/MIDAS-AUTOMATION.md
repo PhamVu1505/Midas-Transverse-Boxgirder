@@ -59,10 +59,28 @@ Hai bẫy phụ:
 Midas đòi lưu mô hình trước → bật hộp `Save As`. Lưu xong thì **tự chạy phân tích
 luôn**, không cần lệnh thứ hai. S1 giải hết 0,55 s.
 
-## A3 — Biết xong: khối `OVERALL TIME LOG` trong `.OUT`
+**F5 chỉ ăn khi Midas ở tiền cảnh.** Nó là phím tắt ribbon, MFC dịch phím tắt
+trong vòng lặp thông điệp của cửa sổ đang có tiêu điểm — `PostMessage` vào cửa sổ
+chính lúc app nằm dưới thì phím rơi vào hư không: không lỗi, không tác dụng.
+Gọi `set_focus()` rồi gửi phím thật (`send_keys('{F5}')`).
 
-Dấu hiệu **theo file**, dứt khoát hơn canh cửa sổ hay đo thời gian. Kèm theo là
-các file `.CA1/.CA3/.CA3B1/.CA6` xuất hiện cạnh file `.mcb`.
+## A3 — Biết xong: chuỗi `TOTAL ELAPSED TIME` trong `.OUT`
+
+Dấu hiệu **theo file**, dứt khoát hơn canh cửa sổ hay đo thời gian (lúc đang giải
+thì message loop bận nên mọi phép hỏi cửa sổ đều không đáng tin). Kèm theo là các
+file `.CA1/.CA3/.CA3B1/.CA6` xuất hiện cạnh `.mcb`.
+
+**Đừng tìm dòng tiêu đề khối.** Midas in nó dưới dạng **chữ giãn cách**:
+
+```
+ ** O V E R A L L   T I M E   L O G   I N   S E C O N D **
+ ...
+  - TOTAL ELAPSED TIME .........................:     0.53
+```
+
+Tìm `'OVERALL TIME LOG'` thì **không bao giờ khớp**. Đã mất hai lượt chạy 1800 giây
+vì đúng chỗ này — mà thông báo lỗi lại đổ cho "phân tích chưa xong" trong khi nó
+đã xong từ lâu. Dùng `TOTAL ELAPSED TIME`: chữ thường, luôn là dòng cuối file.
 
 ## A4 — Nạp MCT: qua Application menu
 
@@ -123,6 +141,25 @@ file xuất ra *đúng định dạng, đúng tên, đúng chỗ, mở bằng Ex
 nhưng **0 bản ghi**. Nếu chỉ kiểm tới mức "file tồn tại" thì đã kết luận thành công ba lần.
 
 ---
+
+---
+
+## Hộp thoại chen ngang (phát hiện ở Giai đoạn 1)
+
+Ba hộp thoại không xuất hiện lúc dò đường, chỉ lộ ra khi chạy lặp lại:
+
+| Hộp | Khi nào | Xử lý |
+|---|---|---|
+| `Confirm Save As` | lưu đè lên `.mcb` đã tồn tại | bấm **&Yes**. Tốt hơn: **xoá `.mcb` và `.OUT` cũ trước khi F5** thì không bao giờ gặp |
+| `CVLw` (Yes/No/Cancel) | `New Project…` trên tài liệu bẩn | driver không gặp vì cổng `kiem_tai_lieu_sach()` chặn trước; công cụ dọn dẹp thì bấm **&No** |
+| `Save As` chồng nhau | lượt trước bị cắt giữa chừng để lại | bấm Cancel từng cái, hoặc khởi động lại Midas |
+
+**Hộp thoại modal không nhận `PostMessage(VK_ESCAPE)` gửi vào cửa sổ chính.**
+Phải tìm đúng nút trong hộp đó rồi `SendMessage(BM_CLICK)`. Không làm vậy thì
+driver ngồi đợi tới hết thời hạn rồi báo một lỗi hoàn toàn lạc đề.
+
+**Chỉ tự bấm cho hộp đã biết tên.** Hộp lạ thì ghi tiêu đề rồi dừng — bấm mù vào
+hộp thoại chưa biết là cách nhanh nhất phá mô hình.
 
 ## Cạm bẫy phải nhớ
 
