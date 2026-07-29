@@ -19,8 +19,9 @@ không có gì trong quy trình hiện nay báo cho biết.
 
 Suy ngược `S` và `X` của template
 ─────────────────────────────────
-Không đọc ô `Load!G39/G40`: toạ độ ô cứng chính là thứ đã lệch 12 dòng ở
-`input_reader._KEYS`, và template khác thì bố cục sheet lại khác. Thay vào đó
+Không đọc ô `Load!G39/G40`: toạ độ ô cứng là thứ vừa lệch nguyên một dòng ở
+`input_reader.SPEC` (có người chèn thêm một dòng vào sheet `Load`), và template
+khác thì bố cục sheet lại khác nữa. Thay vào đó
 suy ngược từ chính các khóa **bắt buộc** (`truck_can`, `truck_pos`, `truck_neg`,
 `impact`) — cách này **tự kiểm chứng**: `+M` và `−M` là hai công thức khác hẳn
 nhau, nếu cùng ra một `S` thì chắc chắn đã suy đúng, còn lệch nhau thì template

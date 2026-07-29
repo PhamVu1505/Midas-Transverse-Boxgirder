@@ -56,7 +56,8 @@ Toàn bộ 40 khóa đọc từ **một sheet `INPUT`** bố cục khóa–giá 
 - `src/input_reader.py` là nguồn duy nhất; `material_reader` / `load_reader` / `pt_property_reader` chỉ còn là shim ủy quyền.
 - **Thiếu khóa → raise `InputError`**, không tự điền mặc định (mặc định âm thầm từng sinh ra MCT sai số liệu).
 - Không có sheet `INPUT` → tự lui về đọc ô cứng cũ + cảnh báo trên log.
-- `crosscheck()` đối chiếu giá trị `INPUT` với ô gốc — bắt trường hợp công thức bị dán thành số cứng hoặc trỏ sang workbook khác.
+- `crosscheck()` đối chiếu giá trị `INPUT` với ô gốc — bắt trường hợp công thức bị dán thành số cứng hoặc trỏ sang workbook khác. **Ô không đọc được cũng tính là lệch**: bản cũ nuốt `InputError` nên ô trống/ô tiêu đề bị bỏ qua im lặng, và đúng 8 trong 20 khoá hỏng rơi vào diện đó.
+- **Toạ độ ô legacy đã sửa +1 dòng (2026-07-29).** Có người chèn một dòng trống vào **dòng 10 sheet `Load`**, nên **20/21 khoá** của sheet đó đọc trúng ô của khoá bên cạnh — `d_L` ra 35,5 (giá trị lan can) thay vì 0,35 m; chỉ `pavement` (dòng 9, nằm trên chỗ chèn) còn đúng. Không ai thấy vì sheet `INPUT` mới là nguồn chính. `tests/test_input_check.py` khoá cả hai chiều: `crosscheck` phải rỗng, và **không khoá nào được rơi vào ô trống**.
 - `tools/make_input_sheet.py` sinh sheet `INPUT` từ file cũ, không sửa file gốc.
 
 ### Cáp DƯL: hình học tách khỏi vật liệu
@@ -68,7 +69,7 @@ Toàn bộ 40 khóa đọc từ **một sheet `INPUT`** bố cục khóa–giá 
 ### Đối chiếu số liệu template với hình học — `src/input_check.py` (v1.4.1)
 Hoạt tải trong template tính theo **dải tương đương**, mà bề rộng dải phụ thuộc thẳng vào cự ly sườn `S` và cánh hẫng `X` của **đúng mặt cắt đó**. Dùng chung một template cho nhiều DXF khác hình học là tải sai, và **không có gì khác trong cả quy trình lộ ra** — mô hình vẫn chạy, bảng kiểm toán vẫn ra số đẹp.
 
-- **Suy ngược `S`/`X` từ chính các khoá bắt buộc**, không đọc ô `Load!G39/G40`: toạ độ ô cứng chính là thứ đã lệch 12 dòng ở `input_reader._KEYS`, mà template khác thì bố cục sheet lại khác. Phép suy ngược **tự kiểm chứng**: `+M` (`E = 660+0,55S`) và `−M` (`E = 1220+0,25S`) là hai công thức khác hẳn nhau, cùng ra một `S` thì chắc chắn đúng; lệch nhau thì template không lập theo phương pháp này và bỏ qua thay vì báo bừa.
+- **Suy ngược `S`/`X` từ chính các khoá bắt buộc**, không đọc ô `Load!G39/G40`: toạ độ ô cứng là thứ vừa lệch nguyên một dòng ở `input_reader.SPEC` (xem trên), mà template khác thì bố cục sheet lại khác. Phép suy ngược **tự kiểm chứng**: `+M` (`E = 660+0,55S`) và `−M` (`E = 1220+0,25S`) là hai công thức khác hẳn nhau, cùng ra một `S` thì chắc chắn đúng; lệch nhau thì template không lập theo phương pháp này và bỏ qua thay vì báo bừa.
 - **`S` và `X` đo tới TIM SƯỜN** — quy phạm định nghĩa `S` là cự ly tim–tim của bộ phận đỡ (TCVN 11823-4 Đ.4.6.2.1), `X` cũng đo từ mép bản tới tim sườn ngoài. Chốt một quy ước làm phép kiểm **chặt hơn** bản đầu (bản đầu nhận cả dải thông thuỷ→tim–tim rồi chỉ báo khi nằm ngoài cả hai, nên template khai đúng trị thông thuỷ thì lọt lưới). Trị thông thuỷ vẫn in kèm vì chênh đúng một bề dày sườn thường chính là lý do gõ nhầm. Dung sai 5% hoặc 100 mm.
 - Mặt cắt nhiều bụng thì so với **nhịp ngắn nhất**: nhịp ngắn cho dải hẹp nhất, tức tải bánh lớn nhất, nên dễ bị template làm thiếu tải nhất.
 - Mọi cảnh báo mở đầu bằng **`KIỂM TRA SỐ LIỆU FILE TEMPLATE`** (hằng `CHECK_TEMPLATE`) — quét mắt qua Messages là biết ngay phải sửa file Excel chứ không phải sửa bản vẽ.
@@ -333,10 +334,10 @@ installer\build.bat
 
 **Chưa làm (đã bàn, để sau):**
 - `εx` của file mẫu dùng `fpo = 1000` MPa cứng thay vì `0.7fpu = 1302`, và bỏ hệ số 2 của pt. 84 rồi lấy `Ac = b·h` thay vì `b·h/2` — hai chỗ bù nhau nên chỉ lệch 3%. Module làm đúng quy phạm.
-- 12 dòng `crosscheck` lệch **có sẵn từ trước**: toạ độ ô legacy trong `input_reader._KEYS` lệch một dòng ở 12 khoá (`d_L` trỏ vào ô của `barrier_right`…). Không ảnh hưởng hôm nay vì sheet `INPUT` là nguồn chính, nhưng nếu ai xoá sheet `INPUT` thì đường lui đọc sai số.
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-07-29: **Sửa toạ độ ô legacy lệch một dòng** — chèn thêm một dòng vào sheet `Load` làm 20/21 khoá đọc trúng ô bên cạnh; `crosscheck` chỉ báo 12 vì nuốt `InputError` ở 8 khoá còn lại. Nay 38/38 khoá khớp, MCT không đổi một byte. Thêm **huy hiệu mức độ vẽ tay** ở Messages (tam giác vàng chữ `i`), **`S`/`X` đo tới tim sườn**, mọi cảnh báo mở đầu bằng `KIỂM TRA SỐ LIỆU FILE TEMPLATE`.
 - 2026-07-29: **Căng cáp một đầu/hai đầu** (`Section.pt_jacking`, ô chọn ở dock Properties, `--pt-jacking` cho CLI) + **`src/input_check.py`** đối chiếu template với hình học: suy ngược `S`/`X` từ tải bánh (tự kiểm chứng bằng hai công thức độc lập), phân biệt sai số **thiếu tải** với **dư tải**, hộp thoại hỏi trước khi tạo MCT. Phát hiện template chung mang `S = 6468 mm` không khớp mặt cắt nào — S10 và S20 **thiếu tải 5–18%**. Sửa nốt mũi tên `QComboBox`.
 - 2026-07-29: **Bump v1.4.0 + push cả nhánh** (44 commit) + sửa **bốn lỗi hiển thị chỉ lộ ra trong ảnh chụp**: bóng ma widget đè lên dock Properties (`deleteLater` không đủ, phải `setParent(None)`) · nút ✕ xóa gối bị QSS `padding` bóp thành chấm mờ · mũi tên mọi `QSpinBox` biến mất (phải sinh PNG lúc chạy, `image: url()` là cách duy nhất) · thanh trạng thái chồng ba dòng chữ (bỏ thông điệp tạm của `QStatusBar`). Chốt **chưa tạo lại S20**; đưa `data/Transverse-HT.xls` vào repo.
 - 2026-07-29: **Tab Kiểm toán mặt cắt** (nhập cốt thép, hệ số Mr/Mu, tô ô xanh/vàng/đỏ, xuất Excel in được theo mẫu Hà Tam) + **nhận diện cáp DƯL** (`src/pt_layout.py`, mặc định KHÔNG kể) + **biểu đồ bao nội lực** kiểu midas (`gui/force_diagram.py`) + Results table zoom/pan, bảng theo số điểm thật + **`tools/render_ui.py`** chụp mọi thẻ bằng một lệnh.

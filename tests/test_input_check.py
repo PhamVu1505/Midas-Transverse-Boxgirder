@@ -194,6 +194,67 @@ def test_metrics_from_frame_and_topo_agree():
 
 
 # ─────────────────────────────────────────────────────────────
+# Toạ độ ô của đường lui (legacy)
+# ─────────────────────────────────────────────────────────────
+
+TEMPLATE = os.path.join(ROOT, 'data', 'Midas-Transverse-Boxgirder-analysis.xls')
+
+
+def test_legacy_cells_match_input_sheet():
+    """Đường lui phải đọc ra ĐÚNG số liệu như sheet INPUT.
+
+    Từng có người chèn một dòng trống vào dòng 10 sheet `Load`, làm 20/21 khoá
+    của sheet đó đọc trúng ô của khoá bên cạnh (`d_L` ra 35,5 thay vì 0,35 m).
+    Không ai thấy vì sheet `INPUT` mới là nguồn chính — đường lui chỉ chạy khi
+    file không có sheet `INPUT`, và lúc đó thì im lặng ra số sai.
+    """
+    from src.input_reader import crosscheck
+    if not os.path.exists(TEMPLATE):
+        pytest.skip('thiếu template mẫu')
+    bad = crosscheck(TEMPLATE)
+    assert not bad, ('toạ độ ô legacy lệch: '
+                     + ', '.join(f'{k} ({addr})' for k, _a, _b, addr in bad))
+
+
+def test_every_legacy_cell_is_readable():
+    """Không khoá nào được rơi vào ô trống hay ô tiêu đề.
+
+    `crosscheck` cũ nuốt `InputError` nên 8 khoá hỏng kiểu này không hiện ra —
+    bảng báo 12 trong khi thực tế hỏng 20.
+    """
+    from src.input_reader import (SPEC, _Book, _cast, InputError)
+    if not os.path.exists(TEMPLATE):
+        pytest.skip('thiếu template mẫu')
+    book = _Book(TEMPLATE)
+    unreadable = []
+    for key, sh, r, c, kind, _u, _d in SPEC:
+        if sh not in book.sheets:
+            continue
+        try:
+            _cast(book.cell(sh, r, c), kind, key)
+        except InputError:
+            unreadable.append(f'{key} ({sh}!R{r + 1}C{c + 1})')
+    assert not unreadable, 'ô legacy không đọc được: ' + ', '.join(unreadable)
+
+
+def test_crosscheck_reports_unreadable_cell():
+    """Ô không đọc được phải bị BÁO, không được bỏ qua trong im lặng."""
+    import src.input_reader as ir
+    if not os.path.exists(TEMPLATE):
+        pytest.skip('thiếu template mẫu')
+    key, sh, r, c, kind, u, dsc = ir.SPEC_BY_KEY['d_L']
+    saved = list(ir.SPEC)
+    try:
+        # trỏ `d_L` vào một ô chắc chắn trống
+        ir.SPEC[:] = [(key, sh, 5000, c, kind, u, dsc) if s[0] == 'd_L' else s
+                      for s in saved]
+        bad = ir.crosscheck(TEMPLATE)
+        assert any(k == 'd_L' and b is None for k, _a, b, _addr in bad), bad
+    finally:
+        ir.SPEC[:] = saved
+
+
+# ─────────────────────────────────────────────────────────────
 # Căng cáp
 # ─────────────────────────────────────────────────────────────
 

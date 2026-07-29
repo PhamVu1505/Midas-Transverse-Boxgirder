@@ -802,9 +802,12 @@ class MainWindow(QMainWindow):
             bad = crosscheck(path)
             if bad:
                 text += ('\n\nCẢNH BÁO — giá trị trên sheet INPUT lệch so với ô gốc '
-                         '(công thức có thể đã bị dán thành số cứng):\n')
-                text += '\n'.join(f'  {k}: INPUT={a:g}, ô gốc {addr}={b:g}'
-                                  for k, a, b, addr in bad)
+                         '(công thức có thể đã bị dán thành số cứng, hoặc bố cục '
+                         'sheet con đã đổi so với bảng tọa độ):\n')
+                text += '\n'.join(
+                    f'  {k}: INPUT={a:g}, ô gốc {addr}='
+                    + ('không đọc được' if b is None else f'{b:g}')
+                    for k, a, b, addr in bad)
         except Exception as e:
             text = f'Không đọc được:\n{e}'
         box = QMessageBox(self)

@@ -46,6 +46,16 @@ class InputError(Exception):
 # Đặc tả khóa: key -> (sheet, row0, col0, kind, unit, mô tả)
 #   row0/col0 là chỉ số 0-based dùng cho đường legacy.
 #   kind: 'f' = số thực, 'i' = số nguyên, 't' = ô nhiệt độ dạng text ("+23 °C")
+#
+# Toạ độ sheet `Load` đã sửa +1 dòng (2026-07-29). Có người chèn một dòng trống
+# vào **dòng 10** của sheet `Load` sau khi bảng này được viết, nên mọi khoá nằm
+# dưới đó đọc trúng ô của khoá bên cạnh: `d_L` ra 35,5 (giá trị lan can) thay vì
+# 0,35 m. Đúng **20/21 khoá** của sheet `Load` sai — chỉ `pavement` (dòng 9, nằm
+# trên chỗ chèn) là còn đúng. Kiểm lại bằng `crosscheck()`, phải ra rỗng.
+#
+# Đây chính là lý do sheet `INPUT` tra theo KHÓA chứ không theo số dòng. Đường
+# legacy chỉ còn là lối lui cho file chưa có sheet `INPUT`, nhưng lối lui đọc
+# sai số liệu thì còn tệ hơn không có lối lui.
 # ─────────────────────────────────────────────────────────────
 SPEC = [
     # ── Vật liệu (sheet General) ──
@@ -55,33 +65,33 @@ SPEC = [
     ('RH',            'General', 81,  7, 'f', '%',     'Độ ẩm tương đối'),
 
     # ── Tĩnh tải (sheet Load) ──
-    ('barrier_left',  'Load',       9,  8, 'f', 'kN/m²', 'Lan can biên trái'),
-    ('d_L',           'Load',      10,  8, 'f', 'm',     'Bề rộng đoạn lan can trái'),
-    ('barrier_right', 'Load',     11,  8, 'f', 'kN/m²', 'Lan can/dải phân cách phải'),
-    ('d_R',           'Load',     12,  8, 'f', 'm',     'Bề rộng đoạn lan can phải'),
+    ('barrier_left',  'Load',      10,  8, 'f', 'kN/m²', 'Lan can biên trái'),
+    ('d_L',           'Load',      11,  8, 'f', 'm',     'Bề rộng đoạn lan can trái'),
+    ('barrier_right', 'Load',      12,  8, 'f', 'kN/m²', 'Lan can/dải phân cách phải'),
+    ('d_R',           'Load',      13,  8, 'f', 'm',     'Bề rộng đoạn lan can phải'),
     ('pavement',      'Load',       8,  6, 'f', 'kN/m',  'Lớp phủ mặt cầu'),
 
     # ── Gió (sheet Load) ──
-    ('ws_fx',         'Load',     69,  5, 'f', 'kN',    'Gió lên kết cấu — lực ngang'),
-    ('ws_my',         'Load',     70,  5, 'f', 'kN.m',  'Gió lên kết cấu — mô men'),
-    ('ws_pd',         'Load',     67,  6, 'f', 'kN/m',  'Gió phân bố lên bụng'),
-    ('wl_fx',         'Load',     72,  2, 'f', 'kN',    'Gió lên hoạt tải — lực ngang'),
-    ('wl_my',         'Load',     73,  2, 'f', 'kN.m',  'Gió lên hoạt tải — mô men'),
+    ('ws_fx',         'Load',      70,  5, 'f', 'kN',    'Gió lên kết cấu — lực ngang'),
+    ('ws_my',         'Load',      71,  5, 'f', 'kN.m',  'Gió lên kết cấu — mô men'),
+    ('ws_pd',         'Load',      68,  6, 'f', 'kN/m',  'Gió phân bố lên bụng'),
+    ('wl_fx',         'Load',      73,  2, 'f', 'kN',    'Gió lên hoạt tải — lực ngang'),
+    ('wl_my',         'Load',      74,  2, 'f', 'kN.m',  'Gió lên hoạt tải — mô men'),
 
     # ── Nhiệt độ (sheet Load) ──
-    ('sys_temp',      'Load',     75,  5, 'f', '°C',    'Nhiệt độ đều hệ thống'),
-    ('tg_pos',        'Load',     76,  5, 't', '°C',    'Gradient nhiệt dương TpG(+)'),
-    ('tg_neg',        'Load',     77,  5, 't', '°C',    'Gradient nhiệt âm TpG(−)'),
+    ('sys_temp',      'Load',      76,  5, 'f', '°C',    'Nhiệt độ đều hệ thống'),
+    ('tg_pos',        'Load',      77,  5, 't', '°C',    'Gradient nhiệt dương TpG(+)'),
+    ('tg_neg',        'Load',      78,  5, 't', '°C',    'Gradient nhiệt âm TpG(−)'),
 
     # ── Hoạt tải HL93 (sheet Load) ──
-    ('lane_load',     'Load',     50,  7, 'f', 'kN/m',  'Tải làn'),
-    ('truck_can',     'Load',     50,  8, 'f', 'kN',    'Xe tải — cánh hẫng'),
-    ('tandem_can',    'Load',     50,  9, 'f', 'kN',    'Xe hai trục — cánh hẫng'),
-    ('truck_pos',     'Load',     51,  8, 'f', 'kN',    'Xe tải — mô men dương'),
-    ('tandem_pos',    'Load',     51,  9, 'f', 'kN',    'Xe hai trục — mô men dương'),
-    ('truck_neg',     'Load',     52,  8, 'f', 'kN',    'Xe tải — mô men âm'),
-    ('tandem_neg',    'Load',     52,  9, 'f', 'kN',    'Xe hai trục — mô men âm'),
-    ('impact',        'Load',     27,  6, 'f', '—',     'Hệ số xung kích IM'),
+    ('lane_load',     'Load',      51,  7, 'f', 'kN/m',  'Tải làn'),
+    ('truck_can',     'Load',      51,  8, 'f', 'kN',    'Xe tải — cánh hẫng'),
+    ('tandem_can',    'Load',      51,  9, 'f', 'kN',    'Xe hai trục — cánh hẫng'),
+    ('truck_pos',     'Load',      52,  8, 'f', 'kN',    'Xe tải — mô men dương'),
+    ('tandem_pos',    'Load',      52,  9, 'f', 'kN',    'Xe hai trục — mô men dương'),
+    ('truck_neg',     'Load',      53,  8, 'f', 'kN',    'Xe tải — mô men âm'),
+    ('tandem_neg',    'Load',      53,  9, 'f', 'kN',    'Xe hai trục — mô men âm'),
+    ('impact',        'Load',      28,  6, 'f', '—',     'Hệ số xung kích IM'),
 
     # ── Cáp DƯL (sheet General) ──
     ('fpu',           'General', 84,  7, 'f', 'MPa',   'Cường độ kéo đứt cáp'),
@@ -335,8 +345,14 @@ def crosscheck(excel_path: str, tol: float = 1e-9) -> list:
     đứt liên kết (dán thành số cứng, hoặc trỏ sang workbook khác), nên số liệu
     vẫn "hợp lệ" nhưng không còn bám theo sheet con nữa.
 
+    **Ô không đọc được cũng là lệch.** Trước đây `except InputError: continue`
+    nên ô trống hoặc ô chứa chữ tiêu đề bị bỏ qua trong im lặng — đúng 8 trong
+    20 khoá sai của template mẫu rơi vào diện đó, và bảng chỉ báo 12. Bộ kiểm mà
+    tự bỏ qua thứ nó không hiểu thì không còn là bộ kiểm.
+
     Returns:
-        list các (key, giá_trị_INPUT, giá_trị_ô_gốc, địa_chỉ_ô). Rỗng = khớp hết.
+        list các (key, giá_trị_INPUT, giá_trị_ô_gốc, địa_chỉ_ô). Rỗng = khớp
+        hết. `giá_trị_ô_gốc` là `None` khi ô không đọc được.
     """
     book = _Book(excel_path)
     sheet = _find_input_sheet(book)
@@ -347,13 +363,18 @@ def crosscheck(excel_path: str, tol: float = 1e-9) -> list:
     for key, sh, r, c, kind, _u, _d in SPEC:
         if _norm(key) not in kv or sh not in book.sheets:
             continue
+        addr = f'{sh}!R{r + 1}C{c + 1}'
         try:
             a = _cast(kv[_norm(key)], kind, key)
+        except InputError:
+            continue                    # sheet INPUT hỏng — `_missing` lo việc đó
+        try:
             b = _cast(book.cell(sh, r, c), kind, key)
         except InputError:
+            out.append((key, a, None, addr))
             continue
         if abs(a - b) > max(tol, abs(b) * tol):
-            out.append((key, a, b, f'{sh}!R{r + 1}C{c + 1}'))
+            out.append((key, a, b, addr))
     return out
 
 
