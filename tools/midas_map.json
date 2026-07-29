@@ -1,0 +1,78 @@
+{
+  "_doc": "Bản đồ tự động hoá Midas Civil 2022 — sinh từ tools/midas_probe.py. Xem docs/MIDAS-AUTOMATION.md.",
+  "cua_so": {
+    "chinh_lop": "MidasGenMainFrmClass",
+    "o_lenh": "RichEdit20A mang dấu nhắc '>>'",
+    "canh_bao_iconic": "IsIconic ⇒ mọi toạ độ là −32000, phải từ chối",
+    "tieu_de_an_toan": ["[Start Page]", "[Untitled]"]
+  },
+  "lenh": {
+    "dung_duoc": false,
+    "ly_do": "chèn chữ được bằng EM_REPLACESEL và Enter làm ô về '>>', nhưng lệnh KHÔNG chạy (thử Rd, RtBF, SAll)",
+    "alias_toi_menu_File": false
+  },
+  "nap_mct": {
+    "cach": "uia",
+    "duong": ["Application menu", "New Project...", "Application menu", "Import", "MIDAS/Civil MCT File..."],
+    "bat_buoc_new_project_truoc": true,
+    "ly_do": "ở Start Page toàn bộ submenu Import bị khoá xám, bấm không báo lỗi gì",
+    "hop_thoai": "Open",
+    "dat_duong_dan": "WM_SETTEXT vào Edit rộng nhất rồi Enter",
+    "khong_dung_duoc": ["alias", "WM_DROPFILES (Midas dùng OLE drop target)"]
+  },
+  "phan_tich": {
+    "cach_kich_hoat": "F5",
+    "doi_luu_truoc": true,
+    "tu_chay_sau_khi_luu": true,
+    "tin_hieu_xong": {
+      "kieu": "chuỗi trong file .OUT",
+      "chuoi": "OVERALL TIME LOG",
+      "kem_theo": [".CA1", ".CA3", ".CA3B1", ".CA6"]
+    },
+    "giay_S1": 0.55
+  },
+  "bang_ket_qua": {
+    "duong": ["Results", "Tables", "Results Tables", "Beam", "Force"],
+    "hop_thoai": "Records Activation Dialog",
+    "listbox_loadcase": {
+      "vi_tri_x": 939,
+      "style": "LBS_EXTENDEDSEL",
+      "co_o_tich_rieng": true,
+      "o_tich_offset_x": 7
+    },
+    "chon_het": [
+      "Tab (lặp cho tới khi hwndFocus == listbox; SỐ LẦN KHÔNG CỐ ĐỊNH, đo được 11 và 15)",
+      "Home",
+      "Shift+End",
+      "SPACE — tick cả dải bôi đen (thuần bàn phím, không cần toạ độ)",
+      "OK"
+    ],
+    "cach_khac_cung_duoc": "bấm chuột vào ô tích tại LB_GETITEMRECT(i).left+7 — cùng MD5, nhưng phụ thuộc toạ độ",
+    "khong_dung_duoc": ["LB_SETSEL", "LBN_SELCHANGE", "Ctrl+A", "Home+Shift+End mà không SPACE"],
+    "o_phan_tu_tu_dien": true
+  },
+  "xuat": {
+    "duong": "chuột phải trên bảng › Export to Excel...",
+    "khong_o_File_Export": true,
+    "hop_thoai": "Save As",
+    "ten_mac_dinh": "Beam Force.xls",
+    "dinh_dang_xls": "EXCEL File(*.xls)",
+    "kiem_dinh_dang": "8 byte đầu = d0cf11e0a1b11ae1 (BIFF8)"
+  },
+  "can_foreground": true,
+  "midas": {
+    "phien_ban": "2022 (9.0.0)",
+    "exe": "C:\\Program Files\\MIDAS\\midas Civil 2022",
+    "ngay_do": "2026-07-29",
+    "co_com": false,
+    "co_api_http": false
+  },
+  "doi_chung": {
+    "mct": "output/S1/S1_frame.mct",
+    "beam_force": "output/S1/Beam Force.xls",
+    "md5": "04a33bc73554aebefab53db11794fc09",
+    "ban_ghi": 8140,
+    "phan_tu": 74,
+    "truong_hop_tai": 55
+  }
+}
