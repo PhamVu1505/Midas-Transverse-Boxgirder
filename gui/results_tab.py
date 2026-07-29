@@ -329,6 +329,9 @@ class CheckPointDiagram(PanZoom, QWidget):
 class ResultsTab(QWidget):
     progress_changed = pyqtSignal(int, int)
     project_changed = pyqtSignal()
+    # Người dùng chọn mặt cắt khác ở ô "Xem mặt cắt" — kéo theo cả cây mặt cắt,
+    # khung xem và dock Properties. Xem chú thích ở chỗ nối tín hiệu.
+    section_selected = pyqtSignal(str)
 
     def __init__(self, status_bar, project=None, theme=None):
         super().__init__()
@@ -396,6 +399,10 @@ class ResultsTab(QWidget):
         self.section_combo = QComboBox()
         self.section_combo.setMinimumWidth(120)
         self.section_combo.currentTextChanged.connect(self._on_section_changed)
+        # `textActivated` chỉ phát khi NGƯỜI DÙNG chọn trong danh sách, không
+        # phát khi code dựng lại combo (`clear`/`addItem` lúc xử lý xong Beam
+        # Force). Nhờ vậy không cần cờ chặn và không có vòng lặp tín hiệu.
+        self.section_combo.textActivated.connect(self.section_selected)
         row_view.addWidget(self.section_combo)
         row_view.addSpacing(16)
         row_view.addWidget(QLabel('Biểu đồ:'))

@@ -190,6 +190,12 @@ def feed_results(w, sections):
 # Cảnh chụp
 # ─────────────────────────────────────────────────────────────
 
+def _pick(combo, text):
+    """Chọn một mục như người dùng bấm chuột: đổi ô RỒI phát `textActivated`."""
+    combo.setCurrentText(text)
+    combo.textActivated.emit(text)
+
+
 def scenes(app, w, sections, save):
     """Đi qua từng cảnh và gọi save(tên, widget, …, sec=mặt cắt đang hiện).
 
@@ -217,7 +223,7 @@ def scenes(app, w, sections, save):
 
     # ── thẻ Results table ──
     w.tabbar.setCurrentIndex(3)
-    w.res_tab.section_combo.setCurrentText(single)
+    _pick(w.res_tab.section_combo, single)
     step()
     save('03_results', w, sec=single)
 
@@ -230,15 +236,19 @@ def scenes(app, w, sections, save):
              sec=single)
 
     if twin:
-        w.res_tab.section_combo.setCurrentText(twin)
+        # Đổi mặt cắt ĐÚNG như người dùng làm: `setCurrentText` chỉ đổi ô combo,
+        # còn `textActivated` mới là thứ kéo theo cây mặt cắt và dock Properties.
+        # Thiếu dòng emit thì ảnh chụp ra cảnh bảng một mặt cắt, dock một mặt
+        # cắt khác — và trông y hệt lỗi thật.
+        _pick(w.res_tab.section_combo, twin)
         step()
         save('05_results_twin', w, sec=twin)
-        w.res_tab.section_combo.setCurrentText(single)
+        _pick(w.res_tab.section_combo, single)
         step()
 
     # ── thẻ Kiểm toán mặt cắt ──
     w.tabbar.setCurrentIndex(4)
-    w.check_tab.cb_sec.setCurrentText(single)
+    _pick(w.check_tab.cb_sec, single)
     step()
     w.check_tab.run_check()
     step()
@@ -246,14 +256,14 @@ def scenes(app, w, sections, save):
     save('07_check_panel', w.check_tab, panel=PANEL, sec=single)
 
     if twin:
-        w.check_tab.cb_sec.setCurrentText(twin)
+        _pick(w.check_tab.cb_sec, twin)
         step()
         w.check_tab.run_check()
         step()
         save('08_check_twin', w.check_tab, panel=PANEL, sec=twin)
 
     # ── có kể đến cáp DƯL (mặc định là KHÔNG) ──
-    w.check_tab.cb_sec.setCurrentText(single)
+    _pick(w.check_tab.cb_sec, single)
     w.check_tab.chk_pt.setChecked(True)
     step()
     w.check_tab.run_check()

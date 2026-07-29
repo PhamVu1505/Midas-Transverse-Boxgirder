@@ -457,6 +457,9 @@ class MainWindow(QMainWindow):
         self.gen_tab.progress_changed.connect(self._on_generate_progress)
         self.res_tab.project_changed.connect(self._on_project_changed)
         self.res_tab.progress_changed.connect(self._on_results_progress)
+        # Ô chọn mặt cắt của hai thẻ này kéo theo cả app — xem `_sync_section`.
+        self.res_tab.section_selected.connect(self._sync_section)
+        self.check_tab.section_selected.connect(self._sync_section)
         # Sửa một ô cốt thép chỉ cần đánh dấu project bẩn — nối vào
         # _on_project_changed thì mỗi lần gõ phím lại dựng lại cả cây mặt cắt.
         self.check_tab.project_changed.connect(self._update_title)
@@ -483,6 +486,23 @@ class MainWindow(QMainWindow):
         v = self.gen_tab.view
         self.props.show_section(name, v.stats(),
                                 [dict(sp, id=v._sup_node(sp)) for sp in v.supports])
+
+    def _sync_section(self, name):
+        """Đưa lựa chọn mặt cắt của thẻ Results/Kiểm toán về làm lựa chọn chung.
+
+        Trước đây ô "Xem mặt cắt" chỉ đổi bảng và biểu đồ của riêng thẻ đó, còn
+        cây mặt cắt bên trái, khung xem và dock Properties vẫn đứng ở mặt cắt
+        cũ — bảng hiện S1_V2 (114 phần tử, 18 điểm) mà dock bên cạnh vẫn ghi
+        `S1 · 74 node · H 6,628 · B 16,340`. Hai con số nằm sát nhau trong cùng
+        một màn hình mà nói về hai mặt cắt khác nhau thì sớm muộn cũng có người
+        chép nhầm kích thước.
+
+        Chỉ cần chọn trong cây: `panel.section_selected` đã nối sẵn sang khung
+        xem và dock Properties, nên mọi thứ tự đi theo. Mặt cắt không có trong
+        cây thì `select()` trả False và không có gì xảy ra.
+        """
+        if name:
+            self.panel.select(name)
 
     def _on_pt_jacking(self, name, jacking):
         self.project.set_pt_jacking(name, jacking)

@@ -177,6 +177,8 @@ class CheckTab(QWidget):
     """Nhập cốt thép → kiểm toán → bảng kết quả."""
 
     project_changed = pyqtSignal()
+    # Đổi mặt cắt ở ô "Mặt cắt" — kéo theo cây mặt cắt, khung xem, dock Properties.
+    section_selected = pyqtSignal(str)
 
     def __init__(self, status_bar, project=None, theme=None,
                  results_provider=None):
@@ -229,6 +231,10 @@ class CheckTab(QWidget):
         self.cb_sec = QComboBox()
         self.cb_sec.setMinimumWidth(96)
         self.cb_sec.currentTextChanged.connect(self._on_section_changed)
+        # `textActivated` chỉ phát khi người dùng tự chọn — `refresh()` dựng lại
+        # danh sách bằng clear()/addItems() thì im lặng, không kéo cây mặt cắt
+        # nhảy lung tung mỗi lần project đổi.
+        self.cb_sec.textActivated.connect(self.section_selected)
         row.addWidget(self.cb_sec)
 
         row.addSpacing(6)
