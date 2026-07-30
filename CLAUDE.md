@@ -303,6 +303,32 @@ installer\build.bat
 - Mặt cắt chưa có Beam Force thì dựng nội lực **giả** để còn nhìn bố cục — ảnh mang hậu tố `-demo`, đừng lấy số trong đó ra dùng.
 - Phải `repaint()` trước `grab()`: chỉ `processEvents()` thì có lúc chụp trúng khung hình dở, thanh trạng thái ra ba dòng chồng nhau trông y như lỗi bố cục.
 
+### Chạy Midas tự động — `src/midas_driver.py` (v1.4.1)
+Bám vào **phiên Midas Civil 2022 VuPQ đã mở**, rồi nạp MCT → Perform Analysis → xuất Beam Force. `python src/midas_driver.py output/` chạy cả loạt; kết quả đi thẳng qua `result_reader.parse_beam_force()` để đối chiếu. Đường đi và bản đồ điều khiển: `docs/MIDAS-AUTOMATION.md` + `tools/midas_map.json` (sinh lại bằng `python tools/midas_probe.py --ghi`).
+
+Không có COM, không có API HTTP, kết quả nằm trong `.CA*` nhị phân → **buộc phải đi qua GUI**. Bốn luật không được bỏ:
+
+- **Không mở, không đóng, không giết Midas** — phiên là của VuPQ. Tài liệu đang mở không phải `[Start Page]`/`[Untitled]` sạch thì **dừng và báo**, vì import MCT đè lên nó.
+- **`don_dep()` là chỗ duy nhất được đóng hộp thoại, và không biết `WM_CLOSE` là gì.** Tôi từng dùng `WM_CLOSE` trong một script dọn viết vội: gửi vòng lặp cho các hộp thoại thì nó lan tới cửa sổ chính và **đóng luôn Midas**. Luật chỉ ghi trong chú thích thì chính người viết cũng vi phạm được.
+- **Không phím thật ở bước tick trường hợp tải.** `LB_SETSEL(1,-1)` + `PostMessage(VK_SPACE)` thẳng vào hwnd của ListBox. Windows không cho tiến trình nền chiếm tiền cảnh nên `set_focus()` thất bại **âm thầm**, và 24 cái Tab rơi vào khung nhìn mô hình thành lệnh bất kỳ — đã mở ra `Auto-Mesh Planar Area`, và một phím lạc trong menu Application còn **đóng Midas của người dùng hai lần**.
+- **`analyze()` chờ HAI chặng**: `.OUT` phải *xuất hiện* trong 60 s (không có → kết luận ngay là phân tích không khởi động), rồi phải *lớn thêm* trong mỗi 300 s. Một thời hạn 1800 s cho cả quá trình thì SLT lưu được `.mcb` mà không hề giải, driver vẫn đợi đủ nửa tiếng rồi báo sai chỗ.
+
+**Khuôn lỗi lặp lại nhiều nhất: nhìn một lần rồi kết luận.** Ribbon BCGPro, submenu, hộp thoại — tất cả hiện sau *một nhịp*. Đo được: lần 1 thấy `['Quick Access Toolbar','View']`, lần 2 đã có `'Results'`. Mọi bước tìm đều phải thử lại.
+
+- Tìm hộp thoại **theo tiêu đề** (`Records Activation Dialog`): Midas có sẵn một `#32770` cỡ 267×20 trong thanh công cụ, không chứa ListBox nào — lấy cái đầu tiên thì báo "không thấy danh sách trường hợp tải" trong khi hộp thật đang mở ngay đó.
+- Tìm mục menu thì soi **mọi cửa sổ nổi**, không chỉ cửa sổ vừa mọc: cửa sổ menu của Midas không bị huỷ khi đóng, chỉ bị **ẩn** rồi hiện lại. **Bỏ cửa sổ chính** khỏi phạm vi duyệt UIA — ribbon BCGPro mất 30–60 s một lượt.
+- `'TOTAL ELAPSED TIME'` là dấu hiệu giải xong, **không phải** `'OVERALL TIME LOG'` (Midas in chuỗi đó giãn ký tự). Chỗ này chính tài liệu Giai đoạn 0 tôi viết đã sai.
+- `chay_mot_mat_cat` tự dọn tài liệu **chỉ khi** tài liệu đang mở là của driver (đường dẫn dưới thư mục tạm) — `moi_tai_lieu()` trả lời **No** cho hộp hỏi lưu. Nhận biết phải `realpath` chứ không `abspath`: `gettempdir()` trả dạng 8.3 (`VUPQ~1.CIT`) còn tiêu đề Midas luôn là đường dẫn dài.
+
+### Vách giữa mặt cắt hai hộp (v1.4.1)
+`center_top` lấy bằng **nội suy** trên cạnh OUTPOLY cắt qua x=0 có z cao nhất (`_mat_tren_tai_tim`), và đỉnh vách giữa lấy từ **đỉnh mặt void hướng vào vách** — chính là mặt dưới bản top ở đoạn đó.
+
+- Mặt cầu dốc **một chiều** thì đỉnh cao nhất ở **mép cánh**, ở tim không có đỉnh nào: SLT đi thẳng một đoạn từ (−12,15; 2,157) tới (+12,15; 2,643). Bản cũ tìm đỉnh `abs(x)<0.15 and z>H−tol`, không thấy thì lui về `min(abs(x),−z)` và lấy nhầm **đỉnh đáy** ở x=7,93.
+- `z_top = center_top.z − gap_width` trừ một kích thước **ngang** (khe giữa hai void) vào một **cao độ**. S1_V2 có khe 0,800 m mà bản top dày 0,808 m nên ra số hợp lý — lỗi ẩn được nhờ trùng hợp đó, và để lại một phần tử **dày 8 mm** ở đỉnh vách giữa S1_V2.
+- Cả **sáu** mặt cắt một hộp cũng đang nhận `center_top` là một đỉnh **đáy** — không vỡ vì nhánh một hộp không dùng trị này. Sửa xong sáu mặt cắt đó **trùng khít từng byte** (so bằng worktree ở HEAD, cùng một lượt chạy).
+- `_kiem_hinh_hoc()` trong `mct_frame_writer` soi `*NODE`/`*ELEMENT` của **chính văn bản MCT vừa ghi**: node trùng toạ độ, phần tử dài 0. Đây là lỗi im lặng suốt cả quy trình — MCT vẫn ghi xong, topo vẫn đủ khoá, khung xem vẫn vẽ; chỉ Midas mới chối, mà lại chối sai chỗ (`element no. 38 is incorrect` → import bỏ dở ở dòng 171 → `.mcb` 17 KB → *"Load information has not been entered"*).
+- `tests/test_regression.py` vốn có bất biến "không node trùng toạ độ", nhưng `CASES` chỉ có S16 và S1_V2 — **cả hai đều có đỉnh sẵn tại x=0**, nên bất biến đó không bao giờ soi tới hình của SLT. Nay có SLT trong `CASES`.
+
 ## Current Sprint
 **Goal:** v1.4.0 — kiểm toán tiết diện theo TCVN 11823 trong app (điểm kiểm toán cho mặt cắt nhiều hộp, `src/section_check.py`, GUI mới).
 
@@ -331,12 +357,22 @@ installer\build.bat
 Đã làm (session 2026-07-29 tối):
 13. **Căng cáp một đầu / hai đầu** + **cảnh báo template không khớp hình học** — VuPQ yêu cầu sau khi chạy tay xong. Xem hai mục riêng ở trên. `tests/test_input_check.py` 18 bài.
 
+Đã làm (session 2026-07-30):
+14. **Tự động hoá Midas Civil 2022** (`tools/midas_probe.py`, `src/midas_driver.py`, `docs/MIDAS-AUTOMATION.md`) — Giai đoạn 0→2 xong. Xem mục *Chạy Midas tự động*.
+15. **`tools/check_gui.py`** + skill `kiem-gui` — 10 phép kiểm bấm thật, đã chứng minh bắt được 4 lỗi cũ.
+16. **Sửa vách giữa mặt cắt hai hộp** (`eefa941`) — SLT lần đầu chạy được trên Midas. Xem mục *Vách giữa mặt cắt hai hộp*.
+
+**Chạy loạt 6 mặt cắt bằng driver: 6 đạt · 0 hỏng** (2026-07-30, hộp cát `%TEMP%\midas_gd3`, MCT sinh từ mã hiện tại + template chung):
+`S1 8.140` · `S10 6.050` · `S16 7.260` · `S1_V2 12.430` · `S20 4.680` · `SLT 9.180` bản ghi. Cả 6 đủ 4 chuỗi `str_all`/`ser_all` và tập phần tử khớp topo. **Không** ghi vào `output/` — muốn dùng số này cho tab Kiểm toán thì phải sinh lại vào `output/<tên>/`.
+
 **Next Action cụ thể:**
 1. **Quyết xem có sửa hoạt tải trong template không** — S10 và S20 đang thiếu tải 5–18% (xem mục *Đối chiếu số liệu template*). Hoặc lập template riêng cho từng mặt cắt, hoặc sửa `S`/`X` ở sheet `Load` rồi tạo lại MCT.
-2. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`. Bản S1 **có cáp** không còn trong `output/S1` nữa (lượt chạy thử bỏ trống template ngày 2026-07-29 đã ghi đè); sinh lại từ `data/LT/S1.dxf`, đừng dùng `input/dxf/S1.dxf` vì bản đó **không có layer cáp nào**.
-3. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
-4. Cân nhắc **merge `feature/t13-twin-box` → `master`** (nhánh đã đẩy lên remote, chưa mở PR).
-5. `installer\build.bat` cho bản v1.4.0 — chỉ sau khi đã kiểm `*TDN-*` (xem `[[feedback_test_before_installer]]`).
+2. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`. Bản S1 **có cáp** không còn trong `output/S1` nữa (lượt chạy thử bỏ trống template ngày 2026-07-29 đã ghi đè); sinh lại từ `data/LT/S1.dxf`, đừng dùng `input/dxf/S1.dxf` vì bản đó **không có layer cáp nào**. Đường nhanh nhất giờ là `python src/midas_driver.py <mct>` rồi đọc Message Window.
+3. **Giai đoạn 3 của driver: nối vào GUI** — `MidasWorker` theo khuôn `GenerateWorker`, bước ③ của `StepBar` từ nét đứt thành nét liền. Phải cảnh báo rõ **máy không dùng được trong lúc chạy** (driver bấm chuột thật vào ribbon).
+4. **Tạo lại `output/S1_V2`** — mô hình đổi (114 → 113 phần tử), `Beam Force_S1_V2.xls` hiện có không còn khớp.
+5. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
+6. Cân nhắc **merge `feature/t13-twin-box` → `master`** (nhánh đã đẩy lên remote, chưa mở PR).
+7. `installer\build.bat` cho bản v1.4.0 — chỉ sau khi đã kiểm `*TDN-*` (xem `[[feedback_test_before_installer]]`).
 
 **S20 — VuPQ chốt CHƯA tạo lại** (2026-07-29). Đã sinh thử ra thư mục tạm rồi so với `output/S20`: số hiệu node/phần tử **không đổi**, nhưng 8 node bản mặt đổi toạ độ (−5.75 → −5.8…), 32 dòng chiều dày tiết diện lệch (0.2686 → 0.2663), và ràng buộc gối cũ là `101000`/`001000` — tức bản S20 đang lưu **có trước cả bản sửa khoá Dy**. Tạo lại thì `Beam Force_S20.xls` hiện có hết khớp mô hình, phải chạy lại Midas. Hệ quả để nguyên: ô mặt cắt ở Results table của S20 trống (topo thiếu khối `geometry`), biểu đồ bao vẫn vẽ.
 
@@ -349,6 +385,9 @@ installer\build.bat
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-07-30: **Sửa vách giữa mặt cắt hai hộp** — `center_top` nội suy tại tim thay vì tìm đỉnh có sẵn (mặt cầu dốc một chiều không có đỉnh nào ở tim), đỉnh vách giữa đọc từ đỉnh mặt void thay vì `deck − gap_width` (trừ kích thước ngang vào cao độ). SLT lần đầu chạy được trên Midas; S1_V2 mất một phần tử dày 8 mm; sáu mặt cắt một hộp trùng khít từng byte. Thêm `_kiem_hinh_hoc()` + SLT vào `CASES`. **Chạy loạt 6/6 đạt.**
+- 2026-07-30: **Tự động hoá Midas Civil 2022** — Giai đoạn 0 (`tools/midas_probe.py`, `docs/MIDAS-AUTOMATION.md`, `tools/midas_map.json`) → Giai đoạn 2 (`src/midas_driver.py`, chạy loạt, cách li lỗi từng mặt cắt). Xuất Beam Force **trùng md5 với bản làm tay**. Bỏ hết phím thật ở bước tick trường hợp tải sau khi khối phím lạc đóng Midas của VuPQ hai lần. Xem mục *Chạy Midas tự động*.
+- 2026-07-30: **`tools/check_gui.py` + skill `kiem-gui`** — 10 phép kiểm bấm thật rồi đối chiếu chữ người dùng đọc được; đồng bộ mặt cắt giữa các thẻ với dock Properties (`textActivated`, không phải `currentTextChanged`).
 - 2026-07-29: **Sửa toạ độ ô legacy lệch một dòng** — chèn thêm một dòng vào sheet `Load` làm 20/21 khoá đọc trúng ô bên cạnh; `crosscheck` chỉ báo 12 vì nuốt `InputError` ở 8 khoá còn lại. Nay 38/38 khoá khớp, MCT không đổi một byte. Thêm **huy hiệu mức độ vẽ tay** ở Messages (tam giác vàng chữ `i`), **`S`/`X` đo tới tim sườn**, mọi cảnh báo mở đầu bằng `KIỂM TRA SỐ LIỆU FILE TEMPLATE`.
 - 2026-07-29: **Căng cáp một đầu/hai đầu** (`Section.pt_jacking`, ô chọn ở dock Properties, `--pt-jacking` cho CLI) + **`src/input_check.py`** đối chiếu template với hình học: suy ngược `S`/`X` từ tải bánh (tự kiểm chứng bằng hai công thức độc lập), phân biệt sai số **thiếu tải** với **dư tải**, hộp thoại hỏi trước khi tạo MCT. Phát hiện template chung mang `S = 6468 mm` không khớp mặt cắt nào — S10 và S20 **thiếu tải 5–18%**. Sửa nốt mũi tên `QComboBox`.
 - 2026-07-29: **Bump v1.4.0 + push cả nhánh** (44 commit) + sửa **bốn lỗi hiển thị chỉ lộ ra trong ảnh chụp**: bóng ma widget đè lên dock Properties (`deleteLater` không đủ, phải `setParent(None)`) · nút ✕ xóa gối bị QSS `padding` bóp thành chấm mờ · mũi tên mọi `QSpinBox` biến mất (phải sinh PNG lúc chạy, `image: url()` là cách duy nhất) · thanh trạng thái chồng ba dòng chữ (bỏ thông điệp tạm của `QStatusBar`). Chốt **chưa tạo lại S20**; đưa `data/Transverse-HT.xls` vào repo.
