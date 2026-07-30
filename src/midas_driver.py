@@ -48,6 +48,7 @@ DAU_NHAC = '>>'
 # đã xong từ lâu. Dòng dưới đây là chữ thường, luôn là dòng cuối file.
 XONG = 'TOTAL ELAPSED TIME'
 BIFF8 = bytes.fromhex('d0cf11e0a1b11ae1')
+TEN_HOP_CHON_TAI = 'Records Activation Dialog'
 
 u32 = ctypes.WinDLL('user32', use_last_error=True)
 
@@ -56,7 +57,8 @@ WM_KEYDOWN, WM_KEYUP = 0x0100, 0x0101
 BM_CLICK = 0x00F5
 LB_GETCOUNT, LB_GETSELCOUNT = 0x018B, 0x0190
 SMTO_ABORTIFHUNG = 0x0002
-VK_RETURN, VK_F5, VK_ESCAPE = 0x0D, 0x74, 0x1B
+VK_RETURN, VK_F5, VK_ESCAPE, VK_SPACE = 0x0D, 0x74, 0x1B, 0x20
+LB_SETSEL = 0x0185
 
 _EnumProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
@@ -260,6 +262,35 @@ class MidasSession:
                 return c
         raise MidasError('không thấy thanh ứng dụng (ribbon) — giao diện Midas đã đổi?')
 
+    def _chon_the(self, ten: str, lan=6):
+        """Chọn một thẻ ribbon, trả về bảng lệnh của nó.
+
+        Phải **thử lại**: cú bấm có ăn nhưng bảng lệnh chỉ xuất hiện sau đó một
+        nhịp, mà bản đầu tôi kiểm đúng một lần rồi kết luận "ribbon không đổi —
+        Midas có ở tiền cảnh không?". Thông điệp ấy sai chỗ, và cả một loạt 6 mặt
+        cắt trượt vì nó. Thực tế đo được: lần 1 thấy `['Quick Access Toolbar',
+        'View']`, lần 2 đã có `'Results'`.
+
+        Nội dung thẻ đang mở nằm ở `ToolBar` **mang tên thẻ**, không phải con của
+        `TabItem` — nên đây cũng chính là phép kiểm "đã chuyển thẻ chưa".
+        """
+        for i in range(lan):
+            tb = self._thanh()
+            co = [c for c in tb.children()
+                  if c.element_info.control_type == 'ToolBar'
+                  and c.element_info.name == ten]
+            if co:
+                return co[0]
+            tabs = [c for c in tb.children() if c.element_info.name == 'Ribbon Tabs']
+            if not tabs:
+                raise MidasError('không thấy dải thẻ ribbon')
+            t = [x for x in tabs[0].children() if x.element_info.name == ten]
+            if not t:
+                raise MidasError(f'không thấy thẻ ribbon {ten!r}')
+            t[0].click_input()
+            time.sleep(1.5)
+        raise MidasError(f'{lan} lần bấm thẻ {ten!r} mà bảng lệnh của nó không hiện')
+
     def _cho_cua_so(self, truoc: set, han=30, lop=None):
         """Chờ cửa sổ MỚI mọc ra.
 
@@ -338,6 +369,100 @@ class MidasSession:
             return True
         return False
 
+    # Hộp thoại BÌNH THƯỜNG của quy trình, không phải sự cố:
+    #   `Confirm …`        — hỏi ghi đè, `_tra_loi_xac_nhan` lo
+    #   `Perform Analysis` — CỬA SỔ TIẾN TRÌNH GIẢI, hiện suốt lúc Midas tính
+    #
+    # Cái thứ hai từng làm cả loạt 6 mặt cắt trượt sạch: tôi thêm `_hop_la` làm
+    # chốt an toàn, rồi chính nó bắt oan cửa sổ tiến trình và báo "phân tích bị
+    # chặn" trong khi phân tích đang chạy bình thường. Thêm chốt mà không biết
+    # cái gì là bình thường thì chốt chặn đúng luồng hợp lệ.
+    HOP_BINH_THUONG = ('Confirm', 'Perform Analysis')
+
+    def _hop_la(self, truoc: set, bo_qua=HOP_BINH_THUONG):
+        """Tiêu đề hộp thoại LẠ vừa mọc ra, hoặc None.
+
+        Gọi trong mọi vòng chờ. Không có nó thì một hộp thoại ngoài dự kiến làm
+        driver ngồi đợi tới hết thời hạn rồi báo một lỗi hoàn toàn lạc đề — đã
+        mất hai lượt 1800 giây vì đúng chuyện này. Biết tên hộp thì lỗi ra ngay
+        và nói đúng chỗ.
+        """
+        for h in _dinh(self.pid) - truoc:
+            if not u32.IsWindowVisible(h) or _lop(h) != '#32770':
+                continue
+            ten = _doc(h, 500) or ''
+            if any(k in ten for k in bo_qua) or not ten:
+                continue
+            return ten
+        return None
+
+    def don_dep(self) -> list:
+        """Đóng hộp thoại còn sót, trả tên những cái không đóng được.
+
+        Hai cách, theo thứ tự: bấm **Cancel** nếu có (câu trả lời "không làm gì
+        cả"), không thì gửi **ESC thẳng vào hộp thoại đó**.
+
+        **TUYỆT ĐỐI KHÔNG `WM_CLOSE`.** Tôi từng dùng nó trong một script dọn dẹp
+        viết vội: gửi vòng lặp cho các hộp thoại thì nó lan tới cửa sổ chính và
+        **đóng luôn Midas của người dùng** — đúng cái việc cả module này cấm.
+        Luật chỉ ghi trong chú thích thì chính người viết cũng vi phạm được, nên
+        nay hàm này là chỗ duy nhất được đóng hộp thoại, và nó không biết
+        `WM_CLOSE` là gì.
+
+        Hộp chỉ có OK thì thử ESC; ESC không ăn thì **để nguyên và báo tên** —
+        bấm OK có thể thực thi lệnh (đã gặp `Auto-Mesh Planar Area`, bấm OK là
+        chia lưới cả mô hình).
+        """
+        con_lai = []
+        for h in list(_dinh(self.pid)):
+            if not u32.IsWindowVisible(h) or _lop(h) != '#32770':
+                continue
+            # Midas có sẵn một `#32770` tên rỗng cỡ 267×20 nằm trong thanh công
+            # cụ (khung của mấy ô xoay). Nó là phần cố định của giao diện, không
+            # phải hộp thoại sót — coi nó là rác thì `don_dep` báo động giả mãi.
+            _x, _y, rw, rh = _rect(h)
+            ten = (_doc(h, 500) or '').strip()
+            if not ten or rw < 200 or rh < 60:
+                continue
+            if h == self.hwnd:
+                continue                      # không bao giờ đụng cửa sổ chính
+            nut = [c for c in _con(h, self.pid)
+                   if c['lop'] == 'Button' and c['chu'].replace('&', '') == 'Cancel']
+            if nut:
+                u32.SendMessageW(nut[0]['hwnd'], BM_CLICK, 0, 0)
+                time.sleep(1.0)
+            else:
+                _phim(h, VK_ESCAPE)           # ESC vào ĐÚNG hộp đó, không phải cửa sổ chính
+                time.sleep(1.0)
+            if u32.IsWindow(h) and u32.IsWindowVisible(h):
+                con_lai.append(ten)
+        return con_lai
+
+    def moi_tai_lieu(self, han=25):
+        """Về tài liệu trống để chạy mặt cắt tiếp theo.
+
+        Trả lời **No** cho hộp hỏi lưu: mô hình đã được `analyze()` lưu ra `.mcb`
+        rồi, thay đổi còn lại chỉ là chuyện hiển thị (mở bảng kết quả).
+        """
+        if '[Untitled]' in self.tieu_de and '*' not in self.tieu_de:
+            return
+        self._len_truoc()
+        truoc = _dinh(self.pid)
+        self._bam_chuoi('Application menu', 'New Project...')
+        for _ in range(han):
+            time.sleep(0.5)
+            for h in _dinh(self.pid) - truoc:
+                if not u32.IsWindowVisible(h) or _lop(h) != '#32770':
+                    continue
+                nut = [c for c in _con(h, self.pid)
+                       if c['lop'] == 'Button' and c['chu'].replace('&', '') == 'No']
+                if nut:
+                    u32.SendMessageW(nut[0]['hwnd'], BM_CLICK, 0, 0)
+                    time.sleep(1.5)
+            if '[Untitled]' in self.tieu_de and '*' not in self.tieu_de:
+                return
+        raise MidasError(f'không về được tài liệu trống — tiêu đề {self.tieu_de!r}')
+
     def _dat_duong_dan(self, hop, path):
         """Điền đường dẫn vào ô tên file của hộp thoại rồi Enter."""
         o = [c for c in _con(hop, self.pid) if c['lop'] == 'Edit' and c['rect'][2] > 100]
@@ -406,7 +531,7 @@ class MidasSession:
         raise MidasError(f'{han} s sau khi nạp mà tiêu đề vẫn {self.tieu_de!r}')
 
     # ── bước 2: phân tích ──
-    def analyze(self, mcb: str, han=1800):
+    def analyze(self, mcb: str, han=1800, han_khoi_dong=60, han_im=300):
         """F5. Midas đòi lưu trước → điền đường dẫn `.mcb`, lưu xong nó TỰ giải.
 
         Biết xong bằng khối `OVERALL TIME LOG` ở cuối file `.OUT` — dấu hiệu theo
@@ -448,13 +573,36 @@ class MidasSession:
         sau_hop = _dinh(self.pid)
         self._dat_duong_dan(hop, mcb)
 
+        # Chờ hai chặng, và chặng đầu là chỗ tiết kiệm nhất.
+        #
+        # Bản trước chỉ có một thời hạn 1800 s cho cả quá trình. Mặt cắt SLT lưu
+        # được `.mcb` nhưng phân tích **không hề khởi động** — không `.OUT`, không
+        # `.CA*` — thế mà driver ngồi đợi đủ nửa tiếng rồi báo "chưa có chuỗi
+        # TOTAL ELAPSED TIME", tức đổ lỗi cho một việc chưa bắt đầu. Cả loạt 6 mặt
+        # cắt kéo dài 35 phút chỉ vì một mặt cắt im lặng.
+        #
+        # Nay: `.OUT` phải **xuất hiện** trong `han_khoi_dong`; Midas rảnh mà file
+        # vẫn chưa có thì kết luận ngay là phân tích không chạy. Sau đó mới đo tiếp
+        # tới khi xong, và mỗi lần `.OUT` lớn thêm thì gia hạn — mô hình lớn giải
+        # lâu vẫn được, còn im lặng thì bị bắt trong một phút.
         t0 = time.time()
         da_xac_nhan = False
-        while time.time() - t0 < han:
+        lan_lon = t0
+        co_truoc = -1
+        while True:
             time.sleep(1)
             if not da_xac_nhan:
                 da_xac_nhan = self._tra_loi_xac_nhan(sau_hop)
-            if os.path.exists(out):
+
+            la = self._hop_la(sau_hop)
+            if la:
+                raise MidasError(f'phân tích bị chặn bởi hộp thoại {la!r} — '
+                                 f'không tự bấm vì chưa biết hộp này')
+
+            co = os.path.getsize(out) if os.path.exists(out) else -1
+            if co > co_truoc:
+                co_truoc, lan_lon = co, time.time()
+            if co >= 0:
                 try:
                     with open(out, encoding='utf-8', errors='replace') as f:
                         if XONG in f.read()[-4000:]:
@@ -462,7 +610,19 @@ class MidasSession:
                             return
                 except OSError:
                     pass                      # Midas đang ghi dở — thử lại nhịp sau
-        raise MidasError(f'{han} s mà {os.path.basename(out)} chưa có khối {XONG!r}')
+
+            if co < 0 and time.time() - t0 > han_khoi_dong:
+                raise MidasError(
+                    f'{han_khoi_dong} s sau khi lưu mà {os.path.basename(out)} '
+                    f'chưa xuất hiện — phân tích KHÔNG khởi động. Mở Midas xem '
+                    f'mô hình có lỗi gì không (thiếu ràng buộc, tổ hợp mồ côi…).')
+            if time.time() - lan_lon > han_im:
+                raise MidasError(
+                    f'{han_im} s không thấy {os.path.basename(out)} lớn thêm '
+                    f'(đang {co} byte) — phân tích đứng.')
+            if time.time() - t0 > han:
+                raise MidasError(f'{han} s mà {os.path.basename(out)} chưa có '
+                                 f'chuỗi {XONG!r}')
 
     # ── bước 3: xuất Beam Force ──
     def export_beam_force(self, xls: str, han=300):
@@ -471,15 +631,15 @@ class MidasSession:
         Mắt xích khó nhất của cả quy trình nằm ở đây: danh sách trường hợp tải là
         `ListBox` kiểu `LBS_EXTENDEDSEL` **có ô tick riêng**, và **bôi đen với tick
         là hai chuyện khác nhau** — hộp thoại đọc trạng thái *tick*. Đã thử và đều
-        KHÔNG được: `LB_SETSEL(1,-1)`, gửi kèm `LBN_SELCHANGE`, `Ctrl+A`, hay
-        bôi đen mà không tick. Tất cả đều làm `LB_GETSELCOUNT` báo đủ 55/55 nhưng
-        **bảng ra rỗng** — và file xuất ra vẫn là `.xls` hợp lệ, mở bằng Excel vẫn
-        có tiêu đề cột. Hỏng hoàn toàn âm thầm.
+        KHÔNG được: `LB_SETSEL(1,-1)` một mình, gửi kèm `LBN_SELCHANGE`, hay
+        `Ctrl+A`. Tất cả đều làm `LB_GETSELCOUNT` báo đủ 55/55 nhưng **bảng ra
+        rỗng** — mà file xuất ra vẫn là `.xls` hợp lệ, mở bằng Excel vẫn có tiêu
+        đề cột. Hỏng hoàn toàn âm thầm.
 
-        Cách đúng: bôi đen cả dải rồi nhấn **SPACE**.
+        Cách đúng: **bôi đen cả dải rồi SPACE**, và cả hai đi bằng thông điệp —
+        xem chú thích trong thân hàm.
         """
         from pywinauto import Desktop
-        from pywinauto.keyboard import send_keys
 
         xls = os.path.abspath(xls)
         os.makedirs(os.path.dirname(xls), exist_ok=True)
@@ -487,18 +647,8 @@ class MidasSession:
             os.remove(xls)
 
         self._len_truoc()
-        goc = self._thanh()
-        tabs = [c for c in goc.children() if c.element_info.name == 'Ribbon Tabs'][0]
-        [t for t in tabs.children() if t.element_info.name == 'Results'][0].click_input()
-        time.sleep(1.5)
-        # Nội dung thẻ đang mở nằm ở `ToolBar` mang TÊN THẺ, không phải con của TabItem.
-        bang = [c for c in goc.children()
-                if c.element_info.control_type == 'ToolBar'
-                and c.element_info.name == 'Results']
-        if not bang:
-            raise MidasError('chọn thẻ Results xong mà ribbon không đổi — '
-                             'Midas có ở tiền cảnh không?')
-        nhom = [g for g in bang[0].children() if g.element_info.name.strip() == 'Tables'][0]
+        bang = self._chon_the('Results')
+        nhom = [g for g in bang.children() if g.element_info.name.strip() == 'Tables'][0]
         rt = [k for k in nhom.children() if k.element_info.name == 'Results Tables'][0]
 
         truoc = _dinh(self.pid)
@@ -515,48 +665,77 @@ class MidasSession:
                     pass
             return None
 
+        # Submenu cũng cần một nhịp mới bung ra — thử lại thay vì kết luận ngay,
+        # cùng lý do như `_chon_the`.
         for ten in ('Beam', 'Force'):
-            m = tim(ten)
+            m = None
+            for _ in range(6):
+                m = tim(ten)
+                if m is not None:
+                    break
+                time.sleep(1.0)
             if m is None:
                 self._esc()
                 raise MidasError(f'không thấy mục {ten!r} trong Results Tables')
             m.click_input()
             time.sleep(2.0)
 
-        hop = [c for c in _con(self.hwnd, self.pid)] and \
-              [h for h in _dinh(self.pid) if _lop(h) == '#32770' and u32.IsWindowVisible(h)]
-        if not hop:
-            raise MidasError('không thấy Records Activation Dialog')
-        h = hop[0]
+        # Tìm hộp thoại theo TIÊU ĐỀ, có thử lại.
+        #
+        # Bản trước lấy `#32770` **đầu tiên** tìm thấy — mà Midas có sẵn một
+        # `#32770` cỡ 267×20 nằm trong thanh công cụ, không chứa ListBox nào. Nên
+        # driver báo "không thấy danh sách trường hợp tải" ở 3/6 mặt cắt, trong khi
+        # hộp thoại thật đang mở ngay đó. Script thử nghiệm chạy đúng chính vì nó
+        # lọc theo tiêu đề; driver thì không — hai đường khác nhau ở đúng một dòng.
+        h = None
+        for _ in range(10):
+            ung = [x for x in _dinh(self.pid)
+                   if _lop(x) == '#32770' and u32.IsWindowVisible(x)
+                   and (_doc(x, 500) or '').strip() == TEN_HOP_CHON_TAI]
+            if ung:
+                h = ung[0]
+                break
+            time.sleep(1.0)
+        if h is None:
+            self._esc()
+            raise MidasError(f'không thấy hộp thoại {TEN_HOP_CHON_TAI!r} sau 10 s')
+
         lb = [c for c in _con(h, self.pid)
               if c['lop'] == 'ListBox' and u32.SendMessageW(c['hwnd'], LB_GETCOUNT, 0, 0) > 5]
         if not lb:
             self._esc()
-            raise MidasError('không thấy danh sách trường hợp tải')
+            raise MidasError('hộp thoại mở nhưng không có danh sách trường hợp tải nào')
         lb = max(lb, key=lambda c: u32.SendMessageW(c['hwnd'], LB_GETCOUNT, 0, 0))['hwnd']
         n = u32.SendMessageW(lb, LB_GETCOUNT, 0, 0)
 
-        # Tab cho tới khi tiêu điểm rơi đúng vào danh sách. KHÔNG ghim số lần —
-        # đo được 11 lần ở lượt này và 15 ở lượt khác, tuỳ trạng thái hộp thoại.
-        u32.SetForegroundWindow(h)
-        time.sleep(0.8)
-        for i in range(1, 25):
-            send_keys('{TAB}')
-            time.sleep(0.15)
-            if _tieu_diem() == lb:
-                break
-        else:
+        # Tick HẾT trường hợp tải — **thuần thông điệp, không một phím thật nào**.
+        #
+        # Hộp thoại đọc trạng thái *tick*, không đọc *bôi đen*, nên cần đúng hai
+        # việc: bôi đen cả dải, rồi một lần Space để tick cả dải đó.
+        #   · `LB_SETSEL(1, -1)`        → bôi đen 55/55
+        #   · `PostMessage(VK_SPACE)`   → tick, gửi THẲNG vào hwnd của ListBox
+        #
+        # Bản trước làm bằng phím thật: `SetForegroundWindow` rồi Tab tới 24 lần,
+        # `Home`, `Shift+End`, `Space`. Nó chạy được khi thao tác tay ngay trước
+        # đó, nhưng **phá sạch một loạt 6 mặt cắt** khi chạy từ tiến trình nền:
+        # Windows không cho tiến trình nền chiếm tiền cảnh, `set_focus()` thất bại
+        # âm thầm, và 24 cái Tab rơi vào khung nhìn mô hình thành lệnh bất kỳ —
+        # lượt đó chúng mở `Auto-Mesh Planar Area`, và một phím lạc khác trong
+        # menu Application còn **đóng luôn Midas của người dùng**.
+        #
+        # `PostMessage` gửi vào một hwnd cụ thể nên không phụ thuộc tiền cảnh và
+        # không thể rơi ra ngoài. Đã kiểm: cho ra file trùng MD5 với bản làm tay.
+        u32.SendMessageW(lb, LB_SETSEL, 1, -1)
+        time.sleep(0.5)
+        boi_den = u32.SendMessageW(lb, LB_GETSELCOUNT, 0, 0)
+        if boi_den < n:
             self._esc()
-            raise MidasError('Tab 24 lần mà tiêu điểm không vào được danh sách tải')
-
-        send_keys('{HOME}')
-        time.sleep(0.3)
-        send_keys('+{END}')
-        time.sleep(0.9)
-        send_keys('{SPACE}')                    # ← tick cả dải đang bôi đen
-        time.sleep(1.2)
-        chon = u32.SendMessageW(lb, LB_GETSELCOUNT, 0, 0)
-        self.log(f'  chọn {chon}/{n} trường hợp tải')
+            raise MidasError(f'chỉ bôi đen được {boi_den}/{n} trường hợp tải')
+        u32.PostMessageW(lb, WM_KEYDOWN, VK_SPACE, 0)
+        time.sleep(0.12)
+        u32.PostMessageW(lb, WM_KEYUP, VK_SPACE, 0xC0000000)
+        time.sleep(1.5)
+        self.log(f'  tick {boi_den}/{n} trường hợp tải')
 
         Desktop(backend='uia').window(handle=h).child_window(
             title='OK', control_type='Button').click_input()
@@ -647,26 +826,84 @@ class MidasSession:
         return ra
 
 
-def chay_mot_mat_cat(mct: str, xls: str = None, mcb: str = None, log=print) -> dict:
-    """Nạp → giải → xuất cho MỘT mặt cắt. Trả thống kê của `kiem_ket_qua`."""
+def _duong_dan(mct: str):
+    """(tên mặt cắt, thư mục, .mcb, .xls, topo) suy từ đường dẫn MCT."""
     thu_muc = os.path.dirname(os.path.abspath(mct))
     ten = os.path.basename(thu_muc)
-    xls = xls or os.path.join(thu_muc, f'Beam Force_{ten}.xls')
-    mcb = mcb or os.path.splitext(os.path.abspath(mct))[0] + '.mcb'
-    topo = os.path.join(thu_muc, f'{ten}_topo.json')
+    return (ten, thu_muc,
+            os.path.splitext(os.path.abspath(mct))[0] + '.mcb',
+            os.path.join(thu_muc, f'Beam Force_{ten}.xls'),
+            os.path.join(thu_muc, f'{ten}_topo.json'))
 
+
+def _chay(s: 'MidasSession', mct, xls=None, mcb=None) -> dict:
+    """Ba bước trên một phiên đã mở. Dùng chung cho chạy một và chạy loạt."""
+    ten, _tm, mcb_md, xls_md, topo = _duong_dan(mct)
+    s.log(f'[{ten}] nạp MCT…')
+    s.import_mct(mct)
+    s.log(f'[{ten}] phân tích…')
+    s.analyze(mcb or mcb_md)
+    s.log(f'[{ten}] xuất Beam Force…')
+    s.export_beam_force(xls or xls_md)
+    return s.kiem_ket_qua(xls or xls_md, topo)
+
+
+def chay_mot_mat_cat(mct: str, xls: str = None, mcb: str = None, log=print) -> dict:
+    """Nạp → giải → xuất cho MỘT mặt cắt. Trả thống kê của `kiem_ket_qua`."""
+    ten = _duong_dan(mct)[0]
     with MidasSession.attach() as s:
         s.log = log
-        log(f'[{ten}] nạp MCT…')
-        s.import_mct(mct)
-        log(f'[{ten}] phân tích…')
-        s.analyze(mcb)
-        log(f'[{ten}] xuất Beam Force…')
-        s.export_beam_force(xls)
-        tk = s.kiem_ket_qua(xls, topo)
+        tk = _chay(s, mct, xls, mcb)
     log(f'[{ten}] {tk["ban_ghi"]:,} bản ghi · {tk["phan_tu"]} phần tử · '
         f'{tk["truong_hop_tai"]} trường hợp tải')
     return tk
+
+
+def chay_nhieu_mat_cat(danh_sach, log=print) -> dict:
+    """Chạy nhiều mặt cắt liên tiếp trên MỘT phiên Midas.
+
+    **Một mặt cắt lỗi không được dừng cả loạt** — cùng lối với `GenerateWorker`
+    của app: mỗi việc bọc `try/except` riêng, lỗi ghi lại rồi đi tiếp. Chạy 6 mặt
+    cắt mà cái thứ hai làm sập cả loạt thì người dùng phải ngồi canh, tức là mất
+    hết ý nghĩa của việc tự động hoá.
+
+    Giữa hai mặt cắt phải **dọn** (đóng hộp thoại sót) rồi **về tài liệu trống**.
+    Bỏ bước đó thì mặt cắt sau gặp cổng `kiem_tai_lieu_sach()` và trượt hàng loạt
+    vì một lý do chẳng liên quan gì tới nó.
+
+    Returns:
+        {'xong': {tên: thống kê}, 'loi': {tên: thông điệp}}
+    """
+    xong, loi = {}, {}
+    with MidasSession.attach() as s:
+        s.log = log
+        for i, mct in enumerate(danh_sach, 1):
+            ten = _duong_dan(mct)[0]
+            log(f'\n── {i}/{len(danh_sach)}: {ten} ' + '─' * max(0, 44 - len(ten)))
+            try:
+                s.don_dep()
+                s.moi_tai_lieu()
+                tk = _chay(s, mct)
+                xong[ten] = tk
+                log(f'[{ten}] ĐẠT · {tk["ban_ghi"]:,} bản ghi · '
+                    f'{tk["phan_tu"]} phần tử · {tk["truong_hop_tai"]} trường hợp tải')
+            except MidasError as e:
+                loi[ten] = str(e)
+                log(f'[{ten}] HỎNG · {e}')
+            except Exception as e:                 # lỗi lạ cũng không được dừng loạt
+                loi[ten] = f'{type(e).__name__}: {e}'
+                log(f'[{ten}] HỎNG · {type(e).__name__}: {e}')
+        sot = s.don_dep()
+        if sot:
+            log(f'\nCòn hộp thoại không đóng được: {", ".join(sot)}')
+
+    log(f'\n{len(xong)} đạt · {len(loi)} hỏng')
+    for ten, tk in xong.items():
+        log(f'  ĐẠT   {ten:8s} {tk["ban_ghi"]:>7,} bản ghi · '
+            f'{tk["truong_hop_tai"]:2d} trường hợp tải')
+    for ten, e in loi.items():
+        log(f'  HỎNG  {ten:8s} {e[:80]}')
+    return {'xong': xong, 'loi': loi}
 
 
 if __name__ == '__main__':
@@ -675,11 +912,30 @@ if __name__ == '__main__':
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[1])
-    ap.add_argument('mct', help='file MCT cần nạp')
-    ap.add_argument('-o', '--out', help='file .xls xuất ra')
+    ap.add_argument('mct', nargs='+', help='một hoặc nhiều file MCT (hoặc thư mục output)')
+    ap.add_argument('-o', '--out', help='file .xls xuất ra (chỉ khi có đúng một MCT)')
     a = ap.parse_args()
+
+    # Nhận cả thư mục: `output/` → mọi <tên>/<tên>_frame.mct bên dưới.
+    ds = []
+    for p in a.mct:
+        if os.path.isdir(p):
+            for ten in sorted(os.listdir(p)):
+                m = os.path.join(p, ten, f'{ten}_frame.mct')
+                if os.path.exists(m):
+                    ds.append(m)
+        else:
+            ds.append(p)
+    if not ds:
+        print('Không thấy file MCT nào.')
+        sys.exit(1)
+
     try:
-        chay_mot_mat_cat(a.mct, a.out)
+        if len(ds) == 1:
+            chay_mot_mat_cat(ds[0], a.out)
+        else:
+            kq = chay_nhieu_mat_cat(ds)
+            sys.exit(1 if kq['loi'] else 0)
     except MidasError as e:
         print(f'\n{e}\n')
         sys.exit(1)
