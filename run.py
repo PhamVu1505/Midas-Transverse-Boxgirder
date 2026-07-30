@@ -9,6 +9,7 @@ Commands:
 """
 
 import argparse
+import json
 import os
 import sys
 import glob
@@ -101,6 +102,14 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
     mct_path = os.path.join(section_dir, f'{name}_frame.mct')
     with open(mct_path, 'w', encoding='utf-8') as f:
         f.write(mct_text)
+
+    # Ghi luôn topo.json như `gui/worker.py` — trước đây nhánh CLI chỉ ghi MCT,
+    # nên sinh lại một mặt cắt bằng dòng lệnh để lại topo.json **của mô hình cũ**
+    # nằm cạnh MCT mới. Không gì báo: thẻ Results table, tab Kiểm toán và phép
+    # đối chiếu tập phần tử của `midas_driver` đều đọc file đó và tin nó.
+    topo_path = os.path.join(section_dir, f'{name}_topo.json')
+    with open(topo_path, 'w', encoding='utf-8') as f:
+        json.dump(topo, f, indent=2)
 
     # SVG
     from src.svg_export import export_frame_svg
