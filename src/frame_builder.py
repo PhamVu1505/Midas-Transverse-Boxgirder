@@ -639,6 +639,37 @@ def build_twin_frame(outpoly_dxf: list, inpoly_left_dxf: list, inpoly_right_dxf:
     }
 
 
+def _mat_tren_tai_tim(out, H):
+    """Điểm mặt deck tại tim dầm — NỘI SUY, không tìm đỉnh có sẵn.
+
+    Mặt cầu có mui luyện một chiều thì đỉnh cao nhất nằm ở MÉP cánh, và giữa
+    nhịp không có đỉnh nào ở x=0: SLT đi thẳng một đoạn từ (−12,15; 2,157) tới
+    (+12,15; 2,643). Bản cũ tìm đỉnh `abs(x) < 0.15 and z > H − tol`, không thấy
+    thì lui về `min(abs(x), −z)` — và lấy nhầm đỉnh ĐÁY ở x = 7,93; z = 0. Từ đó
+    vách giữa bị dựng xuống dưới đáy dầm, sinh phần tử dài 0 và Midas chối
+    ngay dòng 171 lúc import.
+
+    Lấy cạnh polyline **cắt qua x = 0 có z cao nhất** thì đúng cho cả hai lối:
+    có đỉnh tại tim (S1_V2 → 7,1 nguyên vẹn) hay chỉ có cạnh dốc (SLT → 2,400).
+    """
+    n = len(out)
+    z_tim = None
+    for i in range(n):
+        a, b = out[i], out[(i + 1) % n]
+        if a[0] * b[0] > 0:          # cùng phía, không cắt x=0
+            continue
+        if abs(a[0] - b[0]) < 1e-9:  # cạnh đứng ngay tim
+            z = max(a[1], b[1])
+        else:
+            t = (0.0 - a[0]) / (b[0] - a[0])
+            z = a[1] + t * (b[1] - a[1])
+        if z_tim is None or z > z_tim:
+            z_tim = z
+    if z_tim is None:
+        z_tim = H
+    return (0.0, round(float(z_tim), 6))
+
+
 def _classify_twin_outer(out, H):
     """Phân loại OUTPOLY mặt cắt 2 hộp (đỉnh tim, 3 điểm đáy)."""
     x_left = min(p[0] for p in out)
@@ -668,11 +699,7 @@ def _classify_twin_outer(out, H):
         z_c = _lerp(0.0, [bot_L, bot_R])
         bot_center = (0.0, round(z_c, 6))
 
-    center_top = min(out, key=lambda p: (abs(p[0]), -p[1]))
-    for p in out:
-        if abs(p[0]) < 0.15 and p[1] > H - _TOL:
-            center_top = p
-            break
+    center_top = _mat_tren_tai_tim(out, H)
 
     mid = [p for p in out
            if p[1] > _TOL
@@ -729,14 +756,24 @@ def _face_x_at_z(face_pts, z):
 def _build_center_web(of, inn_l, inn_r, gap_x_L, gap_x_R, H, target_len):
     """Bụng vách giữa tại x=0, chiều dày = khe giữa 2 void.
 
-    Đỉnh vách giữa = đáy bản top tại tâm (deck − gap_width), KHÔNG phải mặt deck
-    — chừa chiều dày bản top để connector 202 là phần tử đứng thật (≠ 0).
+    Đỉnh vách giữa = ĐÁY BẢN TOP tại tâm, KHÔNG phải mặt deck — chừa chiều dày
+    bản top để connector 202 là phần tử đứng thật (≠ 0).
+
+    Đáy bản top tại tâm đọc thẳng từ **đỉnh mặt void hướng vào vách** (mặt trong
+    của hai void chính là mặt dưới bản top ở đoạn này). Bản cũ lấy
+    `center_top.z − gap_width`, tức trừ một kích thước NGANG (khe giữa 2 void)
+    vào một CAO ĐỘ. S1_V2 có khe 0,800 m mà bản top dày 0,808 m nên ra số hợp
+    lý và lỗi ẩn được; hai trị đó không liên quan gì tới nhau.
     """
     face_l = _void_face_chain(inn_l, 'east')
     face_r = _void_face_chain(inn_r, 'west')
-    gap_width = round(gap_x_R - gap_x_L, 6)
-    z_top = round(of['center_top'][1] - gap_width, 6)
     z_bot = of['bot_center'][1]
+    z_top = round((face_l[0][1] + face_r[0][1]) / 2, 6)
+    if not (z_bot + _TOL < z_top < of['center_top'][1] - _TOL):
+        raise ValueError(
+            f'Vách giữa dựng không được: đỉnh z={z_top:.4f} phải nằm giữa đáy '
+            f'z={z_bot:.4f} và mặt deck tại tim z={of["center_top"][1]:.4f}. '
+            f'Kiểm tra layer INPOLY của hai void.')
 
     kp_zs = {round(z_top, 6), round(z_bot, 6)}
     for p in face_l + face_r:

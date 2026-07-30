@@ -34,6 +34,8 @@ Ba ràng buộc, đừng gỡ
 
 import ctypes
 import os
+import re
+import tempfile
 import time
 from ctypes import wintypes
 
@@ -656,7 +658,25 @@ class MidasSession:
         time.sleep(1.8)
 
         def tim(ten):
-            for h in [x for x in _dinh(self.pid) - truoc if u32.IsWindowVisible(x)]:
+            """Soi MỌI cửa sổ nổi của tiến trình, không chỉ cửa sổ vừa mọc.
+
+            Bản trước lọc `_dinh(self.pid) - truoc`, tức chỉ cửa sổ **mới** so với
+            lúc trước khi bấm. Cửa sổ menu bung ra của Midas không bị huỷ sau khi
+            đóng — nó chỉ bị ẩn rồi hiện lại. Nên lượt chạy đầu trong một phiên đã
+            mở menu này trước đó thì `truoc` đã chứa nó, hiệu là rỗng, và driver
+            báo "không thấy mục 'Beam'" dù menu đang bung ra ngay trên màn hình.
+            Chính vì thế SLT (1/2) hỏng còn S1_V2 (2/2) chạy được: `_esc()` của
+            SLT huỷ menu, nên với S1_V2 nó lại là cửa sổ "mới".
+
+            Ưu tiên cửa sổ mới rồi mới tới các cửa sổ còn lại — cửa sổ mới gần như
+            luôn là cái đúng, nên thường không phải duyệt thêm.
+
+            **Bỏ cửa sổ chính** khỏi danh sách: duyệt UIA trên `MidasGenMainFrmClass`
+            mất 30–60 s (ribbon BCGPro), đủ để phá cả cơ chế thử lại bên dưới.
+            """
+            hien = {x for x in _dinh(self.pid)
+                    if x != self.hwnd and u32.IsWindowVisible(x)}
+            for h in sorted(hien, key=lambda x: x in truoc):
                 try:
                     for k in Desktop(backend='uia').window(handle=h).descendants():
                         if k.element_info.name == ten:
@@ -848,11 +868,44 @@ def _chay(s: 'MidasSession', mct, xls=None, mcb=None) -> dict:
     return s.kiem_ket_qua(xls or xls_md, topo)
 
 
+def _la_tai_lieu_cua_driver(tieu_de: str) -> bool:
+    """Tài liệu đang mở có phải do chính driver tạo ra ở hộp cát không?
+
+    `moi_tai_lieu()` trả lời **No** cho hộp hỏi lưu, tức nó BỎ thay đổi chưa lưu.
+    Với tài liệu driver tự tạo thì vô hại (mô hình đã lưu ra `.mcb`, phần còn lại
+    chỉ là chuyện hiển thị), nhưng gọi thẳng nó khi người dùng đang mở mô hình
+    của mình thì mất việc không hoàn lại được — nên không được nới `kiem_tai_lieu_sach()`
+    một cách chung chung.
+
+    Dấu hiệu dùng ở đây: đường dẫn mô hình nằm dưới thư mục tạm của hệ thống. Mọi
+    hộp cát của driver đều ở đó, còn mô hình thật của người dùng thì không.
+    """
+    m = re.search(r'\[([A-Za-z]:\\[^\]]+)\]', tieu_de)
+    if not m:
+        return False
+    # `realpath` chứ không `abspath`: `tempfile.gettempdir()` trả dạng 8.3
+    # (`C:\Users\VUPQ~1.CIT\...`) khi biến môi trường TEMP mang dạng đó, còn tiêu
+    # đề Midas luôn là đường dẫn dài. So chuỗi thì hai cái không bao giờ khớp.
+    try:
+        p = os.path.normcase(os.path.realpath(m.group(1)))
+        tam = os.path.normcase(os.path.realpath(tempfile.gettempdir()))
+        return os.path.commonpath([p, tam]) == tam
+    except (ValueError, OSError):
+        return False
+
+
 def chay_mot_mat_cat(mct: str, xls: str = None, mcb: str = None, log=print) -> dict:
     """Nạp → giải → xuất cho MỘT mặt cắt. Trả thống kê của `kiem_ket_qua`."""
     ten = _duong_dan(mct)[0]
     with MidasSession.attach() as s:
         s.log = log
+        # Nhánh chạy loạt dọn rồi về tài liệu trống trước mỗi mặt cắt; nhánh chạy
+        # một mặt cắt thì không — nên chạy lại đúng một mặt cắt sau một lượt loạt
+        # là trượt ngay ở cổng `kiem_tai_lieu_sach()`, vì lý do chẳng liên quan gì
+        # tới mặt cắt đó. Chỉ tự dọn khi tài liệu đang mở là của driver.
+        if _la_tai_lieu_cua_driver(s.tieu_de):
+            s.don_dep()
+            s.moi_tai_lieu()
         tk = _chay(s, mct, xls, mcb)
     log(f'[{ten}] {tk["ban_ghi"]:,} bản ghi · {tk["phan_tu"]} phần tử · '
         f'{tk["truong_hop_tai"]} trường hợp tải')

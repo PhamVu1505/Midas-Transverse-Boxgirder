@@ -27,7 +27,7 @@ from src.dxf_reader import (_get_polyline_vertices, read_inpolys,
                             read_pt_cables, section_type_from_inpolys)
 from src.frame_builder import build_frame
 from src.load_reader import read_loads
-from src.mct_frame_writer import (_validate_load_references,
+from src.mct_frame_writer import (_kiem_hinh_hoc, _validate_load_references,
                                   _write_load_combinations, write_mct)
 from src.pt_property_reader import read_pt_properties
 
@@ -37,7 +37,13 @@ EXCEL = os.path.join(ROOT, 'data', 'Midas-Transverse-Boxgirder-analysis.xls')
 # (dxf tương đối, section_type, n_node, n_elem, n_constraint, tendon names)
 CASES = [
     ('input/dxf/S16.dxf',   'single',   66, 66, 2, []),
-    ('data/TP_BL/S1_V2.dxf', 'twin_box', 113, 114, 3, ['PT-TOP-1']),
+    ('data/TP_BL/S1_V2.dxf', 'twin_box', 112, 113, 3, ['PT-TOP-1']),
+    # SLT: hai hộp, mặt cầu dốc MỘT CHIỀU nên OUTPOLY không có đỉnh nào ở tim,
+    # và hai void cao không bằng nhau. Bộ kiểm trước đây chỉ có S16 + S1_V2 —
+    # cả hai đều có đỉnh sẵn tại x=0 — nên bất biến "không node trùng toạ độ"
+    # không bao giờ soi tới hình này, dù nó sinh ra phần tử dài 0 và Midas chối
+    # file ngay lúc import.
+    ('input/dxf/SLT.dxf',   'twin_box', 101, 102, 3, []),
 ]
 
 MIN_ELEM_LEN = 1e-3   # 1 mm — dưới ngưỡng này coi là phần tử suy biến
@@ -822,6 +828,33 @@ def test_combo_validator_catches_orphan():
         f'không bắt được CS thiếu *STAGE: {problems2}'
 
 
+def test_geometry_guard_catches_zero_length_element():
+    """Dựng lại đúng hình đã làm Midas chối SLT, khẳng định bộ kiểm bắt được.
+
+    Khoá cả hai chiều như `test_combo_validator_catches_orphan`: các mặt cắt
+    thật phải đi qua sạch (đã có `test_pipeline`), còn hình lỗi cũ thì phải bị
+    chặn ngay trong `write_mct` — chứ không để Midas phát hiện hộ ở dòng 171.
+    """
+    hong = '\n'.join([
+        '*NODE    ; Nodes',
+        '; iNO, X, Y, Z',
+        '   18, 0.0, 0, 0.0',
+        '   39, 0.0, 0, 0.0',        # trùng khít node 18 — đúng lỗi SLT
+        '',
+        '*ELEMENT    ; Elements',
+        '; iEL, TYPE, iMAT, iPRO, iN1, iN2, ANGLE, iSUB',
+        '   38, BEAM, 1, 38, 39, 18, 0, 0',
+        '',
+    ])
+    with pytest.raises(ValueError) as e:
+        _kiem_hinh_hoc(hong, 'SLT')
+    assert '38' in str(e.value) and 'dài 0' in str(e.value), \
+        f'thông báo không chỉ ra phần tử nào: {e.value}'
+
+    lanh = hong.replace('   39, 0.0, 0, 0.0', '   39, 0.0, 0, 1.75')
+    _kiem_hinh_hoc(lanh, 'SLT')   # không được báo bừa
+
+
 if __name__ == '__main__':
     failed = 0
     for fn, label in ((test_custom_supports, 'gối tuỳ đặt'),
@@ -844,7 +877,9 @@ if __name__ == '__main__':
                        'project giữ cốt thép + tuỳ chọn kiểm toán'),
                       (test_web_marks_sit_inside_the_web, 'ký hiệu G/H trong bụng'),
                       (test_pt_detected_only_where_cables_exist,
-                       'nhận diện cáp đúng bộ phận')):
+                       'nhận diện cáp đúng bộ phận'),
+                      (test_geometry_guard_catches_zero_length_element,
+                       'bộ kiểm bắt được phần tử dài 0')):
         try:
             fn()
             print(f'PASS  {label}')

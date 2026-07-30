@@ -64,6 +64,58 @@ def _write_constraint_block(blocks, bot_ids, bot_nodes, supports, defaults):
     return sorted(eff, key=lambda d: d['x'])
 
 
+def _kiem_hinh_hoc(txt: str, section_name: str) -> None:
+    """Soi *NODE/*ELEMENT của MCT vừa ghi: node trùng toạ độ, phần tử dài 0.
+
+    Vì sao kiểm trên CHÍNH văn bản MCT chứ không trên `frame`: đây đúng là thứ
+    Midas đọc, và một mình nó dùng được cho cả nhánh một hộp lẫn hai hộp.
+
+    Đây là lỗi đã xảy ra thật, và nó im lặng suốt cả quy trình: SLT dựng vách
+    giữa xuống dưới đáy dầm nên node 18 và 39 trùng nhau ở (0; 0), phần tử 38
+    nối hai node đó thành phần tử dài 0. Midas chối ngay lúc import ("The
+    geometry of the element no. 38 is incorrect. Run Error : command in line
+    171"), bỏ dở nốt file — nên .mcb chỉ 17 KB, không có khối tải nào, và thông
+    báo tiếp theo lại là "Load information has not been entered", trỏ sai hẳn
+    chỗ. Không có gì trong app lộ ra: MCT vẫn ghi xong, topo vẫn đủ khoá, khung
+    xem vẫn vẽ. Chỉ chạy Midas mới biết.
+    """
+    toa_do, khoi = {}, None
+    for dong in txt.splitlines():
+        s = dong.strip()
+        if s.startswith('*'):
+            khoi = s.split(';')[0].strip().upper()
+            continue
+        if not s or s.startswith(';'):
+            continue
+        c = [t.strip() for t in s.split(',')]
+        try:
+            if khoi == '*NODE' and len(c) >= 4:
+                toa_do[int(c[0])] = (float(c[1]), float(c[2]), float(c[3]))
+            elif khoi == '*ELEMENT' and len(c) >= 6:
+                # iEL, TYPE, iMAT, iPRO, iN1, iN2, ANGLE, iSUB
+                i, j = int(c[4]), int(c[5])
+                if i in toa_do and j in toa_do and toa_do[i] == toa_do[j]:
+                    x, _, z = toa_do[i]
+                    raise ValueError(
+                        f'{section_name}: phần tử {int(c[0])} dài 0 — node {i} và '
+                        f'{j} trùng nhau tại (x={x:.4f}, z={z:.4f}). Midas sẽ chối '
+                        f'file ngay lúc import và bỏ dở phần còn lại.')
+        except ValueError as e:
+            if 'dài 0' in str(e):
+                raise
+            continue
+
+    trung = {}
+    for nid, p in toa_do.items():
+        trung.setdefault(p, []).append(nid)
+    lap = {p: ids for p, ids in trung.items() if len(ids) > 1}
+    if lap:
+        mo_ta = '; '.join(f'(x={p[0]:.4f}, z={p[2]:.4f}) → node {ids}'
+                          for p, ids in list(lap.items())[:5])
+        raise ValueError(f'{section_name}: {len(lap)} vị trí có node trùng toạ độ — '
+                         f'{mo_ta}')
+
+
 def write_mct(frame: dict, section_name: str = 'Section',
               excel_path: str = None,
               pt_cables: list = None,
@@ -603,7 +655,9 @@ def write_mct(frame: dict, section_name: str = 'Section',
         ],
     }
 
-    return '\n'.join(blocks), topology
+    txt = '\n'.join(blocks)
+    _kiem_hinh_hoc(txt, section_name)
+    return txt, topology
 
 
 def _write_mct_twin(frame: dict, section_name: str = 'Section',
@@ -1066,7 +1120,9 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
             for t in tendons
         ],
     }
-    return '\n'.join(blocks), topology
+    txt = '\n'.join(blocks)
+    _kiem_hinh_hoc(txt, section_name)
+    return txt, topology
 
 
 def _write_load_data(blocks, ld, elements, top_ids, top_nodes,
