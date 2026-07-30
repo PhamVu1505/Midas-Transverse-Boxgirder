@@ -332,7 +332,7 @@ Không có COM, không có API HTTP, kết quả nằm trong `.CA*` nhị phân 
 ## Current Sprint
 **Goal:** v1.4.0 — kiểm toán tiết diện theo TCVN 11823 trong app (điểm kiểm toán cho mặt cắt nhiều hộp, `src/section_check.py`, GUI mới).
 
-**Trạng thái:** `pytest tests -q` **43/43 pass**. Đã bump **v1.4.0** và **push toàn bộ `feature/t13-twin-box`** lên remote (2026-07-29) — nhánh mới trên GitHub, chưa mở PR, chưa merge vào `master`. Toàn bộ v1.4.0 đã chạy trên số liệu Midas thật.
+**Trạng thái:** `pytest tests -q` **69/69 pass**. Đã bump **v1.4.0** và push `feature/t13-twin-box` lên remote (2026-07-29) — chưa mở PR, chưa merge vào `master`. **Hai commit sau đó chưa push**: `eefa941` (sửa vách giữa hai hộp) và `9f91ef5` (CLAUDE.md). Cả 6 mặt cắt đã chạy trên Midas thật bằng driver: **6 đạt · 0 hỏng**.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
@@ -392,11 +392,5 @@ Không có COM, không có API HTTP, kết quả nằm trong `.CA*` nhị phân 
 - 2026-07-29: **Căng cáp một đầu/hai đầu** (`Section.pt_jacking`, ô chọn ở dock Properties, `--pt-jacking` cho CLI) + **`src/input_check.py`** đối chiếu template với hình học: suy ngược `S`/`X` từ tải bánh (tự kiểm chứng bằng hai công thức độc lập), phân biệt sai số **thiếu tải** với **dư tải**, hộp thoại hỏi trước khi tạo MCT. Phát hiện template chung mang `S = 6468 mm` không khớp mặt cắt nào — S10 và S20 **thiếu tải 5–18%**. Sửa nốt mũi tên `QComboBox`.
 - 2026-07-29: **Bump v1.4.0 + push cả nhánh** (44 commit) + sửa **bốn lỗi hiển thị chỉ lộ ra trong ảnh chụp**: bóng ma widget đè lên dock Properties (`deleteLater` không đủ, phải `setParent(None)`) · nút ✕ xóa gối bị QSS `padding` bóp thành chấm mờ · mũi tên mọi `QSpinBox` biến mất (phải sinh PNG lúc chạy, `image: url()` là cách duy nhất) · thanh trạng thái chồng ba dòng chữ (bỏ thông điệp tạm của `QStatusBar`). Chốt **chưa tạo lại S20**; đưa `data/Transverse-HT.xls` vào repo.
 - 2026-07-29: **Tab Kiểm toán mặt cắt** (nhập cốt thép, hệ số Mr/Mu, tô ô xanh/vàng/đỏ, xuất Excel in được theo mẫu Hà Tam) + **nhận diện cáp DƯL** (`src/pt_layout.py`, mặc định KHÔNG kể) + **biểu đồ bao nội lực** kiểu midas (`gui/force_diagram.py`) + Results table zoom/pan, bảng theo số điểm thật + **`tools/render_ui.py`** chụp mọi thẻ bằng một lệnh.
-- 2026-07-28: **Kiểm toán tiết diện theo TCVN 11823** — tra bản chính thức, `src/section_check.py` (Bảng 4/5, pt.82/83/84), điểm kiểm toán tổng quát cho mặt cắt nhiều hộp, đọc HẾT sheet Beam Force, Results tab vẽ mặt cắt thật + ký hiệu vết cắt.
-- 2026-07-27: **Dọn tổ hợp tải trọng** (bảng dữ liệu, tên TCVN 11823, bỏ tổ hợp trùng, bộ kiểm tham chieu) + **giải mã mạch tính hoạt tải trong Excel** + xác minh trên Midas thật (`output/S1`); bỏ `lane` khỏi VCLASS; bump v1.3.1.
-- 2026-07-27: Hộp thoại **Tùy chọn** (3 trang, 3 bảng màu, đổi tức thì) + khoá mặc định lần đầu giống hệt v1.3.0 (`tests/test_theme.py`).
-- 2026-07-27: Sửa **`path_mct`** vẽ cáp sai chỗ (BOT lên đỉnh dầm, WEB nằm ngang); `src/preview.py` xem trước từ DXF; kéo thả DXF/thư mục/`.mtbproj`.
-- 2026-07-27: Cáp DƯL tách hình học khỏi vật liệu (vẫn hiện khi chưa có template, kèm cảnh báo); mở rộng nhận diện layer cáp; nút "..." hết tàng hình.
-- 2026-07-26: Sửa lỗi Midas `(null)` (STLDCASE/LOADCOMB ghi vô điều kiện); dựng lại bố cục đúng mockup; sửa gối kiểu Fast Restraints; cửa sổ Hướng dẫn tiếng Việt.
 
 Lịch sử đầy đủ: `git log --oneline`.
