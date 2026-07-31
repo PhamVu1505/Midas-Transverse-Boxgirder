@@ -420,13 +420,23 @@ class PreferencesDialog(QDialog):
         self.lb_font.setText(f'{v} pt')
         self._set('font_pt', int(v))
 
+    def _controls(self):
+        """Mọi widget nhập liệu của hộp thoại — MỘT danh sách duy nhất.
+
+        Trước đây danh sách này viết **hai lần**: một để chặn tín hiệu, một
+        trong `finally` để mở lại. Thêm widget mới mà chỉ sửa một chỗ thì nó bị
+        chặn **vĩnh viễn** — bấm vào không có gì xảy ra, không lỗi, không dấu
+        vết. Đúng chuyện đã xảy ra với hai ô của trang Midas.
+        """
+        return (self.cb_accent, self.cb_density, self.cb_font, self.cb_mode,
+                self.sl_font, self.ck_reopen, self.ck_select,
+                self.ck_midas, self.ck_midas_confirm,
+                self.ed_out, self.ed_tpl, *self.layer_boxes.values(),
+                *self.grp_theme.buttons())
+
     def _sync_widgets(self):
         """Đổ giá trị từ `self.p` vào widget mà không kích lại tín hiệu."""
-        for w in (self.cb_accent, self.cb_density, self.cb_font, self.cb_mode,
-                  self.sl_font, self.ck_reopen, self.ck_select,
-                  self.ck_midas, self.ck_midas_confirm,
-                  self.ed_out, self.ed_tpl, *self.layer_boxes.values(),
-                  *self.grp_theme.buttons()):
+        for w in self._controls():
             w.blockSignals(True)
         try:
             for b in self.grp_theme.buttons():
@@ -447,10 +457,7 @@ class PreferencesDialog(QDialog):
             for k, c in self.layer_boxes.items():
                 c.setChecked(bool(self.p.layers.get(k, True)))
         finally:
-            for w in (self.cb_accent, self.cb_density, self.cb_font, self.cb_mode,
-                      self.sl_font, self.ck_reopen, self.ck_select,
-                      self.ed_out, self.ed_tpl, *self.layer_boxes.values(),
-                      *self.grp_theme.buttons()):
+            for w in self._controls():
                 w.blockSignals(False)
         self._restyle_preview()
 

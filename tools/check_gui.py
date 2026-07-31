@@ -210,6 +210,39 @@ def kiem_chay_midas_mac_dinh_tat(c):
     return 'tắt sẵn · bật thì mở khoá · đang chạy thì khoá lại'
 
 
+def kiem_tuy_chon_khong_chan_tin_hieu(c):
+    """Không widget nào của hộp thoại Tùy chọn bị bỏ quên ở trạng thái chặn tín hiệu.
+
+    `_sync_widgets()` chặn tín hiệu để đổ giá trị vào widget rồi mở lại trong
+    `finally`. Bản trước viết danh sách widget **hai lần** — thêm widget mới mà
+    chỉ sửa một chỗ thì nó bị chặn **vĩnh viễn**: bấm vào không có gì xảy ra,
+    không lỗi, không dấu vết. Đúng chuyện đã xảy ra với hai ô của trang Midas,
+    và người dùng là người phát hiện chứ không phải phép kiểm nào.
+    """
+    from gui.prefs import PreferencesDialog
+    d = PreferencesDialog(c.w.prefs, c.w)
+    try:
+        bi_chan = [n for n in dir(d)
+                   if n.startswith(('ck_', 'cb_', 'ed_', 'sl_'))
+                   and hasattr(getattr(d, n, None), 'signalsBlocked')
+                   and getattr(d, n).signalsBlocked()]
+        assert not bi_chan, \
+            f'widget còn bị chặn tín hiệu sau _sync_widgets: {bi_chan} — ' \
+            f'bấm vào sẽ không có tác dụng gì'
+
+        # Và kiểm cụ thể ô quan trọng nhất: bấm phải ghi được vào Prefs.
+        truoc = d.p.midas_auto
+        d.ck_midas.setChecked(not truoc)
+        c.step()
+        assert d.p.midas_auto != truoc, \
+            'bấm ô "Cho phép app tự lái Midas/Civil" nhưng Prefs không đổi'
+        assert d.ck_midas_confirm.isEnabled() == d.p.midas_auto, \
+            'ô con "Hỏi lại trước mỗi lần chạy" không đi theo ô cha'
+        return f'{len(list(d._controls()))} widget đều nhận tín hiệu'
+    finally:
+        d.close()
+
+
 def kiem_preflight_hoi_truoc_khi_tao(c):
     """Số liệu template lệch hình học thì phải HỎI trước khi tạo MCT."""
     import PyQt6.QtWidgets as QtW
@@ -353,6 +386,7 @@ CHECKS = [
     kiem_dung_lai_combo_khong_keo_cay,
     kiem_o_cang_cap,
     kiem_chay_midas_mac_dinh_tat,
+    kiem_tuy_chon_khong_chan_tin_hieu,
     kiem_preflight_hoi_truoc_khi_tao,
     kiem_khong_co_widget_mo_coi,
     kiem_thanh_trang_thai_khong_chong_chu,
