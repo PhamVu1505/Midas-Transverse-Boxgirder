@@ -45,8 +45,15 @@ PANEL = (1560, 980)        # cỡ khi chụp riêng một panel (rộng hơn, kh
 # Tên file Beam Force hay gặp trong output/<mặt cắt>/. Cố ý KHÔNG nhận
 # '<tên mặt cắt>.xls' — thư mục kết quả của Midas đầy file .xls khác, đoán bừa
 # thì công cụ đọc nhầm rồi báo lỗi khó hiểu.
-BF_NAMES = ('Beam Force.xls', 'Beam Force.xlsx',
-            'Beam Force_{name}.xls', 'Beam Force_{name}.xlsx')
+#
+# **Tên mang tên mặt cắt phải đứng TRƯỚC.** `discover()` dừng ở cái đầu tiên khớp,
+# mà `Beam Force.xls` là tên chung Midas đặt mặc định — nó có thể là bản xuất tay
+# từ đời mô hình nào cũng được. Xếp nó trước thì nó **che mất** bản driver vừa
+# sinh: `output/S1_V2` từng có `Beam Force.xls` của mô hình 114 phần tử nằm cạnh
+# `Beam Force_S1_V2.xls` 113 phần tử, và công cụ lấy đúng cái sai. Tên riêng thì
+# không mơ hồ, nên nó phải thắng.
+BF_NAMES = ('Beam Force_{name}.xls', 'Beam Force_{name}.xlsx',
+            'Beam Force.xls', 'Beam Force.xlsx')
 
 
 # ─────────────────────────────────────────────────────────────
