@@ -61,6 +61,14 @@ class Prefs:
     reopen_last: bool = True
     select_on_add: bool = True
 
+    # ── Midas ──
+    # MẶC ĐỊNH TẮT, và đó là chủ ý. Driver lái Midas qua chính giao diện của nó
+    # (không có COM, không có API), nên lúc chạy nó chiếm ribbon lẫn tiền cảnh —
+    # máy không dùng được. Đường ưu tiên vẫn là người dùng tự mở Midas và tự bấm;
+    # một công cụ giành lấy chuột và bàn phím thì không được phép tự bật.
+    midas_auto: bool = False
+    midas_confirm: bool = True
+
     # ── dẫn xuất ──
     def tokens(self) -> dict:
         return make_theme(self.theme, self.accent)
@@ -156,7 +164,8 @@ class PreferencesDialog(QDialog):
         self.pages = QStackedWidget()
         for title, page in (('Giao diện', self._page_appearance()),
                             ('Khung xem', self._page_viewer()),
-                            ('Mặc định', self._page_defaults())):
+                            ('Mặc định', self._page_defaults()),
+                            ('Midas', self._page_midas())):
             QListWidgetItem(title, self.nav)
             self.pages.addWidget(page)
         self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
@@ -326,6 +335,53 @@ class PreferencesDialog(QDialog):
         v.addStretch()
         return w
 
+    # ── trang Midas ──
+    def _page_midas(self):
+        """Bật/tắt chạy Midas tự động.
+
+        Trang riêng chứ không nhét vào *Mặc định*: đây là tính năng duy nhất
+        trong app **chiếm quyền điều khiển máy**, nên nó phải đứng một mình với
+        lời cảnh báo đọc được, không lẫn giữa mấy ô đường dẫn.
+        """
+        w = QWidget()
+        v = QVBoxLayout(w)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(10)
+
+        gb = QGroupBox('Chạy Midas/Civil từ trong app (bước ③)')
+        v2 = QVBoxLayout(gb)
+        self.ck_midas = QCheckBox('Cho phép app tự lái Midas/Civil')
+        self.ck_midas.toggled.connect(self._on_midas_auto)
+        v2.addWidget(self.ck_midas)
+        # Thụt lề để thấy ngay nó phụ thuộc ô trên. Chỉ dựa vào màu "bị khoá" là
+        # chưa đủ — ô đã tích nằm ngay dưới ô chưa tích vẫn đọc thành "đang bật".
+        self.ck_midas_confirm = QCheckBox('Hỏi lại trước mỗi lần chạy')
+        self.ck_midas_confirm.setStyleSheet('margin-left: 22px;')
+        self.ck_midas_confirm.toggled.connect(
+            lambda on: self._set('midas_confirm', on, False))
+        v2.addWidget(self.ck_midas_confirm)
+        v.addWidget(gb)
+
+        self.lb_midas = QLabel()
+        self.lb_midas.setWordWrap(True)
+        self.lb_midas.setTextFormat(Qt.TextFormat.RichText)
+        self.lb_midas.setText(
+            '<b>Mặc định tắt — nên để nguyên nếu không có nhu cầu rõ ràng.</b><br><br>'
+            'Midas/Civil không có COM và không có API, nên cách duy nhất để tự '
+            'động hoá là lái qua chính giao diện của nó. Trong lúc chạy, app '
+            '<b>bấm thật vào ribbon và chiếm tiền cảnh</b> — máy không dùng được, '
+            'khoảng 1–3 phút mỗi mặt cắt.<br><br>'
+            'App <b>không bao giờ tự mở, tự đóng hay tắt Midas</b>. VuPQ tự mở '
+            'Midas, để tài liệu trống, rồi app bám vào phiên đó. Tài liệu đang mở '
+            'không sạch thì app dừng và báo, chứ không đè lên.')
+        v.addWidget(self.lb_midas)
+        v.addStretch()
+        return w
+
+    def _on_midas_auto(self, on):
+        self._set('midas_auto', on, False)
+        self.ck_midas_confirm.setEnabled(bool(on))
+
     def _path_row(self, tip, on_pick):
         box = QWidget()
         h = QHBoxLayout(box)
@@ -368,6 +424,7 @@ class PreferencesDialog(QDialog):
         """Đổ giá trị từ `self.p` vào widget mà không kích lại tín hiệu."""
         for w in (self.cb_accent, self.cb_density, self.cb_font, self.cb_mode,
                   self.sl_font, self.ck_reopen, self.ck_select,
+                  self.ck_midas, self.ck_midas_confirm,
                   self.ed_out, self.ed_tpl, *self.layer_boxes.values(),
                   *self.grp_theme.buttons()):
             w.blockSignals(True)
@@ -382,6 +439,9 @@ class PreferencesDialog(QDialog):
             self.lb_font.setText(f'{int(self.p.font_pt)} pt')
             self.ck_reopen.setChecked(bool(self.p.reopen_last))
             self.ck_select.setChecked(bool(self.p.select_on_add))
+            self.ck_midas.setChecked(bool(self.p.midas_auto))
+            self.ck_midas_confirm.setChecked(bool(self.p.midas_confirm))
+            self.ck_midas_confirm.setEnabled(bool(self.p.midas_auto))
             self.ed_out.setText(self.p.output_dir or '')
             self.ed_tpl.setText(self.p.template or '')
             for k, c in self.layer_boxes.items():

@@ -173,6 +173,43 @@ def kiem_o_cang_cap(c):
     return 'khoá đúng lúc · ghi được vào project'
 
 
+def kiem_chay_midas_mac_dinh_tat(c):
+    """Chạy Midas phải TẮT sẵn, và bước ③ chỉ hết 'ngoài app' khi đã bật."""
+    w = c.w
+
+    # ── mặc định: tắt ──
+    assert not w.prefs.midas_auto, \
+        'chạy Midas tự động đang BẬT SẴN — nó chiếm chuột và bàn phím của người ' \
+        'dùng, không được phép tự bật'
+    assert not w.a_midas.isEnabled(), \
+        'tính năng tắt mà mục "Chạy Midas/Civil" vẫn bấm được'
+    assert w.a_midas.isVisible() or w.a_midas.text(), \
+        'mục vẫn phải hiện (dù khoá) để người dùng biết là có'
+    assert 'Tùy chọn' in w.a_midas.toolTip(), \
+        f'chú thích không chỉ đường bật: {w.a_midas.toolTip()!r}'
+    assert w.steps.steps[2][2] is True, \
+        'chưa bật tự động mà bước ③ đã bỏ dấu "ngoài app"'
+
+    # ── bật lên ──
+    w.prefs.midas_auto = True
+    w._sync_midas_action()
+    c.step()
+    assert w.a_midas.isEnabled(), 'đã bật mà mục vẫn bị khoá'
+    assert w.steps.steps[2][2] is False, \
+        'đã bật tự động mà bước ③ vẫn vẽ nét đứt "ngoài app" — thanh bước nói sai'
+
+    # ── đang chạy thì khoá lại, khỏi chồng hai lượt ──
+    w.midas_worker = object()
+    w._sync_midas_action()
+    c.step()
+    assert not w.a_midas.isEnabled(), \
+        'đang chạy Midas mà vẫn bấm được lần nữa — hai lượt sẽ giành nhau ribbon'
+    w.midas_worker = None
+    w.prefs.midas_auto = False
+    w._sync_midas_action()
+    return 'tắt sẵn · bật thì mở khoá · đang chạy thì khoá lại'
+
+
 def kiem_preflight_hoi_truoc_khi_tao(c):
     """Số liệu template lệch hình học thì phải HỎI trước khi tạo MCT."""
     import PyQt6.QtWidgets as QtW
@@ -315,6 +352,7 @@ CHECKS = [
     kiem_dong_bo_mat_cat_tu_kiem_toan,
     kiem_dung_lai_combo_khong_keo_cay,
     kiem_o_cang_cap,
+    kiem_chay_midas_mac_dinh_tat,
     kiem_preflight_hoi_truoc_khi_tao,
     kiem_khong_co_widget_mo_coi,
     kiem_thanh_trang_thai_khong_chong_chu,

@@ -44,6 +44,19 @@ class StepBar(QWidget):
                 self.steps[index] = (lb, sub, ex)
             self.update()
 
+    def set_external(self, index: int, external: bool, sub: str = None):
+        """Đổi bước giữa 'ngoài app' (nét đứt, chữ nghiêng) và 'trong app'.
+
+        Bước ③ chạy Midas đổi vai theo tùy chọn: tắt tự động thì nó vẫn là việc
+        người dùng làm bên ngoài, bật thì app tự chạy. Vẽ mãi nét đứt trong khi
+        app đang tự chạy thì thanh bước nói sai — mà nó là thứ duy nhất giải
+        thích vì sao quy trình có hai nửa.
+        """
+        if 0 <= index < len(self.steps):
+            lb, old_sub, _ = self.steps[index]
+            self.steps[index] = (lb, old_sub if sub is None else sub, external)
+            self.update()
+
     def reset(self):
         self.state = [IDLE] * len(self.steps)
         self.update()

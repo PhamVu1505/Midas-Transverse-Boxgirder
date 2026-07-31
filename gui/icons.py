@@ -35,6 +35,9 @@ _P = {
     'folder':   'M1.5 4.5A1.5 1.5 0 0 1 3 3h3l1.5 2H13a1.5 1.5 0 0 1 1.5 1.5v6'
                 'A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5z',
     'clear':    'M4 4l8 8 M12 4l-8 8',
+    # chạy Midas: tam giác play trong khung — khung để phân biệt với 'generate',
+    # hai việc khác nhau mà nằm cạnh nhau trên cùng một menu.
+    'run':       'M2.5 2.5h11v11h-11z M6.4 5.6l4.4 2.4-4.4 2.4z',
     'info':     'M8 1.8a6.2 6.2 0 1 0 0 12.4A6.2 6.2 0 0 0 8 1.8z M8 7.2v4 M8 4.9v.1',
     'fit':      'M2 5.5v-3h3 M14 5.5v-3h-3 M2 10.5v3h3 M14 10.5v3h-3',
     # bánh răng: vòng trong + 8 răng, vẽ bằng nét nên hợp tông với bộ còn lại

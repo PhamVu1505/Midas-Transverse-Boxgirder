@@ -278,8 +278,8 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 ## Lệnh thường dùng
 ```bash
 python run_gui.py
-python -m pytest tests -q                        # 67 bài: MCT, kiểm toán, số liệu đầu vào
-python tools/check_gui.py                        # bấm thật rồi đối chiếu (skill kiem-gui)
+python -m pytest tests -q                        # 69 bài: MCT, kiểm toán, số liệu đầu vào
+python tools/check_gui.py                        # 22 phép kiểm, bấm thật (skill kiem-gui)
 python tools/render_ui.py                        # ảnh mọi thẻ → docs/ui-snapshots/
 python tools/make_user_guide.py                  # sinh lại docs/USER-GUIDE.txt
 installer\build.bat
@@ -331,6 +331,17 @@ Không có COM, không có API HTTP, kết quả nằm trong `.CA*` nhị phân 
 - Tìm mục menu thì soi **mọi cửa sổ nổi**, không chỉ cửa sổ vừa mọc: cửa sổ menu của Midas không bị huỷ khi đóng, chỉ bị **ẩn** rồi hiện lại. **Bỏ cửa sổ chính** khỏi phạm vi duyệt UIA — ribbon BCGPro mất 30–60 s một lượt.
 - `'TOTAL ELAPSED TIME'` là dấu hiệu giải xong, **không phải** `'OVERALL TIME LOG'` (Midas in chuỗi đó giãn ký tự). Chỗ này chính tài liệu Giai đoạn 0 tôi viết đã sai.
 - `chay_mot_mat_cat` tự dọn tài liệu **chỉ khi** tài liệu đang mở là của driver (đường dẫn dưới thư mục tạm) — `moi_tai_lieu()` trả lời **No** cho hộp hỏi lưu. Nhận biết phải `realpath` chứ không `abspath`: `gettempdir()` trả dạng 8.3 (`VUPQ~1.CIT`) còn tiêu đề Midas luôn là đường dẫn dài.
+
+### Chạy Midas từ GUI — Giai đoạn 3 (v1.4.1)
+`gui/midas_worker.py` + `Prefs.midas_auto`. **Mặc định TẮT, và đó là yêu cầu của VuPQ**: đường ưu tiên vẫn là tự mở Midas rồi tự bấm. Bật ở `Tùy chọn → Midas`, chạy bằng `Mô hình → Chạy Midas/Civil` (**F8**).
+
+- **Mục menu vẫn HIỆN khi tắt, chỉ bị khoá** kèm chú thích chỉ đường. Giấu hẳn thì người dùng không biết là có; bật sẵn thì app tự giành lấy chuột. Cả hai đều sai.
+- **`MidasWorker` gọi thẳng `chay_nhieu_mat_cat()`, không tự viết vòng lặp.** Cổng an toàn (`kiem_tai_lieu_sach`, dọn giữa hai mặt cắt, nhận diện tài liệu của driver) chỉ được có **một bản**. Driver nhận thêm callback `on_xong`/`on_loi` để GUI cập nhật tiến độ ngay sau từng mặt cắt — trả kết quả ở cuối thì loạt 6 mặt cắt là thanh tiến độ đứng im từ đầu tới cuối.
+- **Bước ③ của `StepBar` đổi vai theo tuỳ chọn** (`set_external`): tắt thì nét đứt + chữ nghiêng + `ngoài app`, bật thì nét liền. Để nguyên nét đứt trong khi app đang tự chạy thì thanh bước nói sai đúng điều nó sinh ra để nói.
+- Hộp xác nhận **mặc định nút Huỷ** — nó báo một việc chiếm máy, lỡ tay Enter thì phải là không làm gì.
+- Chạy xong **gán luôn** Beam Force vào project (`set_beam_force`); driver ghi đúng chỗ tab Kết quả tìm.
+- **`QCheckBox` bị khoá trước đây không nhìn ra là khoá** — theme thiếu quy tắc `:disabled` nên ô đã tích vẫn tô đầy màu nhấn. Tuỳ chọn con *Hỏi lại trước mỗi lần chạy* nằm dưới ô cha chưa bật đọc thành "đang bật". Đã thêm `QCheckBox:disabled` + thụt lề ô con. Ảnh chụp mới thấy, `pytest` im lặng.
+- `tools/check_gui.py::kiem_chay_midas_mac_dinh_tat` khoá cả ba: tắt sẵn · bật thì mở khoá · đang chạy thì khoá lại. Đã dựng lại **3 biến thể lỗi** và phép kiểm bắt được **3/3**.
 
 ### Vách giữa mặt cắt hai hộp (v1.4.1)
 `center_top` lấy bằng **nội suy** trên cạnh OUTPOLY cắt qua x=0 có z cao nhất (`_mat_tren_tai_tim`), và đỉnh vách giữa lấy từ **đỉnh mặt void hướng vào vách** — chính là mặt dưới bản top ở đoạn đó.

@@ -493,6 +493,18 @@ QCheckBox::indicator:checked {{
     border: 1px solid {t['accent']}; border-radius: 2px; background: {t['accent']};
 }}
 QCheckBox::indicator:hover {{ border-color: {t['accent']}; }}
+/* Ô tích BỊ KHOÁ phải nhìn ra là khoá.
+   Không có quy tắc này thì ô đã tích vẫn tô đầy màu nhấn y hệt lúc mở, nên một
+   tuỳ chọn con nằm dưới ô cha chưa bật đọc thành "đang bật" — thấy rõ nhất ở
+   trang Tùy chọn → Midas, nơi "Hỏi lại trước mỗi lần chạy" treo dưới "Cho phép
+   app tự lái Midas/Civil". */
+QCheckBox:disabled, QRadioButton:disabled {{ color: {t['ink_3']}; }}
+QCheckBox::indicator:unchecked:disabled {{
+    border: 1px solid {t['border']}; background: {t['sunken']};
+}}
+QCheckBox::indicator:checked:disabled {{
+    border: 1px solid {t['border']}; background: {t['ink_3']};
+}}
 QRadioButton::indicator {{ border-radius: 8px; border: 1px solid {t['border']};
                            background: {t['panel']}; }}
 QRadioButton::indicator:checked {{

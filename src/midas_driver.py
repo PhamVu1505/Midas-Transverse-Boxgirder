@@ -1100,7 +1100,7 @@ def chay_mot_mat_cat(mct: str, xls: str = None, mcb: str = None, log=print) -> d
     return tk
 
 
-def chay_nhieu_mat_cat(danh_sach, log=print) -> dict:
+def chay_nhieu_mat_cat(danh_sach, log=print, on_xong=None, on_loi=None) -> dict:
     """Chạy nhiều mặt cắt liên tiếp trên MỘT phiên Midas.
 
     **Một mặt cắt lỗi không được dừng cả loạt** — cùng lối với `GenerateWorker`
@@ -1111,6 +1111,16 @@ def chay_nhieu_mat_cat(danh_sach, log=print) -> dict:
     Giữa hai mặt cắt phải **dọn** (đóng hộp thoại sót) rồi **về tài liệu trống**.
     Bỏ bước đó thì mặt cắt sau gặp cổng `kiem_tai_lieu_sach()` và trượt hàng loạt
     vì một lý do chẳng liên quan gì tới nó.
+
+    `on_xong(tên, thống_kê, xls)` / `on_loi(tên, thông_điệp)` được gọi **ngay sau
+    từng mặt cắt**, không phải đợi hết loạt. GUI cần vậy để cập nhật tiến độ và
+    gán luôn file Beam Force vào project; nếu chỉ trả kết quả ở cuối thì một loạt
+    6 mặt cắt là 6 lần chạy Midas mà thanh tiến độ đứng im từ đầu tới cuối.
+
+    Đây cũng là lý do GUI **gọi thẳng hàm này** chứ không tự viết vòng lặp riêng:
+    cổng an toàn `kiem_tai_lieu_sach()` và phần dọn giữa hai mặt cắt chỉ nên có
+    một bản. Hai bản là sớm muộn cũng lệch — đúng kiểu `run.py` từng quên ghi
+    `topo.json` trong khi nhánh GUI vẫn ghi.
 
     Returns:
         {'xong': {tên: thống kê}, 'loi': {tên: thông điệp}}
@@ -1139,12 +1149,18 @@ def chay_nhieu_mat_cat(danh_sach, log=print) -> dict:
                 xong[ten] = tk
                 log(f'[{ten}] ĐẠT · {tk["ban_ghi"]:,} bản ghi · '
                     f'{tk["phan_tu"]} phần tử · {tk["truong_hop_tai"]} trường hợp tải')
+                if on_xong:
+                    on_xong(ten, tk, _duong_dan(mct)[3])
             except MidasError as e:
                 loi[ten] = str(e)
                 log(f'[{ten}] HỎNG · {e}')
+                if on_loi:
+                    on_loi(ten, str(e))
             except Exception as e:                 # lỗi lạ cũng không được dừng loạt
                 loi[ten] = f'{type(e).__name__}: {e}'
                 log(f'[{ten}] HỎNG · {type(e).__name__}: {e}')
+                if on_loi:
+                    on_loi(ten, f'{type(e).__name__}: {e}')
         sot = s.don_dep()
         if sot:
             log(f'\nCòn hộp thoại không đóng được: {", ".join(sot)}')

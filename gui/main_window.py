@@ -24,7 +24,7 @@ from .widgets import LogView
 from .icons import icon
 from .theme import LIGHT, FONT_MONO, THEMES, apply_theme
 from .prefs import Prefs, PreferencesDialog
-from .widgets import StepBar, ACTIVE, DONE
+from .widgets import StepBar, IDLE, ACTIVE, DONE
 from . import assets
 
 VERSION = 'v1.4.0'
@@ -76,6 +76,7 @@ class MainWindow(QMainWindow):
         self.project = Project()
         self.project.output_dir = self.prefs.output_dir or 'output'
         self.project.template = self.prefs.template
+        self.midas_worker = None
 
         self.setWindowIcon(assets.app_icon())
         self.setAcceptDrops(True)
@@ -94,6 +95,7 @@ class MainWindow(QMainWindow):
         self._push_theme()
         self.panel.set_layer_states(self.prefs.layers)
         self.panel.select_on_add = self.prefs.select_on_add
+        self._sync_midas_action()
         self._select_start_mode()
         self._restore_settings()
         self._update_title()
@@ -331,6 +333,12 @@ class MainWindow(QMainWindow):
                                    self.generate_selected, 'Shift+F5')
         m.addAction(self.a_gen)
         m.addAction(self.a_gen_sel)
+        m.addSeparator()
+        # Mục vẫn HIỆN khi tính năng tắt, chỉ bị khoá kèm chú thích chỉ đường.
+        # Giấu hẳn thì người dùng không biết là có, mà bật sẵn thì app tự giành
+        # lấy chuột — cả hai đều sai. `_sync_midas_action()` lo phần khoá/mở.
+        self.a_midas = self._act('Chạy &Midas/Civil', self.run_midas, 'F8', 'run')
+        m.addAction(self.a_midas)
         m.addSeparator()
         m.addAction(self._act('&Xóa nhật ký', self.clear_log, 'Ctrl+L', 'clear'))
 
@@ -703,6 +711,7 @@ class MainWindow(QMainWindow):
         if self.prefs.layers != old.layers:
             self.panel.set_layer_states(self.prefs.layers)
         self.panel.select_on_add = self.prefs.select_on_add
+        self._sync_midas_action()
         self._sync_theme_menu()
         self.status_msg('Đã áp dụng tùy chọn giao diện')
 
@@ -786,6 +795,118 @@ class MainWindow(QMainWindow):
 
     def clear_log(self):
         self.log.clear()
+
+    # ─────────────────────────────────────────
+    # Bước ③ — chạy Midas/Civil
+    # ─────────────────────────────────────────
+    def _sync_midas_action(self):
+        """Khoá/mở mục chạy Midas theo tùy chọn, và đổi vai bước ③.
+
+        Bước ③ vẽ nét đứt + chữ nghiêng vì nó nằm NGOÀI app. Bật tự động thì nó
+        không còn ngoài app nữa, nên phải vẽ nét liền — để nguyên nét đứt trong
+        khi app đang tự chạy thì thanh bước nói sai chính điều nó sinh ra để nói.
+        """
+        on = bool(getattr(self.prefs, 'midas_auto', False))
+        busy = getattr(self, 'midas_worker', None) is not None
+        self.a_midas.setEnabled(on and not busy)
+        self.a_midas.setToolTip(
+            'Nạp MCT → Perform Analysis → xuất Beam Force (F8).\n'
+            'Máy không dùng được trong lúc chạy.' if on else
+            'Đang tắt. Bật ở Tùy chọn → Midas (Ctrl+,).\n'
+            'Mặc định tắt: app phải bấm thật vào ribbon nên chiếm máy.')
+        self.steps.set_external(2, not on, '' if on else 'ngoài app')
+
+    def run_midas(self):
+        """Chạy Midas cho các mặt cắt ĐÃ CÓ MCT."""
+        if getattr(self, 'midas_worker', None) is not None:
+            return
+        if not getattr(self.prefs, 'midas_auto', False):
+            QMessageBox.information(
+                self, 'Đang tắt',
+                'Chạy Midas tự động đang tắt.\n\n'
+                'Bật ở Tùy chọn → Midas. Mặc định tắt vì app phải bấm thật vào '
+                'ribbon Midas, nên máy không dùng được trong lúc chạy.')
+            return
+
+        names = self.panel.selected_names()
+        secs = [self.project.find(n) for n in names] if names else list(self.project)
+        # Chỉ mặt cắt có MCT thật trên đĩa. Mặt cắt chưa sinh mà đưa cho driver
+        # thì nó hỏng ở bước nạp, kèm một thông điệp chẳng liên quan gì.
+        jobs = [{'name': s.name, 'mct': s.mct}
+                for s in secs if s and s.mct and os.path.exists(s.mct)]
+        if not jobs:
+            QMessageBox.information(
+                self, 'Chưa có MCT',
+                'Không mặt cắt nào đã sinh MCT.\n\nChạy “Tạo MCT” (F5) trước.')
+            return
+
+        if getattr(self.prefs, 'midas_confirm', True) and not self._confirm_midas(jobs):
+            return
+
+        from .midas_worker import MidasWorker
+        self.log.clear()
+        self.log.warning('Đang lái Midas — ĐỪNG dùng chuột và bàn phím '
+                         'cho tới khi chạy xong.')
+        self._midas_total, self._midas_done = len(jobs), 0
+        self.steps.set_state(2, ACTIVE)
+        self.prog.setVisible(True)
+        self.prog.setRange(0, len(jobs))
+        self.prog.setValue(0)
+        self.status_msg(f'Đang chạy Midas cho {len(jobs)} mặt cắt…')
+
+        self.midas_worker = MidasWorker(jobs)
+        self.midas_worker.log.connect(self.log.append_auto)
+        self.midas_worker.section_done.connect(self._on_midas_done)
+        self.midas_worker.section_error.connect(self._on_midas_error)
+        self.midas_worker.finished_all.connect(self._on_midas_finished)
+        self.midas_worker.start()
+        self._sync_midas_action()
+
+    def _confirm_midas(self, jobs) -> bool:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle('Chạy Midas/Civil')
+        box.setText(f'Sắp chạy Midas cho {len(jobs)} mặt cắt.')
+        box.setInformativeText(
+            'Trong lúc chạy, app <b>bấm thật vào ribbon Midas và chiếm tiền '
+            'cảnh</b> — máy không dùng được, khoảng 1–3 phút mỗi mặt cắt.<br><br>'
+            'Midas phải đang mở với tài liệu trống. App <b>không</b> tự mở, tự '
+            'đóng hay tắt Midas; tài liệu đang mở không sạch thì app dừng và báo.')
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setDetailedText('\n'.join(f'{j["name"]}  ←  {j["mct"]}' for j in jobs))
+        go = box.addButton('Chạy', QMessageBox.ButtonRole.AcceptRole)
+        box.addButton('Huỷ', QMessageBox.ButtonRole.RejectRole)
+        # Mặc định là HUỶ: hộp thoại này báo một việc chiếm máy, nên lỡ tay Enter
+        # thì phải là không làm gì.
+        box.setDefaultButton(box.buttons()[-1])
+        box.exec()
+        return box.clickedButton() is go
+
+    def _on_midas_done(self, name, xls, stats):
+        self._midas_done += 1
+        self.prog.setValue(self._midas_done)
+        # Gán luôn Beam Force vào project — driver vừa ghi ra đúng chỗ tab Kết
+        # quả tìm, bắt người dùng đi chọn lại bằng tay thì tự động hoá nửa vời.
+        if xls and os.path.exists(xls):
+            self.project.set_beam_force(name, xls)
+            self._on_project_changed()
+        self.status_msg(f'Midas xong: {name} — {stats.get("ban_ghi", 0):,} bản ghi')
+
+    def _on_midas_error(self, name, msg):
+        self._midas_done += 1
+        self.prog.setValue(self._midas_done)
+        self.log.error(f'[{name}] {msg}')
+
+    def _on_midas_finished(self, ok, bad):
+        self.midas_worker = None
+        self.prog.setVisible(False)
+        self.steps.set_state(2, DONE if ok and not bad else IDLE)
+        if bad:
+            self.log.warning(f'Midas: {ok} đạt · {bad} hỏng')
+        else:
+            self.log.success(f'Midas: {ok}/{ok} mặt cắt xong')
+        self.status_msg(f'Midas xong: {ok} đạt · {bad} hỏng')
+        self._sync_midas_action()
 
     def assign_bf(self):
         self.tabbar.setCurrentIndex(3)

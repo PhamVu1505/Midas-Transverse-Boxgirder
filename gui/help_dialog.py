@@ -233,10 +233,39 @@ phải lên tam giác để xoá.</p>
 nên sửa lại DXF hay đổi kích thước phần tử thì gối vẫn nằm đúng vị trí cũ.</p>
 '''),
 
+        ('Chạy Midas/Civil', f'''
+<h2 style="color:{ink}">Bước ③ — mặc định làm bằng tay</h2>
+<p>Đây là bước duy nhất nằm <b>ngoài</b> chương trình, nên thanh bước vẽ nó bằng
+nét đứt và chữ nghiêng. Cách làm thông thường: mở Midas/Civil, nhập file MCT vừa
+tạo, chạy <i>Perform Analysis</i>, rồi xuất bảng <i>Beam Force</i>.</p>
+
+<h3 style="color:{ink}">Đường tự động — phải tự bật</h3>
+<p>Chương trình <b>chạy được Midas thay bạn</b>, nhưng tính năng này
+<b>mặc định tắt</b>. Bật ở <b>Tùy chọn → Midas</b> (<b>Ctrl+,</b>), rồi dùng
+<b>Mô hình → Chạy Midas/Civil</b> (phím <b>F8</b>).</p>
+<p style="color:{ink2}">Chưa bật thì mục menu vẫn hiện nhưng bị khoá — để bạn
+biết là có, chứ không tự chạy.</p>
+
+<h3 style="color:{ink}">Vì sao mặc định tắt</h3>
+<p>Midas/Civil không có COM và không có API, nên cách duy nhất để tự động hoá là
+lái qua chính giao diện của nó. Trong lúc chạy, chương trình <b>bấm thật vào
+ribbon và chiếm tiền cảnh</b> — <b>máy không dùng được</b>, khoảng 1–3 phút mỗi
+mặt cắt. Đừng chạm chuột và bàn phím cho tới khi xong.</p>
+
+<h3 style="color:{ink}">Ba điều chương trình không bao giờ làm</h3>
+<p>Không tự mở Midas · không tự đóng Midas · không tắt tiến trình Midas. Phiên
+làm việc là của bạn. Bạn tự mở Midas và để tài liệu trống, chương trình bám vào
+phiên đó. Tài liệu đang mở <b>không sạch</b> thì chương trình <b>dừng và báo</b>,
+chứ không đè lên — mất việc chưa lưu là không lấy lại được.</p>
+<p>Chạy xong, file Beam Force được <b>gán luôn</b> cho mặt cắt, đi thẳng sang
+bước ④ không phải chọn file bằng tay.</p>
+'''),
+
         ('Đọc kết quả', f'''
 <h2 style="color:{ink}">Sau khi chạy Midas</h2>
 {step(1, 'Xuất Beam Force',
-      'Trong Midas/Civil, xuất bảng nội lực phần tử ra file Excel.')}
+      'Trong Midas/Civil, xuất bảng nội lực phần tử ra file Excel. Bật chạy tự '
+      'động thì bước này chương trình làm hộ — xem mục <b>Chạy Midas/Civil</b>.')}
 {step(2, 'Gán file cho mặt cắt',
       'Sang thẻ <b>Results table</b>, bấm đúp vào dòng của mặt cắt rồi chọn file '
       'Beam Force tương ứng. Hoặc bấm chuột phải lên mặt cắt trong cây và chọn '
@@ -405,12 +434,15 @@ nhất khi khởi động và việc tự chọn mặt cắt vừa thêm.</p>
 <tr><td><code>F5</code></td><td>Tạo MCT toàn bộ</td></tr>
 <tr style="background:{soft}"><td><code>Shift+F5</code></td>
     <td>Tạo MCT cho mặt cắt đang chọn</td></tr>
-<tr><td><code>Ctrl+B</code></td><td>Gán file Beam Force</td></tr>
-<tr style="background:{soft}"><td><code>F6</code></td><td>Xử lý Beam Force</td></tr>
-<tr><td><code>F7</code></td><td>Kiểm toán mặt cắt</td></tr>
-<tr style="background:{soft}"><td><code>F</code></td><td>Vừa khung nhìn</td></tr>
-<tr><td><code>Ctrl+L</code></td><td>Xoá nhật ký</td></tr>
-<tr style="background:{soft}"><td><code>Ctrl+,</code></td><td>Tùy chọn giao diện</td></tr>
+<tr><td><code>F8</code></td>
+    <td>Chạy Midas/Civil <i>(phải bật ở Tùy chọn → Midas)</i></td></tr>
+<tr style="background:{soft}"><td><code>Ctrl+B</code></td>
+    <td>Gán file Beam Force</td></tr>
+<tr><td><code>F6</code></td><td>Xử lý Beam Force</td></tr>
+<tr style="background:{soft}"><td><code>F7</code></td><td>Kiểm toán mặt cắt</td></tr>
+<tr><td><code>F</code></td><td>Vừa khung nhìn</td></tr>
+<tr style="background:{soft}"><td><code>Ctrl+L</code></td><td>Xoá nhật ký</td></tr>
+<tr><td><code>Ctrl+,</code></td><td>Tùy chọn giao diện</td></tr>
 <tr><td><code>F1</code></td><td>Mở hướng dẫn này</td></tr>
 </table>
 '''),
