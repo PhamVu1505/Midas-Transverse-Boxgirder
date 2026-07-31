@@ -27,9 +27,17 @@ Ba ràng buộc, đừng gỡ
    Phiên đó là của người dùng — họ có thể đang mở việc khác trong cùng app.
 2. **Từ chối khi tài liệu không sạch.** Import MCT đè lên tài liệu đang mở; mất
    việc chưa lưu thì không hoàn lại được.
-3. **Luôn `set_focus()` trước mọi cú bấm chuột.** `click_input()` bấm theo toạ độ
-   MÀN HÌNH — Midas nằm dưới thì cú bấm rơi vào cửa sổ khác. Đã có lần bấm trúng
-   trình soạn thảo đang mở.
+3. **Không bao giờ bấm vào một toạ độ đoán trước.** `click_input()` bấm theo toạ
+   độ MÀN HÌNH. Ba số ghim cứng cho menu ngữ cảnh từng nằm trọn trên màn hình
+   TRÁI trong khi Midas phóng to trên màn hình PHẢI — cú bấm chưa lần nào chạm
+   Midas, mà rơi vào trình soạn thảo người dùng đang mở. Mọi cú bấm nay lấy toạ
+   độ từ **chính control đích** (`GXWND` cho bảng kết quả, rect của phần tử UIA
+   cho ribbon), nên không phụ thuộc màn hình, cỡ cửa sổ hay bố cục thanh công cụ.
+   Điểm nằm ngoài khung Midas thì **báo lỗi chứ không bấm**.
+4. **`_len_truoc()` phải KIỂM LẠI tiền cảnh, không được tin `set_focus()`.**
+   Windows cấm tiến trình nền cướp tiền cảnh và pywinauto nuốt thất bại đó —
+   im lặng. Phím lạc từ đúng lỗ hổng này đã mở `Auto-Mesh Planar Area` và
+   **đóng Midas của người dùng hai lần**.
 """
 
 import ctypes
@@ -56,6 +64,10 @@ u32 = ctypes.WinDLL('user32', use_last_error=True)
 
 WM_NULL, WM_SETTEXT, WM_GETTEXT, WM_GETTEXTLENGTH = 0x0000, 0x000C, 0x000D, 0x000E
 WM_KEYDOWN, WM_KEYUP = 0x0100, 0x0101
+WM_CONTEXTMENU = 0x007B
+# Ô lưới của bảng kết quả (Stingray Objective Grid). Đây là ĐÍCH của menu ngữ
+# cảnh "Export to Excel..." — bám vào nó thì không còn phải đoán toạ độ.
+LOP_LUOI = 'GXWND'
 BM_CLICK = 0x00F5
 LB_GETCOUNT, LB_GETSELCOUNT = 0x018B, 0x0190
 SMTO_ABORTIFHUNG = 0x0002
@@ -246,10 +258,34 @@ class MidasSession:
             self._uia = Desktop(backend='uia').window(handle=self.hwnd)
         return self._uia
 
-    def _len_truoc(self):
-        """Đưa Midas lên tiền cảnh — BẮT BUỘC trước mọi cú bấm chuột."""
-        self._w().set_focus()
-        time.sleep(0.6)
+    def _len_truoc(self, han=5):
+        """Đưa Midas lên tiền cảnh — BẮT BUỘC trước mọi cú bấm chuột hoặc phím thật.
+
+        **Phải KIỂM LẠI, không được tin `set_focus()`.** Windows không cho một
+        tiến trình nền cướp tiền cảnh (`SetForegroundWindow` trả về false và
+        pywinauto nuốt luôn), nên `set_focus()` **thất bại âm thầm**. Hệ quả đã
+        xảy ra thật: chuỗi phím dành cho hộp thoại rơi vào khung nhìn mô hình,
+        mở ra `Auto-Mesh Planar Area`, và một phím lạc trong menu Application
+        **đóng luôn Midas của người dùng hai lần**.
+
+        Thà dừng có tên còn hơn bấm vào cửa sổ của người khác — đúng cùng lý lẽ
+        với việc không bấm mù ra ngoài khung Midas.
+        """
+        for i in range(han):
+            try:
+                self._w().set_focus()
+            except Exception:
+                pass
+            time.sleep(0.6)
+            fg = u32.GetForegroundWindow()
+            # Đủ điều kiện khi cửa sổ tiền cảnh thuộc chính tiến trình Midas —
+            # hộp thoại con của Midas cũng hợp lệ, không riêng cửa sổ chính.
+            if fg and _pid(fg) == self.pid:
+                return
+        raise MidasError(
+            'không đưa được Midas lên tiền cảnh sau '
+            f'{han} lần — cửa sổ đang ở tiền cảnh thuộc tiến trình khác. '
+            'Đừng dùng máy trong lúc driver chạy; bấm vào cửa sổ Midas rồi chạy lại.')
 
     def _esc(self, lan=3):
         for _ in range(lan):
@@ -465,14 +501,59 @@ class MidasSession:
                 return
         raise MidasError(f'không về được tài liệu trống — tiêu đề {self.tieu_de!r}')
 
+    def _o_luoi(self, han=15):
+        """hwnd của ô lưới bảng kết quả — đích của menu ngữ cảnh.
+
+        Lấy cái LỚN NHẤT: Midas dựng vài `GXWND` lồng nhau (khung, thanh tiêu đề
+        cột), chỉ cái to nhất mới là vùng dữ liệu nhận menu ngữ cảnh.
+        """
+        for _ in range(han):
+            lu = [c for c in _con(self.hwnd, self.pid)
+                  if c['lop'] == LOP_LUOI and c['hien'] and c['rect']
+                  and c['rect'][2] > 200 and c['rect'][3] > 200]
+            if lu:
+                return max(lu, key=lambda c: c['rect'][2] * c['rect'][3])['hwnd']
+            time.sleep(1.0)
+        raise MidasError(f'không thấy ô lưới bảng kết quả (class {LOP_LUOI!r}) — '
+                         f'bảng Beam Force có mở không?')
+
     def _dat_duong_dan(self, hop, path):
-        """Điền đường dẫn vào ô tên file của hộp thoại rồi Enter."""
+        """Điền đường dẫn vào ô tên file của hộp thoại rồi Enter.
+
+        Có file trùng tên thì **đồng ý ghi đè**: đích đến là sản phẩm của chính
+        driver, chạy lại là phải ra bản mới. Hộp hỏi đè không được trả lời thì
+        driver đứng im cho tới hết thời hạn rồi báo "không xuất được file" — sai
+        chỗ hoàn toàn, mà lại là tình huống thường gặp nhất (chạy lại lần hai).
+        """
         o = [c for c in _con(hop, self.pid) if c['lop'] == 'Edit' and c['rect'][2] > 100]
         if not o:
             raise MidasError('không thấy ô nhập tên file trong hộp thoại')
         if not _dat(o[0]['hwnd'], path):
             raise MidasError(f'đặt đường dẫn không ăn: {path}')
+        truoc = _dinh(self.pid)
         _phim(o[0]['hwnd'], VK_RETURN)
+        self._dong_y_ghi_de(truoc)
+
+    def _dong_y_ghi_de(self, truoc, han=6):
+        """Bấm **Yes** cho hộp 'file đã tồn tại — ghi đè?' nếu nó hiện ra.
+
+        Chỉ nhận hộp có nút Yes **và** nút No: đó là dạng của hộp hỏi đè. Hộp lạ
+        chỉ có OK thì để nguyên cho `don_dep()` xử — bấm bừa OK có thể là thực thi
+        một lệnh (đã gặp `Auto-Mesh Planar Area`).
+        """
+        for _ in range(han):
+            time.sleep(0.5)
+            for h in _dinh(self.pid) - truoc:
+                if not u32.IsWindowVisible(h) or _lop(h) != '#32770':
+                    continue
+                nut = {c['chu'].replace('&', ''): c['hwnd']
+                       for c in _con(h, self.pid) if c['lop'] == 'Button'}
+                if 'Yes' in nut and 'No' in nut:
+                    u32.SendMessageW(nut['Yes'], BM_CLICK, 0, 0)
+                    self.log('  ghi đè file cũ')
+                    time.sleep(1.0)
+                    return True
+        return False
 
     # ── bước 1: nạp MCT ──
     def kiem_tai_lieu_sach(self):
@@ -645,19 +726,18 @@ class MidasSession:
 
         xls = os.path.abspath(xls)
         os.makedirs(os.path.dirname(xls), exist_ok=True)
+        # Xoá bản cũ để `kiem_ket_qua` không đọc nhầm file của lượt trước khi lượt
+        # này xuất hụt. Xoá KHÔNG được thì vẫn đi tiếp: Excel đang mở file là giữ
+        # khoá, mà bản trước để `os.remove` ném thẳng `PermissionError` — chạy lại
+        # trong lúc còn mở bảng cũ là hỏng ngay từ dòng đầu, chưa kịp làm gì.
+        # Trường hợp đó để Midas hỏi đè, `_dong_y_ghi_de()` trả lời Yes.
         if os.path.exists(xls):
-            os.remove(xls)
+            try:
+                os.remove(xls)
+            except OSError as e:
+                self.log(f'  không xoá được bản cũ ({e.strerror}) — sẽ ghi đè')
 
-        self._len_truoc()
-        bang = self._chon_the('Results')
-        nhom = [g for g in bang.children() if g.element_info.name.strip() == 'Tables'][0]
-        rt = [k for k in nhom.children() if k.element_info.name == 'Results Tables'][0]
-
-        truoc = _dinh(self.pid)
-        rt.click_input()
-        time.sleep(1.8)
-
-        def tim(ten):
+        def tim(ten, truoc):
             """Soi MỌI cửa sổ nổi của tiến trình, không chỉ cửa sổ vừa mọc.
 
             Bản trước lọc `_dinh(self.pid) - truoc`, tức chỉ cửa sổ **mới** so với
@@ -665,14 +745,19 @@ class MidasSession:
             đóng — nó chỉ bị ẩn rồi hiện lại. Nên lượt chạy đầu trong một phiên đã
             mở menu này trước đó thì `truoc` đã chứa nó, hiệu là rỗng, và driver
             báo "không thấy mục 'Beam'" dù menu đang bung ra ngay trên màn hình.
-            Chính vì thế SLT (1/2) hỏng còn S1_V2 (2/2) chạy được: `_esc()` của
-            SLT huỷ menu, nên với S1_V2 nó lại là cửa sổ "mới".
 
             Ưu tiên cửa sổ mới rồi mới tới các cửa sổ còn lại — cửa sổ mới gần như
             luôn là cái đúng, nên thường không phải duyệt thêm.
 
             **Bỏ cửa sổ chính** khỏi danh sách: duyệt UIA trên `MidasGenMainFrmClass`
             mất 30–60 s (ribbon BCGPro), đủ để phá cả cơ chế thử lại bên dưới.
+
+            Tôi đã thử thêm một phép lọc nữa — đòi `k.rectangle()` không rỗng, với
+            giả thuyết "mục của menu cũ có khung rỗng nên bấm hụt". Giả thuyết đó
+            **sai**: nó loại nhầm cả mục hợp lệ và làm hỏng đúng chặng vốn đang
+            chạy được ('Force' không còn tìm thấy). Đã bỏ. Thứ thật sự gỡ được bấm
+            hụt là **thử lại cả chặng** ở dưới, và điều đó đã được chứng minh trên
+            máy thật chứ không phải suy luận.
             """
             hien = {x for x in _dinh(self.pid)
                     if x != self.hwnd and u32.IsWindowVisible(x)}
@@ -685,40 +770,78 @@ class MidasSession:
                     pass
             return None
 
-        # Submenu cũng cần một nhịp mới bung ra — thử lại thay vì kết luận ngay,
-        # cùng lý do như `_chon_the`.
-        for ten in ('Beam', 'Force'):
-            m = None
-            for _ in range(6):
-                m = tim(ten)
-                if m is not None:
-                    break
-                time.sleep(1.0)
-            if m is None:
-                self._esc()
-                raise MidasError(f'không thấy mục {ten!r} trong Results Tables')
-            m.click_input()
-            time.sleep(2.0)
+        def mo_bang():
+            """Ribbon → Results Tables → Beam → Force, trả hwnd hộp chọn tải."""
+            self._len_truoc()
+            bang = self._chon_the('Results')
+            nhom = [g for g in bang.children()
+                    if g.element_info.name.strip() == 'Tables'][0]
+            rt = [k for k in nhom.children()
+                  if k.element_info.name == 'Results Tables'][0]
 
-        # Tìm hộp thoại theo TIÊU ĐỀ, có thử lại.
+            truoc = _dinh(self.pid)
+            rt.click_input()
+            time.sleep(1.8)
+
+            # Submenu cũng cần một nhịp mới bung ra — thử lại thay vì kết luận
+            # ngay, cùng lý do như `_chon_the`.
+            for ten in ('Beam', 'Force'):
+                m = None
+                for _ in range(6):
+                    m = tim(ten, truoc)
+                    if m is not None:
+                        break
+                    time.sleep(1.0)
+                if m is None:
+                    raise MidasError(f'không thấy mục {ten!r} trong Results Tables')
+                m.click_input()
+                time.sleep(2.0)
+
+            # Tìm hộp thoại theo TIÊU ĐỀ, có thử lại.
+            #
+            # Bản trước lấy `#32770` **đầu tiên** tìm thấy — mà Midas có sẵn một
+            # `#32770` cỡ 267×20 nằm trong thanh công cụ, không chứa ListBox nào.
+            # Nên driver báo "không thấy danh sách trường hợp tải" ở 3/6 mặt cắt,
+            # trong khi hộp thoại thật đang mở ngay đó. Script thử nghiệm chạy
+            # đúng chính vì nó lọc theo tiêu đề; driver thì không — hai đường khác
+            # nhau ở đúng một dòng.
+            for _ in range(10):
+                ung = [x for x in _dinh(self.pid)
+                       if _lop(x) == '#32770' and u32.IsWindowVisible(x)
+                       and (_doc(x, 500) or '').strip() == TEN_HOP_CHON_TAI]
+                if ung:
+                    return ung[0]
+                time.sleep(1.0)
+            return None
+
+        # Thử lại CẢ CHẶNG, không chỉ từng bước.
         #
-        # Bản trước lấy `#32770` **đầu tiên** tìm thấy — mà Midas có sẵn một
-        # `#32770` cỡ 267×20 nằm trong thanh công cụ, không chứa ListBox nào. Nên
-        # driver báo "không thấy danh sách trường hợp tải" ở 3/6 mặt cắt, trong khi
-        # hộp thoại thật đang mở ngay đó. Script thử nghiệm chạy đúng chính vì nó
-        # lọc theo tiêu đề; driver thì không — hai đường khác nhau ở đúng một dòng.
-        h = None
-        for _ in range(10):
-            ung = [x for x in _dinh(self.pid)
-                   if _lop(x) == '#32770' and u32.IsWindowVisible(x)
-                   and (_doc(x, 500) or '').strip() == TEN_HOP_CHON_TAI]
-            if ung:
-                h = ung[0]
+        # Menu bấm hụt thì không có tín hiệu nào ngay tại chỗ — mãi tới lúc chờ
+        # hộp thoại mới lộ. Lúc đó menu đã ở trạng thái nửa vời, nên phải ESC cho
+        # sạch rồi đi lại từ ribbon; thử lại từng bước nhỏ không gỡ được.
+        # Phải bắt CẢ `MidasError` của `mo_bang()`, không chỉ trường hợp trả None.
+        # Bấm hụt lộ ra ở hai dạng khác nhau — "không thấy mục 'Force'" (hụt giữa
+        # chặng) và "không thấy hộp thoại" (hụt ở bước cuối) — mà bản đầu của vòng
+        # này chỉ xử dạng thứ hai, nên dạng thứ nhất thoát thẳng ra ngoài và cơ chế
+        # thử lại thành vô dụng đúng lúc cần nó nhất.
+        h, loi = None, None
+        for lan in range(3):
+            if lan:
+                self.log(f'  menu bấm hụt ({loi}) — dọn rồi đi lại từ ribbon')
+                self._esc(3)
+                time.sleep(1.5)
+            try:
+                h = mo_bang()
+                if h is None:
+                    loi = 'hộp thoại chọn tải không hiện'
+            except MidasError as e:
+                h, loi = None, str(e)
+            if h is not None:
                 break
-            time.sleep(1.0)
         if h is None:
-            self._esc()
-            raise MidasError(f'không thấy hộp thoại {TEN_HOP_CHON_TAI!r} sau 10 s')
+            self._esc(3)
+            raise MidasError(f'không mở được bảng Beam Force sau 3 lượt điều hướng '
+                             f'ribbon — lỗi cuối: {loi or "hộp thoại không hiện"}')
 
         lb = [c for c in _con(h, self.pid)
               if c['lop'] == 'ListBox' and u32.SendMessageW(c['hwnd'], LB_GETCOUNT, 0, 0) > 5]
@@ -761,28 +884,74 @@ class MidasSession:
             title='OK', control_type='Button').click_input()
         time.sleep(6.0)
 
-        # Xuất: chuột phải TRÊN BẢNG. Không dùng File › Export — ở đó không có Excel.
+        # Xuất: menu ngữ cảnh TRÊN Ô LƯỚI. Không dùng File › Export — ở đó không
+        # có Excel.
+        #
+        # Đích là hwnd của ô lưới, KHÔNG phải một toạ độ đoán trước.
+        #
+        # Bản đầu ghim cứng (900,300)/(700,350)/(900,500). Máy VuPQ có hai màn
+        # hình 1920×1080 kề nhau và Midas phóng to trên màn hình PHẢI (rect
+        # left=1912) — cả ba điểm nằm trọn trên màn hình TRÁI, nên cú chuột phải
+        # **chưa một lần nào chạm vào Midas**: nó rơi vào cửa sổ bất kỳ người
+        # dùng đang mở bên đó. Driver thì báo "không mở được menu chuột phải"
+        # trong khi bảng đang mở ngay trước mặt. `set_focus()` không cứu được:
+        # toạ độ tuyệt đối đơn giản nằm ngoài cửa sổ.
+        #
+        # Bản vá thứ hai suy điểm theo tỉ lệ khung cửa sổ chính. Đúng hơn nhưng
+        # vẫn là phỏng đoán bố cục: đổi cỡ Message Window hay bật thêm thanh công
+        # cụ là điểm đó rời khỏi bảng.
+        #
+        # Nay bám thẳng vào control `GXWND` (lưới Stingray) — đó CHÍNH LÀ bảng kết
+        # quả, nên không còn khái niệm "đoán chỗ". Kèm theo, thử `WM_CONTEXTMENU`
+        # trước: nó là thông điệp gửi vào đúng hwnd, **không đụng tới con trỏ
+        # chuột của người dùng** và không phụ thuộc màn hình nào cả.
         self._len_truoc()
-        muc = None
-        for xy in ((900, 300), (700, 350), (900, 500)):
-            g = _dinh(self.pid)
-            from pywinauto import mouse
-            mouse.right_click(coords=xy)
-            time.sleep(1.6)
+        luoi = self._o_luoi()
+        gx, gy, gw, gh = _rect(luoi)
+        tam = (gx + gw // 2, gy + gh // 2)
+
+        def tim_muc(g):
             for x in [y for y in _dinh(self.pid) - g if u32.IsWindowVisible(y)]:
                 try:
                     for k in Desktop(backend='uia').window(handle=x).descendants():
                         if k.element_info.name == 'Export to Excel...':
-                            muc = k
-                            break
+                            return k
                 except Exception:
                     pass
+            return None
+
+        muc = None
+        # (a) thuần thông điệp — không chạm chuột
+        g = _dinh(self.pid)
+        u32.PostMessageW(luoi, WM_CONTEXTMENU, luoi,
+                         (tam[1] << 16) | (tam[0] & 0xFFFF))
+        time.sleep(1.6)
+        muc = tim_muc(g)
+        if muc is not None:
+            self.log('  menu ngữ cảnh: thông điệp (không đụng chuột)')
+        if muc is None:
+            self.log(f'  menu ngữ cảnh: chuột thật vào tâm ô lưới {tam}')
+            self._esc(2)
+            # (b) chuột thật, nhưng vào TÂM Ô LƯỚI — vẫn không có số ghim cứng nào
+            L, T, W, H = _rect(self.hwnd)
+            if not (L <= tam[0] < L + W and T <= tam[1] < T + H):
+                raise MidasError(f'tâm ô lưới {tam} nằm ngoài cửa sổ Midas '
+                                 f'{(L, T, W, H)} — không bấm mù ra ngoài.')
+            from pywinauto import mouse
+            for dy in (0, -gh // 4, gh // 4):
+                g = _dinh(self.pid)
+                mouse.right_click(coords=(tam[0], tam[1] + dy))
+                time.sleep(1.6)
+                muc = tim_muc(g)
                 if muc:
                     break
-            if muc:
-                break
-            self._esc(2)
+                self._esc(2)
         if muc is None:
+            # Dọn TRƯỚC khi ném lỗi. Bản trước ném thẳng, nên bảng kết quả của
+            # mặt cắt hỏng vẫn nằm đó khi mặt cắt sau bắt đầu — và mặt cắt sau
+            # hỏng theo ở chỗ khác hẳn ("không thấy Records Activation Dialog"),
+            # che mất nguyên nhân thật. Đúng khuôn đã thấy: 1 lỗi thành 2 lỗi.
+            self._esc(3)
             raise MidasError('không mở được menu chuột phải trên bảng kết quả')
 
         truoc = _dinh(self.pid)
@@ -868,8 +1037,18 @@ def _chay(s: 'MidasSession', mct, xls=None, mcb=None) -> dict:
     return s.kiem_ket_qua(xls or xls_md, topo)
 
 
-def _la_tai_lieu_cua_driver(tieu_de: str) -> bool:
-    """Tài liệu đang mở có phải do chính driver tạo ra ở hộp cát không?
+def _chuan(p: str) -> str:
+    """Đường dẫn chuẩn hoá để so sánh.
+
+    `realpath` chứ không `abspath`: `tempfile.gettempdir()` trả dạng 8.3
+    (`C:\\Users\\VUPQ~1.CIT\\...`) khi biến môi trường TEMP mang dạng đó, còn tiêu
+    đề Midas luôn là đường dẫn dài. So chuỗi thì hai cái không bao giờ khớp.
+    """
+    return os.path.normcase(os.path.realpath(p))
+
+
+def _la_tai_lieu_cua_driver(tieu_de: str, cua_minh=()) -> bool:
+    """Tài liệu đang mở có phải do chính driver tạo ra không?
 
     `moi_tai_lieu()` trả lời **No** cho hộp hỏi lưu, tức nó BỎ thay đổi chưa lưu.
     Với tài liệu driver tự tạo thì vô hại (mô hình đã lưu ra `.mcb`, phần còn lại
@@ -877,18 +1056,27 @@ def _la_tai_lieu_cua_driver(tieu_de: str) -> bool:
     của mình thì mất việc không hoàn lại được — nên không được nới `kiem_tai_lieu_sach()`
     một cách chung chung.
 
-    Dấu hiệu dùng ở đây: đường dẫn mô hình nằm dưới thư mục tạm của hệ thống. Mọi
-    hộp cát của driver đều ở đó, còn mô hình thật của người dùng thì không.
+    Hai dấu hiệu, đều là dấu hiệu CHẮC CHẮN chứ không phải phỏng đoán:
+
+    1. Đường dẫn nằm dưới thư mục tạm của hệ thống — mọi hộp cát của driver đều ở
+       đó, mô hình thật của người dùng thì không.
+    2. Đường dẫn **trùng đúng** `.mcb` mà chính lượt chạy này sắp ghi đè (`cua_minh`).
+       Chạy driver trên `output/<tên>/` thì tài liệu để lại **cũng là của driver**,
+       chỉ khác là không nằm trong thư mục tạm — dấu hiệu (1) một mình bỏ sót đúng
+       trường hợp đó, và driver từ chối chính sản phẩm của nó ở lượt chạy ngay sau,
+       kèm câu "hãy lưu rồi File › New" hoàn toàn lạc đề. Trùng đúng đường dẫn đích
+       thì đằng nào file đó cũng bị ghi đè ở bước `analyze()`, nên mở lại nó không
+       làm mất thêm gì.
     """
     m = re.search(r'\[([A-Za-z]:\\[^\]]+)\]', tieu_de)
     if not m:
         return False
-    # `realpath` chứ không `abspath`: `tempfile.gettempdir()` trả dạng 8.3
-    # (`C:\Users\VUPQ~1.CIT\...`) khi biến môi trường TEMP mang dạng đó, còn tiêu
-    # đề Midas luôn là đường dẫn dài. So chuỗi thì hai cái không bao giờ khớp.
     try:
-        p = os.path.normcase(os.path.realpath(m.group(1)))
-        tam = os.path.normcase(os.path.realpath(tempfile.gettempdir()))
+        p = _chuan(m.group(1))
+        # Tiêu đề Midas không mang đuôi file; `cua_minh` là các đường dẫn `.mcb`.
+        if any(p == _chuan(os.path.splitext(q)[0]) for q in cua_minh):
+            return True
+        tam = _chuan(tempfile.gettempdir())
         return os.path.commonpath([p, tam]) == tam
     except (ValueError, OSError):
         return False
@@ -903,7 +1091,7 @@ def chay_mot_mat_cat(mct: str, xls: str = None, mcb: str = None, log=print) -> d
         # một mặt cắt thì không — nên chạy lại đúng một mặt cắt sau một lượt loạt
         # là trượt ngay ở cổng `kiem_tai_lieu_sach()`, vì lý do chẳng liên quan gì
         # tới mặt cắt đó. Chỉ tự dọn khi tài liệu đang mở là của driver.
-        if _la_tai_lieu_cua_driver(s.tieu_de):
+        if _la_tai_lieu_cua_driver(s.tieu_de, [mcb or _duong_dan(mct)[2]]):
             s.don_dep()
             s.moi_tai_lieu()
         tk = _chay(s, mct, xls, mcb)
@@ -928,6 +1116,9 @@ def chay_nhieu_mat_cat(danh_sach, log=print) -> dict:
         {'xong': {tên: thống kê}, 'loi': {tên: thông điệp}}
     """
     xong, loi = {}, {}
+    # Mọi `.mcb` mà loạt này sẽ ghi — dùng để nhận ra tài liệu do chính driver
+    # để lại, kể cả khi nó nằm ở `output/<tên>/` chứ không phải thư mục tạm.
+    cua_minh = [_duong_dan(m)[2] for m in danh_sach]
     with MidasSession.attach() as s:
         s.log = log
         for i, mct in enumerate(danh_sach, 1):
@@ -935,7 +1126,15 @@ def chay_nhieu_mat_cat(danh_sach, log=print) -> dict:
             log(f'\n── {i}/{len(danh_sach)}: {ten} ' + '─' * max(0, 44 - len(ten)))
             try:
                 s.don_dep()
-                s.moi_tai_lieu()
+                # `moi_tai_lieu()` trả lời **No** cho hộp hỏi lưu, tức BỎ thay đổi
+                # chưa lưu. Bản trước gọi nó vô điều kiện, kể cả ở mặt cắt ĐẦU —
+                # nên chạy loạt lúc người dùng đang mở mô hình sửa dở thì mất việc
+                # không hoàn lại được, mà cổng `kiem_tai_lieu_sach()` bị đi vòng
+                # hoàn toàn. Chỉ được bỏ thay đổi của tài liệu do chính driver tạo.
+                if _la_tai_lieu_cua_driver(s.tieu_de, cua_minh):
+                    s.moi_tai_lieu()
+                else:
+                    s.kiem_tai_lieu_sach()
                 tk = _chay(s, mct)
                 xong[ten] = tk
                 log(f'[{ten}] ĐẠT · {tk["ban_ghi"]:,} bản ghi · '

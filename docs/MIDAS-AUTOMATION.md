@@ -123,13 +123,41 @@ ra rỗng.
 
 Ô phần tử (`1to37 101to135 201 202` với S1) **tự điền sẵn**, không phải đụng vào.
 
-## A6 — Xuất Excel: **chuột phải trên bảng**
+## A6 — Xuất Excel: menu ngữ cảnh trên bảng
 
-`chuột phải › Export to Excel…` — **không** phải `File › Export` (ở đó không có Excel).
-Hộp `Save As` mở ra với tên mặc định sẵn là `Beam Force.xls` và ô định dạng
-`EXCEL File(*.xls)`.
+`Export to Excel…` nằm ở **menu ngữ cảnh của bảng** — **không** phải `File › Export`
+(ở đó không có Excel). Hộp `Save As` mở ra với tên mặc định sẵn là `Beam Force.xls`
+và ô định dạng `EXCEL File(*.xls)`.
 
-Đặt đường dẫn bằng `WM_SETTEXT` vào ô `Edit` rộng nhất, rồi Enter.
+Đặt đường dẫn bằng `WM_SETTEXT` vào ô `Edit` rộng nhất, rồi Enter. File trùng tên
+thì Midas hỏi đè — `_dong_y_ghi_de()` trả lời **Yes** (đích đến là sản phẩm của
+chính driver, chạy lại là phải ra bản mới). Chỉ nhận hộp có **cả Yes lẫn No**;
+hộp lạ chỉ có OK thì để `don_dep()` xử, vì bấm OK có thể là thực thi một lệnh.
+
+### Mở menu: gửi `WM_CONTEXTMENU`, KHÔNG bấm chuột
+
+Bảng kết quả là control **`GXWND`** (lưới Stingray), con của
+`MDIClient → AfxFrameOrView140 → GxMdiFrame`. Lấy cái `GXWND` **lớn nhất** —
+Midas dựng vài cái lồng nhau, chỉ cái to nhất là vùng dữ liệu.
+
+`PostMessage(GXWND, WM_CONTEXTMENU, hwnd, MAKELPARAM(x, y))` mở đúng menu đó
+**mà không đụng tới con trỏ chuột của người dùng** và không phụ thuộc màn hình
+nào. Đã kiểm trên máy thật: chạy được, nhật ký in
+`menu ngữ cảnh: thông điệp (không đụng chuột)`.
+
+Đường lui là chuột thật vào **tâm chính ô lưới** (± ¼ chiều cao), vẫn không có
+con số ghim cứng nào.
+
+> **Cạm bẫy đã trả giá.** Bản đầu bấm chuột phải vào ba toạ độ ghim cứng
+> `(900,300)/(700,350)/(900,500)`. Máy VuPQ có hai màn hình 1920×1080 kề nhau và
+> Midas phóng to trên màn hình **phải** (rect `left=1912`), nên cả ba điểm nằm
+> trọn trên màn hình **trái**: cú bấm **chưa lần nào chạm Midas**, nó rơi vào cửa
+> sổ người dùng đang mở. Driver thì báo "không mở được menu chuột phải" trong khi
+> bảng đang mở ngay trước mặt — lỗi báo sai chỗ hoàn toàn.
+>
+> Bản vá thứ hai suy điểm theo **tỉ lệ khung cửa sổ chính**. Đúng hơn, nhưng vẫn
+> là phỏng đoán bố cục: kéo Message Window cao lên hay bật thêm thanh công cụ là
+> điểm đó rời khỏi bảng. Chỉ khi bám vào **chính control đích** mới hết đoán.
 
 ## A7 — Kiểm file
 
@@ -164,7 +192,15 @@ hộp thoại chưa biết là cách nhanh nhất phá mô hình.
 ## Cạm bẫy phải nhớ
 
 **1. `click_input()` bấm theo TOẠ ĐỘ MÀN HÌNH.** Midas nằm dưới thì cú bấm rơi vào cửa
-sổ khác — đã có lần bấm trúng VS Code. **Luôn `set_focus()` trước mọi cú bấm.**
+sổ khác — đã có lần bấm trúng VS Code. Hai hệ quả, **cả hai đều bắt buộc**:
+
+- **Không bao giờ ghim cứng toạ độ.** Lấy từ chính control đích (xem A6). Máy nhiều
+  màn hình làm mọi con số đoán trước thành vô nghĩa, mà triệu chứng lại giả dạng
+  thành "không tìm thấy menu".
+- **`set_focus()` phải được KIỂM LẠI.** Windows cấm tiến trình nền chiếm tiền cảnh
+  và pywinauto **nuốt luôn thất bại đó**. `_len_truoc()` đọc lại
+  `GetForegroundWindow()` và dừng có tên nếu không phải Midas. Đây đúng là lỗ hổng
+  đã cho phím lạc mở `Auto-Mesh Planar Area` và **đóng Midas của người dùng hai lần**.
 
 **2. "Đọc lại đúng" chưa phải bằng chứng.** Phải thấy **tác dụng** ở nơi khác. Bài học
 từ A1: `WM_SETTEXT` đọc lại đúng chữ vừa đặt, mà lệnh không chạy.
