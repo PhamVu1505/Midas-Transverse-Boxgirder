@@ -278,7 +278,7 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 ## Lệnh thường dùng
 ```bash
 python run_gui.py
-python -m pytest tests -q                        # 69 bài: MCT, kiểm toán, số liệu đầu vào
+python -m pytest tests -q                        # 77 bài: MCT, kiểm toán, số liệu, driver
 python tools/check_gui.py                        # 24 phép kiểm, bấm thật (skill kiem-gui)
 python tools/render_ui.py                        # ảnh mọi thẻ → docs/ui-snapshots/
 python tools/make_user_guide.py                  # sinh lại docs/USER-GUIDE.txt
@@ -344,6 +344,9 @@ Không có COM, không có API HTTP, kết quả nằm trong `.CA*` nhị phân 
 - `tools/check_gui.py::kiem_chay_midas_mac_dinh_tat` khoá cả ba: tắt sẵn · bật thì mở khoá · đang chạy thì khoá lại. Đã dựng lại **3 biến thể lỗi** và phép kiểm bắt được **3/3**.
 - **Danh sách widget của `PreferencesDialog._sync_widgets` từng viết HAI LẦN** — một để chặn tín hiệu, một trong `finally` để mở lại. Thêm hai ô của trang Midas mà chỉ sửa danh sách trên (bản vá khớp theo thụt lề, danh sách dưới thụt sâu hơn) nên hai ô đó bị chặn tín hiệu **vĩnh viễn**: bấm không có tác dụng, không lỗi, không dấu vết. `pytest`, 22 phép kiểm cũ và cả ảnh chụp đều im lặng — **VuPQ bấm thử mới ra**. Nay chỉ còn `_controls()` dùng chung cho cả hai vòng, và `kiem_tuy_chon_khong_chan_tin_hieu` quét mọi widget `ck_/cb_/ed_/sl_` xem có cái nào còn bị chặn.
 - **Chạy đầu-cuối qua GUI đã kiểm trên Midas thật**: bật tuỳ chọn → F8 → 73 s → `Beam Force_S1_V2.xls` 12.430 bản ghi/113 phần tử khớp topo, tự gán vào project, mặt cắt sang `assigned`.
+- **Chạy loạt lần thứ hai từng luôn vấp cổng an toàn.** `cua_minh` chỉ gồm `.mcb` của loạt đang chạy, mà sau loạt trước Midas còn giữ tài liệu của mặt cắt cuối — mặt cắt đó không nằm trong loạt mới nên app **từ chối chính sản phẩm của mình**, kèm câu "hãy lưu rồi File › New" hoàn toàn lạc đề. Nay GUI truyền `cua_minh_them` = `.mcb` của **mọi** mặt cắt trong project; mô hình thật của người dùng vẫn bị từ chối. `tests/test_midas_driver.py` (8 bài) khoá **cả hai chiều** — chặt quá và lỏng quá đều bị bắt.
+- **Chạy loạt 3 mặt cắt qua GUI: 3/3 đạt** (150 s) — S10 6.050 · S16 7.656 · SLT 9.180 bản ghi, đều khớp topo và đủ 4 chuỗi. Trùng khít loạt chạy bằng driver ngày 30/7.
+- **`output/` chứa MCT cũ là bẫy im lặng.** `output/S10` mang MCT sinh lúc **bỏ trống template** — không một khối `*LOADCOMB`/`*VEHICLE`/`*BEAMLOAD` nào. Midas vẫn giải xong, vẫn xuất ra `.xls` **hợp lệ** 6.656 byte nhưng rỗng ruột; chỉ phép đối chiếu tập phần tử của `kiem_ket_qua` chặn lại, mà nó chặn ở bước cuối. `output/SLT` thì mang MCT đề ngày 27/3, Midas chối ngay lúc import (`.mcb` 17 KB). Sinh lại cả hai là xong.
 
 ### Vách giữa mặt cắt hai hộp (v1.4.1)
 `center_top` lấy bằng **nội suy** trên cạnh OUTPOLY cắt qua x=0 có z cao nhất (`_mat_tren_tai_tim`), và đỉnh vách giữa lấy từ **đỉnh mặt void hướng vào vách** — chính là mặt dưới bản top ở đoạn đó.

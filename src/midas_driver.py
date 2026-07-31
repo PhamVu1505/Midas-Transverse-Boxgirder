@@ -1100,7 +1100,8 @@ def chay_mot_mat_cat(mct: str, xls: str = None, mcb: str = None, log=print) -> d
     return tk
 
 
-def chay_nhieu_mat_cat(danh_sach, log=print, on_xong=None, on_loi=None) -> dict:
+def chay_nhieu_mat_cat(danh_sach, log=print, on_xong=None, on_loi=None,
+                       cua_minh_them=()) -> dict:
     """Chạy nhiều mặt cắt liên tiếp trên MỘT phiên Midas.
 
     **Một mặt cắt lỗi không được dừng cả loạt** — cùng lối với `GenerateWorker`
@@ -1126,9 +1127,16 @@ def chay_nhieu_mat_cat(danh_sach, log=print, on_xong=None, on_loi=None) -> dict:
         {'xong': {tên: thống kê}, 'loi': {tên: thông điệp}}
     """
     xong, loi = {}, {}
-    # Mọi `.mcb` mà loạt này sẽ ghi — dùng để nhận ra tài liệu do chính driver
-    # để lại, kể cả khi nó nằm ở `output/<tên>/` chứ không phải thư mục tạm.
-    cua_minh = [_duong_dan(m)[2] for m in danh_sach]
+    # Mọi `.mcb` mà driver được quyền coi là của mình — dùng để nhận ra tài liệu
+    # nó để lại, kể cả khi nằm ở `output/<tên>/` chứ không phải thư mục tạm.
+    #
+    # `cua_minh_them` là các mặt cắt KHÁC mà người gọi biết chắc cũng do mình
+    # sinh ra (GUI truyền toàn bộ mặt cắt trong project). Không có nó thì **chạy
+    # loạt lần thứ hai luôn vấp**: sau loạt trước Midas còn giữ tài liệu của mặt
+    # cắt cuối, mặt cắt đó không nằm trong loạt mới nên cổng an toàn từ chối, kèm
+    # câu "hãy lưu rồi File › New" — trong khi thứ đang mở là sản phẩm của chính
+    # app, người dùng không hề tạo ra nó.
+    cua_minh = [_duong_dan(m)[2] for m in danh_sach] + list(cua_minh_them)
     with MidasSession.attach() as s:
         s.log = log
         for i, mct in enumerate(danh_sach, 1):

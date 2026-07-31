@@ -32,9 +32,14 @@ class MidasWorker(QThread):
     section_error = pyqtSignal(str, str)        # name, thông báo lỗi
     finished_all = pyqtSignal(int, int)         # số đạt, số hỏng
 
-    def __init__(self, jobs: list):
+    def __init__(self, jobs: list, cua_minh_them=()):
         super().__init__()
         self.jobs = jobs
+        # `.mcb` của MỌI mặt cắt trong project, kể cả mặt cắt không nằm trong
+        # lượt này: sau một lượt chạy, Midas còn giữ tài liệu của mặt cắt cuối,
+        # và lượt sau sẽ gặp nó ở cổng an toàn. App biết chắc những file đó do
+        # chính nó sinh ra nên nói ra, thay vì để driver phải đoán.
+        self.cua_minh_them = list(cua_minh_them)
 
     def run(self):
         try:
@@ -54,7 +59,8 @@ class MidasWorker(QThread):
         try:
             kq = chay_nhieu_mat_cat([j['mct'] for j in self.jobs],
                                     log=self.log.emit,
-                                    on_xong=_xong, on_loi=_loi)
+                                    on_xong=_xong, on_loi=_loi,
+                                    cua_minh_them=self.cua_minh_them)
         except Exception as e:
             # `attach()` ném khi không có Midas, có nhiều cửa sổ, hay tài liệu
             # chưa sạch — đó là thông điệp đã viết sẵn cho người dùng, đưa

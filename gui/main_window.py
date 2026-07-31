@@ -854,7 +854,12 @@ class MainWindow(QMainWindow):
         self.prog.setValue(0)
         self.status_msg(f'Đang chạy Midas cho {len(jobs)} mặt cắt…')
 
-        self.midas_worker = MidasWorker(jobs)
+        # Mọi mặt cắt trong project — kể cả mặt cắt không chạy lượt này. Sau một
+        # lượt, Midas còn giữ tài liệu của mặt cắt cuối; lượt sau gặp lại nó ở
+        # cổng an toàn và sẽ từ chối, dù đó là sản phẩm của chính app.
+        cua_minh = [os.path.splitext(s.mct)[0] + '.mcb'
+                    for s in self.project if s.mct]
+        self.midas_worker = MidasWorker(jobs, cua_minh_them=cua_minh)
         self.midas_worker.log.connect(self.log.append_auto)
         self.midas_worker.section_done.connect(self._on_midas_done)
         self.midas_worker.section_error.connect(self._on_midas_error)
