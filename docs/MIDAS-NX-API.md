@@ -73,7 +73,9 @@ bằng API là khả thi** — đây là nền cho hướng làm plugin NX.
 |---|---|---|
 | `NEW` | `{}` | xoá trắng tài liệu đang mở, **không hỏi gì** |
 | `OPEN` | `{"Argument": "C:\\...\\a.mcb"}` | mở được `.mcb`; đọc lại đúng số nút |
-| `IMPORT` | `{"Argument": "C:\\...\\a.json"}` | nhận **JSON**, không phải MCT — xem mục 4b |
+| `IMPORT` | `{"Argument": "C:\\...\\a.json"}` | nhận **JSON** |
+| `IMPORTMXT` | `{"Argument": "C:\\...\\a.mct"}` | nhận **MCT** — cần khối `*VERSION`, xem mục 4b |
+| `EXPORTMXT` | `{"Argument": "C:\\...\\a.mct"}` | xuất MCT (chưa tự kiểm) |
 | `EXPORT` | `{"Argument": "C:\\...\\a.json"}` | ghi **JSON** toàn bộ DB (212 bảng) |
 | `ANAL` | `{}` | giải; S16 hết **8 s**, S1_V2 **14 s** |
 | `SAVEAS` | `{"Argument": "C:\\...\\a.mcb"}` | lưu ra `.mcb` |
@@ -110,19 +112,38 @@ xuất hai đầu, nên `midas_nx.NX.noi_luc()` bỏ các điểm 1/4 để hai 
 làm đổi mô hình đều phải **đọc lại `db/NODE`** để xác nhận. Dự án Long Thành đã
 ghi lại đúng luật này trước ("không coi MAPI báo complete là đã hội tụ").
 
-**b. `/doc/IMPORT` và `/doc/EXPORT` làm việc với JSON, KHÔNG phải MCT.**
+**b. MCT nạp được qua API — nhưng phải đúng lệnh VÀ có khối `*VERSION`.**
 
-Đây là lý do MCT của ta cho *command complete* rồi nạp về **0 nút** — nó không
-đọc MCT chút nào. Dò ra bằng cách bảo NX xuất chính mô hình của ta:
-`/doc/EXPORT` với đuôi `.mct` vẫn ghi ra một file bắt đầu bằng `{"DBG":{"UNIT":{`
-— **JSON của toàn bộ database, 212 bảng**. Đuôi file không quyết định gì.
+`/doc/IMPORT` là của **JSON**; MCT đi qua **`/doc/IMPORTMXT`**. Và MCT phải có
+khối `*VERSION` — NX dùng chính khối đó để chọn bộ đọc tương thích ngược. Thiếu
+một trong hai thì NX trả *command complete* rồi nạp về **0 nút**.
 
-Vòng tròn khép được: `EXPORT` → `NEW` → `IMPORT` → phục hồi đủ 66 nút · 66 phần
-tử. Nghĩa là **dựng mô hình trong NX hoàn toàn bằng API là khả thi, qua JSON**,
-không cần MCT và không cần chạm giao diện.
+Đo trên S16, đủ bốn tổ hợp điều kiện:
 
-(NX **có** nhập MCT — nhưng qua **giao diện**, `File › Import › MCT`, và với một
-phương ngữ khác bản 2022 một ít. Đó là đường khác, không phải đường API này.)
+| Lệnh | `*VERSION` | Nút nạp được |
+|---|---|---|
+| `IMPORTMXT` | không | 0 |
+| `IMPORT` | không | 0 |
+| `IMPORT` | có | 0 |
+| **`IMPORTMXT`** | **có `9.1.0`** | **66** |
+
+**MCT ta sinh cho Civil 2022 nạp vào NX trung thực**, không cần đổi phương ngữ
+gì. Sau `IMPORTMXT` → `SAVEAS` → `ANAL`, so với bảng của Civil 2022: đủ 7.656
+bản ghi, tải cơ bản lệch **0,0100 kN·m**, trị số bao **1,10%** — đúng bằng con
+số của đường mở thẳng `.mcb`.
+
+Hai kết luận sai trước đó, ghi lại để không lặp:
+
+* *"NX không nạp được MCT qua API"* — sai, chỉ là chưa biết tên lệnh.
+* *"MCT chỉ vào NX qua giao diện"* — cũng sai, cùng một kiểu.
+
+Khuôn lỗi chung: **menu của giao diện không phải bản kê khả năng của API, và
+ngược lại.** Kho tham chiếu Long Thành mắc đúng khuôn ấy theo chiều ngược —
+họ kết luận *"JSON không import ngược được"*, đúng với giao diện, sai với API.
+
+`mct_frame_writer` hiện **không ghi** `*VERSION`; file MCT tham chiếu của chính
+dự án (`docs/refer/refer_PT/midas/LT-MB-S01.mct`) thì có `*VERSION 9.1.0`. Thêm
+khối đó là đủ để khép chuỗi DXF → MCT → NX bằng API, không chạm giao diện.
 
 **c. Tài liệu nạp từ JSON CHƯA CÓ TÊN FILE → giải xong không có kết quả nào.**
 `doc/ANAL` chạy **57 s** rồi trả *command complete*, nhưng `post/table` báo
@@ -210,9 +231,11 @@ vốn nhỏ hơn tải xe 8–36 lần ở mọi phần tử.
 | Một mặt cắt | 50–70 s | **8–17 s** |
 | Dòng mã | 1.217 | ~260 |
 | Lấy kết quả | xuất `.xls` rồi đọc lại | JSON thẳng |
-| Nạp mô hình | MCT | **JSON** qua `/doc/IMPORT` (MCT chỉ qua giao diện) |
+| Nạp mô hình | MCT | **MCT** qua `/doc/IMPORTMXT` (cần `*VERSION`) |
 | Hỏng thì biết vì | dò cửa sổ, thử lại cả chặng | mã HTTP + đọc lại `db/NODE` |
 
-Đường API tốt hơn ở mọi mặt về thao tác. Chỗ chưa xong là **dựng mô hình**: JSON
-nạp được nhưng vòng tròn chưa bảo toàn tổ hợp (mục 4d), nên trước khi dùng nó
-sinh mô hình thật thì phải truy ra bảng nào bị mất và khoá lại bằng phép kiểm.
+Đường API tốt hơn ở mọi mặt. Và chuỗi **DXF → MCT → NX → kết quả khép được hoàn
+toàn bằng API** một khi `mct_frame_writer` ghi thêm khối `*VERSION`: đã đo trên
+S16, kết quả trùng khít đường mở `.mcb` trực tiếp.
+
+Đường JSON thì **không** dùng để dựng mô hình được — xem mục 4d.

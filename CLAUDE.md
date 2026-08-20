@@ -395,6 +395,17 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
   `MAPI_KEY` hoặc `%USERPROFILE%\mapikey.txt`, **không để trong thư mục dự án**.
 - **`"command complete"` không có nghĩa là xong**: `/doc/IMPORT` trả đúng câu đó
   cho MCT của ta rồi nạp về 0 nút. Mọi lệnh đổi mô hình phải đọc lại `db/NODE`.
+- **MCT nạp được qua API bằng `/doc/IMPORTMXT`, và phải có khối `*VERSION`.**
+  Thiếu một trong hai thì NX báo *command complete* rồi nạp về 0 nút. Đo đủ bốn
+  tổ hợp điều kiện trên S16; chỉ `IMPORTMXT` + `*VERSION 9.1.0` cho ra 66 nút.
+  **MCT ta sinh cho Civil 2022 nạp vào NX trung thực** — không cần đổi phương
+  ngữ: 7.656 bản ghi, tải cơ bản 0,0100 kN·m, bao 1,10%, đúng bằng đường mở
+  thẳng `.mcb`. `mct_frame_writer` hiện **không ghi** `*VERSION`; file tham
+  chiếu `docs/refer/refer_PT/midas/LT-MB-S01.mct` thì có.
+- **Hai kết luận sai đã ghi lại**: *"NX không nạp được MCT qua API"* rồi *"MCT
+  chỉ vào NX qua giao diện"*. Cùng một khuôn: **menu của giao diện không phải
+  bản kê khả năng của API, và ngược lại.** Kho Long Thành mắc đúng khuôn ấy theo
+  chiều ngược — họ kết luận *"JSON không import ngược được"*.
 - **`/doc/IMPORT` và `/doc/EXPORT` làm việc với JSON, không phải MCT.** Dò ra
   bằng cách bảo NX xuất chính mô hình của ta: file ghi ra bắt đầu bằng
   `{"DBG":{"UNIT":{` — JSON của cả 212 bảng, bất kể đuôi file đặt là gì. Vòng
@@ -502,12 +513,13 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 4. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
 
 **Sau V1 — hướng Midas NX** (VuPQ chốt thứ tự 2026-08-20):
-5. **Truy ra bảng nào bị mất trong vòng tròn JSON.** `/doc/EXPORT` →
-   `/doc/IMPORT` giữ được hình học và tải tĩnh (lệch 0,01 kN·m) nhưng **làm
-   hỏng tổ hợp** (`LCB1`/`LCB2`/`ser_all` lệch 109–126 kN·m). Đây là việc
-   **chặn** mọi ý định dựng mô hình NX bằng JSON: xây plugin trên giả định vòng
-   tròn không mất mát thì con số thiết kế sai mà không gì báo. Có 212 bảng
-   trong JSON; so bảng nào lệch giữa bản gốc và bản nạp lại là ra.
+5. **Thêm khối `*VERSION` vào `mct_frame_writer`** — một dòng, và nó khép được
+   chuỗi DXF → MCT → NX **hoàn toàn bằng API**. Đã đo trên S16: `IMPORTMXT` +
+   `*VERSION 9.1.0` nạp đủ 66 nút, giải xong cho 7.656 bản ghi trùng khít đường
+   mở `.mcb` (tải cơ bản 0,0100 kN·m · bao 1,10%). **Nhưng nó đổi mọi file MCT**
+   nên phải chạy lại 6/6 mặt cắt trên Civil 2022 để chắc bản 2022 vẫn đọc được
+   (file MCT tham chiếu của chính dự án có `*VERSION 9.1.0`, nên nhiều khả năng
+   là được). Đây là việc của v1.5, không phải vá vào V1 đã tag.
 6. **Thẻ Kiểm chéo NX trong app** — chặng 1: nhận `.mcb` đã có, giải lại bằng
    NX, hiện bảng đạt/hỏng. Lõi đã xong ở `tools/nx_crosscheck.py`.
 7. **Plugin NX** — chặng 2, sau khi có phương ngữ MCT.

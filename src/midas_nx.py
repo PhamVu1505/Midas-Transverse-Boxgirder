@@ -209,6 +209,44 @@ class NX:
         self.post('doc/NEW', {})
         self._duong_dan = ''
 
+    def nap_mct(self, path: str):
+        """Nạp mô hình từ file MCT qua `/doc/IMPORTMXT`.
+
+        **Hai điều kiện, thiếu một là nạp về 0 nút mà vẫn báo *command
+        complete*:**
+
+        1. Phải dùng `IMPORTMXT`, không phải `IMPORT` (`IMPORT` là của JSON).
+        2. File MCT phải có khối `*VERSION`. NX dùng chính khối này để chọn bộ
+           đọc tương thích ngược.
+
+        Đo được trên S16, đủ bốn tổ hợp điều kiện:
+
+            IMPORTMXT + không *VERSION →  0 nút
+            IMPORT    + không *VERSION →  0 nút
+            IMPORT    + có   *VERSION  →  0 nút
+            IMPORTMXT + có   *VERSION  → 66 nút  ← chỉ đường này chạy
+
+        Và MCT ta sinh cho Civil 2022 nạp vào NX **trung thực**: sau `luu()` +
+        `giai()`, đủ 7.656 bản ghi, tải cơ bản lệch 0,0100 kN·m, trị số bao
+        1,10% — đúng bằng đường mở thẳng `.mcb`. (Vòng tròn JSON thì cho 143,60%
+        và tổ hợp hỏng — xem `docs/MIDAS-NX-API.md` mục 4d.)
+
+        Tài liệu chưa có tên file sau lệnh này — phải `luu()` trước `giai()`.
+        """
+        path = os.path.abspath(path)
+        if not os.path.exists(path):
+            raise NXError(f'không thấy file: {path}')
+        self.post('doc/IMPORTMXT', {'Argument': path}, han=600)
+        n, e = self.dem()
+        if not n:
+            raise NXError(
+                f'nạp {os.path.basename(path)} xong mà mô hình rỗng (0 nút). '
+                f'Kiểm xem MCT có khối `*VERSION` chưa — thiếu nó thì NX báo '
+                f'"command complete" rồi nạp về không.')
+        self._duong_dan = ''
+        self.log(f'  nạp MCT {os.path.basename(path)}: {n} nút · {e} phần tử')
+        return n, e
+
     def nap_json(self, path: str):
         """Nạp mô hình từ file JSON do `/doc/EXPORT` sinh ra.
 
