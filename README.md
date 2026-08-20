@@ -107,7 +107,29 @@ Midas-Transverse-Boxgirder/
 └── docs/                    # Technical documentation
 ```
 
+## Kiểm thử
+
+Bốn công cụ, bốn câu hỏi khác nhau. Đừng chạy một cái rồi tưởng đã kiểm xong.
+
+```bash
+python -m pytest tests -q      # phép tính có đúng không          (105 bài)
+python tools/check_gui.py      # bấm vào thì có đúng không        (14 phép kiểm × 2 bảng màu)
+python tools/audit_gui.py      # có nút nào chết không            (56 điều khiển)
+python tools/render_ui.py      # nhìn có ổn không                 (26 ảnh)
+python tools/nx_crosscheck.py  # bản Midas khác có ra cùng kết quả không
+```
+
+- [Hướng dẫn kiểm thử](docs/kiem-thu/huong-dan-kiem-thu.md) — chạy gì, khi nào,
+  đọc kết quả thế nào, và quy trình chín bước trước khi phát hành
+- [Báo cáo kiểm thử v1.4.1](docs/kiem-thu/bao-cao-kiem-thu-v1.4.1.md) — kết quả,
+  tám khiếm khuyết đã sửa, ba việc còn để ngỏ
+- [Soát điều khiển giao diện](docs/kiem-thu/soat-dieu-khien-v1.4.1.md) — bảng
+  từng nút bấm, sinh tự động
+
 ## Build Installer
+
+Trước khi build, hãy chạy hết quy trình kiểm thử ở trên. Build không lỗi chưa có
+nghĩa là bản đóng gói chạy được.
 
 ```bash
 # Chạy build script (PyInstaller + Inno Setup)
@@ -119,7 +141,10 @@ Yêu cầu:
 - PyInstaller (`pip install pyinstaller`)
 - Inno Setup 6 (https://jrsoftware.org/isdl.php)
 
-Output: `dist\installer\MidasTransverseBoxgirder_Setup_v1.4.1.exe`
+Output: `dist\installer\MidasTransverseBoxgirder_Setup_v1.4.1.exe` (43,8 MB)
+
+Sau khi build, **chạy thật** bản đóng gói và đọc tiêu đề cửa sổ để chắc phiên
+bản đúng.
 
 ## Quy trình sử dụng
 

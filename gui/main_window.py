@@ -193,8 +193,14 @@ class MainWindow(QMainWindow):
         d = QDockWidget(title, self)
         d.setObjectName(obj)
         d.setWidget(widget)
+        # Phải có CẢ `Closable`. Thiếu cờ này thì Qt khoá luôn
+        # `toggleViewAction()`, nên ba mục `Xem → Panel Project / Panel
+        # Properties / Cửa sổ Thông báo` xám vĩnh viễn — người dùng không giấu
+        # được panel nào, mà menu vẫn bày ra ba mục bấm không ăn. Không lỗi,
+        # không dấu vết; `tools/audit_gui.py` soi độ phủ mới lộ ra.
         d.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable
-                      | QDockWidget.DockWidgetFeature.DockWidgetFloatable)
+                      | QDockWidget.DockWidgetFeature.DockWidgetFloatable
+                      | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         if min_w:
             d.setMinimumWidth(min_w)
         if min_h:

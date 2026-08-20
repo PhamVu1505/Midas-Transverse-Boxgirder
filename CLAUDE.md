@@ -301,20 +301,31 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 ## Lệnh thường dùng
 ```bash
 python run_gui.py
-python -m pytest tests -q                        # 103 bài: MCT, kiểm toán, số liệu, driver, NX
-python tools/check_gui.py                        # 26 phép kiểm, bấm thật (skill kiem-gui)
+python -m pytest tests -q                        # 105 bài: MCT, kiểm toán, số liệu, driver, NX
+python tools/check_gui.py                        # 28 phép kiểm, bấm thật (skill kiem-gui)
+python tools/audit_gui.py                        # soát ĐỘ PHỦ: bấm hết 56 điều khiển
 python tools/nx_crosscheck.py                    # kiểm chéo nội lực bằng Midas NX API
 python tools/render_ui.py                        # ảnh mọi thẻ → docs/ui-snapshots/
 python tools/make_user_guide.py                  # sinh lại docs/USER-GUIDE.txt
 installer\build.bat
 ```
 
-### Ba công cụ, ba việc khác nhau
+### Bốn công cụ, bốn việc khác nhau
 | Công cụ | Trả lời câu hỏi |
 |---|---|
 | `pytest tests -q` | Phép tính có đúng không |
 | `tools/check_gui.py` | **Bấm vào thì có đúng không** |
+| `tools/audit_gui.py` | **Có nút nào chết không** |
 | `tools/render_ui.py` | Nhìn có ổn không |
+
+`check_gui` sâu nhưng **hẹp** — mỗi phép kiểm gắn với một lỗi đã xảy ra thật, nên
+nó chỉ soi những chỗ đã từng gãy. `audit_gui` đi ngược lại: không biết nút nào
+nên làm gì, chỉ kích hoạt **mọi** điều khiển rồi hỏi bốn câu (có nối tay xử lý
+chưa · có bật được không · kích hoạt có ném lỗi không · cửa sổ còn sống không).
+Nó tìm ra lỗi **thiếu cờ `DockWidgetClosable`**: ba mục `Xem → Panel…` xám vĩnh
+viễn, bấm không ăn, mà ảnh chụp không thấy vì mục xám trông vẫn bình thường.
+
+Quy trình đầy đủ trước khi phát hành: `docs/kiem-thu/huong-dan-kiem-thu.md`.
 
 `tools/check_gui.py` dựng cửa sổ thật, bấm thật (`textActivated` chứ không phải `setCurrentText`), rồi so cái **người dùng đọc được**: chữ trong dock, mục đang chọn trong cây, chữ ở thanh trạng thái. Mỗi phép kiểm gắn với **một lỗi đã xảy ra thật**, và đã được chứng minh là bắt được lỗi đó bằng cách dựng lại lỗi cũ. Sửa xong lỗi giao diện nào thì thêm phép kiểm cho đúng lỗi đó — xem `.claude/skills/kiem-gui/SKILL.md`.
 

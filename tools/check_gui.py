@@ -331,6 +331,35 @@ def kiem_canh_bao_hoat_tai_tra_duoc_bat_ky_luc_nao(c):
     return ' · '.join(thay)
 
 
+def kiem_bat_tat_duoc_tung_dock(c):
+    """Ba mục `Xem → Panel…` phải bật/tắt được dock thật.
+
+    `QDockWidget.toggleViewAction()` bị Qt khoá khi dock **không có cờ
+    `Closable`**. `_dock()` từng chỉ đặt `Movable | Floatable`, nên cả ba mục
+    trong menu Xem xám vĩnh viễn: người dùng không giấu được panel nào, mà menu
+    vẫn bày ra ba mục bấm không ăn. Không lỗi, không dấu vết — `pytest` im lặng
+    và ảnh chụp cũng không thấy, vì mục xám trông vẫn "bình thường".
+    """
+    from PyQt6.QtWidgets import QDockWidget
+    docks = c.w.findChildren(QDockWidget)
+    assert len(docks) >= 3, f'chỉ thấy {len(docks)} dock, đợi 3'
+    ten = []
+    for d in docks:
+        a = d.toggleViewAction()
+        assert a.isEnabled(), (
+            f'mục bật/tắt dock {d.windowTitle()!r} đang bị khoá — thiếu cờ '
+            f'DockWidgetClosable thì Qt khoá luôn toggleViewAction')
+        assert d.isVisible(), f'dock {d.windowTitle()!r} không hiện sẵn'
+        a.trigger()
+        c.step()
+        assert not d.isVisible(),             f'bấm mục Xem mà dock {d.windowTitle()!r} vẫn hiện'
+        a.trigger()
+        c.step()
+        assert d.isVisible(),             f'bấm lần hai mà dock {d.windowTitle()!r} không hiện lại'
+        ten.append(d.windowTitle())
+    return 'ẩn/hiện được: ' + ' · '.join(ten)
+
+
 def kiem_khong_co_widget_mo_coi(c):
     """Không widget nào được vẽ ngoài layout ở kích thước mặc định.
 
@@ -432,6 +461,7 @@ CHECKS = [
     kiem_tuy_chon_khong_chan_tin_hieu,
     kiem_preflight_hoi_truoc_khi_tao,
     kiem_canh_bao_hoat_tai_tra_duoc_bat_ky_luc_nao,
+    kiem_bat_tat_duoc_tung_dock,
     kiem_khong_co_widget_mo_coi,
     kiem_thanh_trang_thai_khong_chong_chu,
     kiem_huy_hieu_nhat_ky,
