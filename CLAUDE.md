@@ -384,9 +384,40 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
   `MAPI_KEY` hoặc `%USERPROFILE%\mapikey.txt`, **không để trong thư mục dự án**.
 - **`"command complete"` không có nghĩa là xong**: `/doc/IMPORT` trả đúng câu đó
   cho MCT của ta rồi nạp về 0 nút. Mọi lệnh đổi mô hình phải đọc lại `db/NODE`.
-- **MCT của NX là phương ngữ khác bản 2022** (VuPQ chỉ ra; tôi từng kết luận sai
-  là "NX không nạp được MCT"). Hệ quả: hướng plugin NX **không cần bộ dựng mô
-  hình thứ hai** — chỉ cần `mct_frame_writer` xuất thêm phương ngữ NX.
+- **`/doc/IMPORT` và `/doc/EXPORT` làm việc với JSON, không phải MCT.** Dò ra
+  bằng cách bảo NX xuất chính mô hình của ta: file ghi ra bắt đầu bằng
+  `{"DBG":{"UNIT":{` — JSON của cả 212 bảng, bất kể đuôi file đặt là gì. Vòng
+  tròn khép được: `EXPORT → NEW → IMPORT` phục hồi đủ 66 nút/66 phần tử. (NX
+  **có** nhập MCT, nhưng qua **giao diện** và với phương ngữ khác bản 2022 —
+  đường khác, không phải đường API.)
+- **NHƯNG vòng tròn JSON KHÔNG bảo toàn tổ hợp.** Sau `EXPORT→IMPORT→SAVEAS→
+  ANAL` trên S16: tải cơ bản vẫn lệch 0,0100 kN·m, còn `LCB1(all)` **109,25** ·
+  `LCB2(all)` **126,13** · `ser_all(all)` **109,25**. Hình học và tải tĩnh sống
+  sót, tổ hợp thì không. **Đừng xây plugin NX trên giả định vòng tròn JSON là
+  không mất mát.**
+- **Phải LƯU trước khi giải.** Tài liệu chưa có tên file thì `doc/ANAL` làm NX
+  bật hộp thoại **Save As** rồi ngồi đợi — modal, chặn luôn phản hồi REST. Nhìn
+  từ phía ta chỉ thấy ANAL chạy 57 s rồi báo *complete* mà không ra kết quả nào.
+  **Hộp thoại đã hiện lên màn hình VuPQ và phải bấm Cancel bằng tay.** `NX.giai()`
+  nay chặn sẵn; `tests/test_midas_nx.py` khoá cả hai chiều.
+
+### Đóng gói (v1.4.1)
+`installer\build.bat` → `dist/installer/MidasTransverseBoxgirder_Setup_v1.4.1.exe`.
+
+- **PyInstaller gom CẢ BA bộ Qt có trong máy.** Bản build đầu ra 300 MB, trong
+  đó **164 MB là PyQt5 + PySide6 hoàn toàn thừa** — chỉ có DLL, không một module
+  Python nào import tới. Phải `--exclude-module` bằng tay cho `PyQt5` ·
+  `PySide6` · `PySide2` · `shiboken6` · `shiboken2`. Sau khi loại: gói **135 MB**,
+  installer **86,5 → 43,8 MB**.
+- **`--hidden-import` từng liệt kê 7 module trong khi GUI dùng 14** — thiếu
+  `input_check`, `project`, `preview`, `pt_layout`, `section_check`… Chúng được
+  import lười nên PyInstaller vẫn tìm ra, nhưng một danh sách lạc hậu thì không
+  còn nói lên được điều gì. Nay kê hết `src/`.
+- **`requests`/`urllib3`/`certifi` vẫn bị loại trừ** và đúng như vậy ở V1: chỉ
+  `src/midas_nx.py` cần chúng, mà GUI chưa gọi tới. **Thêm thẻ Kiểm chéo NX thì
+  phải bỏ ba dòng exclude ấy** — quên thì lỗi chỉ lộ ra ở bản đã đóng gói.
+- Kiểm bản đóng gói bằng cách **chạy thật** rồi đọc tiêu đề cửa sổ, không chỉ
+  xem build có lỗi không.
 
 ### Chạy Midas từ GUI — Giai đoạn 3 (v1.4.1)
 `gui/midas_worker.py` + `Prefs.midas_auto`. **Mặc định TẮT, và đó là yêu cầu của VuPQ**: đường ưu tiên vẫn là tự mở Midas rồi tự bấm. Bật ở `Tùy chọn → Midas`, chạy bằng `Mô hình → Chạy Midas/Civil` (**F8**).
@@ -450,9 +481,9 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 `S1 8.140` · `S10 6.050` · `S16 7.260` · `S1_V2 12.430` · `S20 4.680` · `SLT 9.180` bản ghi. Cả 6 đủ 4 chuỗi `str_all`/`ser_all` và tập phần tử khớp topo. **Không** ghi vào `output/` — muốn dùng số này cho tab Kiểm toán thì phải sinh lại vào `output/<tên>/`.
 
 **Next Action cụ thể:**
-1. **`installer\build.bat` cho v1.4.1** — đây là việc còn lại của V1. Xem
-   `[[feedback_test_before_installer]]`; điều kiện đã đủ: `*TDN-*` kiểm xong,
-   6/6 mặt cắt chạy trên Midas thật, kiểm chéo NX 4/4 đạt.
+1. ~~`installer\build.bat` cho v1.4.1~~ — **XONG**. `dist/installer/
+   MidasTransverseBoxgirder_Setup_v1.4.1.exe` **43,8 MB**, bản đóng gói chạy
+   thật (tiêu đề cửa sổ `… v1.4.1`). Xem mục *Đóng gói*.
 2. **Merge `feature/t13-twin-box` → `master`** (đã đẩy remote, chưa mở PR).
 3. **Hoạt tải template S10 / S20** — VuPQ chốt **không sửa hộ**, app đã báo rõ
    trên dock Properties. Việc sửa file Excel là của người dùng. Không còn là
@@ -460,12 +491,12 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 4. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
 
 **Sau V1 — hướng Midas NX** (VuPQ chốt thứ tự 2026-08-20):
-5. **Dò phương ngữ MCT của NX.** MCT ta sinh (cho 2022) nạp vào NX ra 0 nút,
-   nhưng NX **có** nhập MCT — chỉ là định dạng khác một ít. Đường nhanh nhất:
-   dựng mô hình nhỏ trong NX rồi `/doc/EXPORT` ra MCT, so với MCT ta sinh. Việc
-   này quyết định chặng sau rẻ hay đắt: nếu chỉ là vài khác biệt cú pháp thì
-   `mct_frame_writer` xuất thêm một phương ngữ là xong, **không cần bộ dựng mô
-   hình thứ hai**.
+5. **Truy ra bảng nào bị mất trong vòng tròn JSON.** `/doc/EXPORT` →
+   `/doc/IMPORT` giữ được hình học và tải tĩnh (lệch 0,01 kN·m) nhưng **làm
+   hỏng tổ hợp** (`LCB1`/`LCB2`/`ser_all` lệch 109–126 kN·m). Đây là việc
+   **chặn** mọi ý định dựng mô hình NX bằng JSON: xây plugin trên giả định vòng
+   tròn không mất mát thì con số thiết kế sai mà không gì báo. Có 212 bảng
+   trong JSON; so bảng nào lệch giữa bản gốc và bản nạp lại là ra.
 6. **Thẻ Kiểm chéo NX trong app** — chặng 1: nhận `.mcb` đã có, giải lại bằng
    NX, hiện bảng đạt/hỏng. Lõi đã xong ở `tools/nx_crosscheck.py`.
 7. **Plugin NX** — chặng 2, sau khi có phương ngữ MCT.

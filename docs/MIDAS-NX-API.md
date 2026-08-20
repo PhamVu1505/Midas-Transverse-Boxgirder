@@ -73,9 +73,10 @@ bằng API là khả thi** — đây là nền cho hướng làm plugin NX.
 |---|---|---|
 | `NEW` | `{}` | xoá trắng tài liệu đang mở, **không hỏi gì** |
 | `OPEN` | `{"Argument": "C:\\...\\a.mcb"}` | mở được `.mcb`; đọc lại đúng số nút |
-| `IMPORT` | `{"Argument": "…"}` | xem cảnh báo mục 4 |
+| `IMPORT` | `{"Argument": "C:\\...\\a.json"}` | nhận **JSON**, không phải MCT — xem mục 4b |
+| `EXPORT` | `{"Argument": "C:\\...\\a.json"}` | ghi **JSON** toàn bộ DB (212 bảng) |
 | `ANAL` | `{}` | giải; S16 hết **8 s**, S1_V2 **14 s** |
-| `SAVEAS` | cần tham số thứ hai (chưa dò xong) | — |
+| `SAVEAS` | `{"Argument": "C:\\...\\a.mcb"}` | lưu ra `.mcb` |
 | `CLOSE` | `{}` | đóng tài liệu |
 
 Tham số là **chuỗi trần**, không phải `{"Argument": {"PATH": …}}` — dạng dict
@@ -102,35 +103,58 @@ xuất hai đầu, nên `midas_nx.NX.noi_luc()` bỏ các điểm 1/4 để hai 
 
 ---
 
-## 4. Bốn cái bẫy
+## 4. Sáu cái bẫy
 
 **a. `"command complete"` KHÔNG có nghĩa là xong.**
 `/doc/IMPORT` trả đúng câu đó cho một file `.mct` rồi nạp về **0 nút**. Mọi lệnh
 làm đổi mô hình đều phải **đọc lại `db/NODE`** để xác nhận. Dự án Long Thành đã
 ghi lại đúng luật này trước ("không coi MAPI báo complete là đã hội tụ").
 
-**b. MCT của ta chưa nạp được vào NX — vì SAI PHƯƠNG NGỮ, không phải vì API.**
-`/doc/IMPORT` với `output/S16/S16_frame.mct` trả *command complete* rồi nạp về
-**0 nút**; `/doc/OPEN` với `.mct` thì *Failed to open file* (OPEN chỉ nhận `.mcb`).
+**b. `/doc/IMPORT` và `/doc/EXPORT` làm việc với JSON, KHÔNG phải MCT.**
 
-Kết luận đầu tiên tôi rút ra — "NX không nạp được MCT qua API" — **là sai**.
-VuPQ chỉ ra: NX **có** nhập MCT, nhưng **định dạng MCT cho NX khác định dạng cho
-Civil 2022 một ít**. Vậy `/doc/IMPORT` là đúng đường, thứ sai là nội dung file.
+Đây là lý do MCT của ta cho *command complete* rồi nạp về **0 nút** — nó không
+đọc MCT chút nào. Dò ra bằng cách bảo NX xuất chính mô hình của ta:
+`/doc/EXPORT` với đuôi `.mct` vẫn ghi ra một file bắt đầu bằng `{"DBG":{"UNIT":{`
+— **JSON của toàn bộ database, 212 bảng**. Đuôi file không quyết định gì.
 
-Hệ quả cho lộ trình: hướng plugin NX **không cần bộ dựng mô hình thứ hai** qua
-`PUT /db/*`. Chỉ cần `mct_frame_writer` biết xuất thêm phương ngữ NX — rẻ hơn
-hẳn, và không sinh ra hai bộ mã cùng mô tả một mô hình.
+Vòng tròn khép được: `EXPORT` → `NEW` → `IMPORT` → phục hồi đủ 66 nút · 66 phần
+tử. Nghĩa là **dựng mô hình trong NX hoàn toàn bằng API là khả thi, qua JSON**,
+không cần MCT và không cần chạm giao diện.
 
-**Chưa dò ra khác nhau chỗ nào.** Đường nhanh nhất: dựng một mô hình nhỏ trong
-NX rồi `/doc/EXPORT` ra MCT, so với MCT ta sinh.
+(NX **có** nhập MCT — nhưng qua **giao diện**, `File › Import › MCT`, và với một
+phương ngữ khác bản 2022 một ít. Đó là đường khác, không phải đường API này.)
 
-**c. `/doc/NEW` và `/doc/OPEN` đè lên tài liệu đang mở, không hỏi.**
+**c. Tài liệu nạp từ JSON CHƯA CÓ TÊN FILE → giải xong không có kết quả nào.**
+`doc/ANAL` chạy **57 s** rồi trả *command complete*, nhưng `post/table` báo
+*"Cannot generate table data as there is no analysis result"*. NX ghi `.out`/
+`.CA*` cạnh file `.mcb`, mà tài liệu chưa lưu thì không có chỗ nào để ghi.
+**Phải `doc/SAVEAS` trước, rồi mới `doc/ANAL`** — sau đó giải hết 5 s và ra đủ
+7.656 bản ghi.
+
+**d. Vòng tròn JSON KHÔNG bảo toàn tổ hợp — đây là cạm bẫy nguy hiểm nhất.**
+
+Sau `EXPORT → IMPORT → SAVEAS → ANAL` trên S16, so với bảng của Civil 2022:
+
+| | mở thẳng `.mcb` | qua vòng tròn JSON |
+|---|---|---|
+| tải cơ bản, lệch lớn nhất | 0,0100 kN·m | **0,0100 kN·m** |
+| `LCB1(all)` | 0,02 | **109,25** |
+| `LCB2(all)` | 0,02 | **126,13** |
+| `ser_all(all)` | 0,02 | **109,25** |
+
+Hình học và tải tĩnh sống sót nguyên vẹn; **tổ hợp thì không**. Chưa truy ra
+bảng nào trong 212 bảng bị mất — nhưng đủ để kết luận: **không được coi vòng
+tròn JSON là không mất mát**. Xây plugin NX trên giả định đó thì con số thiết kế
+sai mà không gì báo — mô hình vẫn chạy, bảng vẫn ra số đẹp, đúng khuôn lỗi dự án
+này đã gặp nhiều lần.
+
+**e. `/doc/NEW` và `/doc/OPEN` đè lên tài liệu đang mở, không hỏi.**
 Phiên NX là của người dùng. `NX.kiem_tai_lieu_sach()` phải chạy trước.
 **Điểm yếu đã biết**: MAPI không có endpoint nào trả tên file đang mở
 (`db/PROJINFO`, `db/FILENAME` đều 404), nên chỉ nhận diện được bằng **số nút và
 số phần tử**. Mô hình của người dùng mà trùng cả hai con số thì bị nhận nhầm.
 
-**d. NX ghi `.out`/`.CA*` cạnh file `.mcb`.**
+**f. NX ghi `.out`/`.CA*` cạnh file `.mcb`.**
 Mở thẳng file trong `output/` là ghi đè kết quả của lượt Civil 2022 mà ta đang
 lấy làm đối chứng. `tools/nx_crosscheck.py` chép sang `%TEMP%\mtb_nx` trước.
 
@@ -186,8 +210,9 @@ vốn nhỏ hơn tải xe 8–36 lần ở mọi phần tử.
 | Một mặt cắt | 50–70 s | **8–17 s** |
 | Dòng mã | 1.217 | ~260 |
 | Lấy kết quả | xuất `.xls` rồi đọc lại | JSON thẳng |
-| Nạp MCT | **được** | được, nhưng cần **phương ngữ MCT của NX** |
+| Nạp mô hình | MCT | **JSON** qua `/doc/IMPORT` (MCT chỉ qua giao diện) |
 | Hỏng thì biết vì | dò cửa sổ, thử lại cả chặng | mã HTTP + đọc lại `db/NODE` |
 
-Đường API tốt hơn ở mọi mặt. Chỗ duy nhất còn thiếu là **xuất MCT theo phương
-ngữ NX** — một việc thêm vào `mct_frame_writer`, không phải một kiến trúc khác.
+Đường API tốt hơn ở mọi mặt về thao tác. Chỗ chưa xong là **dựng mô hình**: JSON
+nạp được nhưng vòng tròn chưa bảo toàn tổ hợp (mục 4d), nên trước khi dùng nó
+sinh mô hình thật thì phải truy ra bảng nào bị mất và khoá lại bằng phép kiểm.

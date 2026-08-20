@@ -106,3 +106,44 @@ def test_khoa_khong_phu_thuoc_kieu_du_lieu_cua_so_hieu():
     kq = so_sanh([r(7, 'Barrier', 'I', My=1.0)],
                  [r('7', 'Barrier', 'I', My=1.0)])
     assert kq['ghep'] == 1
+
+
+# ── luật: chưa lưu thì không được giải ───────────────────────
+
+def test_giai_khi_chua_co_ten_file_thi_dung_lai():
+    """`giai()` phải TỪ CHỐI khi tài liệu chưa có tên file.
+
+    NX ghi `.out`/`.CA*` cạnh file `.mcb`; tài liệu chưa lưu thì không có chỗ
+    ghi, và NX **bật hộp thoại Save As rồi ngồi đợi**. Hộp thoại đó modal nên
+    chặn luôn phản hồi REST — nhìn từ phía ta chỉ thấy `doc/ANAL` treo rồi báo
+    *command complete* mà không ra kết quả nào.
+
+    Đã xảy ra thật (2026-08-20): một lượt ANAL trên tài liệu nạp từ JSON chạy
+    57 s, báo complete, rồi `post/table` trả *"there is no analysis result"* —
+    và hộp thoại Save As hiện lên màn hình VuPQ, phải bấm Cancel bằng tay.
+    Phiên NX là của người dùng; không được để nó rơi vào trạng thái chờ một cú
+    bấm mà người dùng không biết là của ai.
+    """
+    from src.midas_nx import NX, NXError
+
+    nx = NX.__new__(NX)                 # khỏi cần MAPI-Key để kiểm luật này
+    nx.log = lambda *a: None
+    nx._duong_dan = ''
+
+    with pytest.raises(NXError) as e:
+        nx.giai()
+    assert 'chưa có tên file' in str(e.value)
+    assert 'luu' in str(e.value), 'thông báo phải chỉ ra cách sửa'
+
+
+def test_da_co_ten_file_thi_khong_chan():
+    """Mở `.mcb` hay `luu()` xong rồi thì `giai()` phải đi tiếp bình thường."""
+    from src.midas_nx import NX
+
+    nx = NX.__new__(NX)
+    nx.log = lambda *a: None
+    nx._duong_dan = r'C:\tmp\S16.mcb'
+    goi = []
+    nx.post = lambda ep, body=None, han=None: goi.append(ep) or {}
+    nx.giai()
+    assert goi == ['doc/ANAL'], 'đã có tên file mà vẫn không gọi doc/ANAL'

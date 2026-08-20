@@ -34,6 +34,10 @@ Bốn sự thật phải nhớ
 4. **`/doc/NEW` xoá trắng tài liệu đang mở.** Phiên NX là của người dùng, nên
    `kiem_tai_lieu_sach()` phải chạy trước, y như luật của `midas_driver`.
 
+5. **Phải LƯU trước khi giải.** Tài liệu chưa có tên file thì `doc/ANAL` làm NX
+   bật hộp thoại **Save As** rồi ngồi đợi — modal, chặn luôn phản hồi REST. Đã
+   xảy ra thật và hộp thoại hiện lên màn hình VuPQ. `giai()` chặn sẵn.
+
 Hai kiểu 404 (rất tiện lúc dò đường)
 ────────────────────────────────────
     "404 Not Found, Please check your request url."  → sai cả NHÓM lệnh
@@ -95,6 +99,11 @@ class NX:
     def __init__(self, key: str = None, log=print):
         self.key = key or doc_key()
         self.log = log
+        # Đường dẫn tài liệu đang mở, theo dõi trong phiên. MAPI **không** có
+        # endpoint nào trả tên file (`db/PROJINFO`, `db/FILENAME` đều 404), nên
+        # đây là cách duy nhất biết tài liệu đã có tên hay chưa — mà `giai()`
+        # bắt buộc phải biết, xem docstring của nó.
+        self._duong_dan = ''
 
     # ── tầng HTTP ────────────────────────────────────────────
     def _goi(self, method, ep, body=None, han=300):
@@ -183,23 +192,74 @@ class NX:
         if os.path.splitext(mcb)[1].lower() != '.mcb':
             raise NXError(
                 f'chỉ mở được .mcb, không mở được {os.path.basename(mcb)}. '
-                f'NX không nạp .mct qua API: /doc/IMPORT báo "command complete" '
-                f'nhưng nạp về 0 nút.')
+                f'MCT không đi qua API được — `/doc/IMPORT` nhận JSON, xem '
+                f'docs/MIDAS-NX-API.md mục 4b.')
         self.post('doc/OPEN', {'Argument': mcb})
         n, e = self.dem()
         # "command complete" không đủ — phải thấy số liệu mới tính là mở được.
         if cho_nut and not n:
             raise NXError(f'mở {os.path.basename(mcb)} xong mà mô hình rỗng '
                           f'(0 nút) — NX không đọc được file này')
+        self._duong_dan = mcb
         self.log(f'  mở {os.path.basename(mcb)}: {n} nút · {e} phần tử')
         return n, e
 
     def moi(self):
         """Tài liệu trắng. Gọi `kiem_tai_lieu_sach()` trước nếu chưa chắc."""
         self.post('doc/NEW', {})
+        self._duong_dan = ''
+
+    def nap_json(self, path: str):
+        """Nạp mô hình từ file JSON do `/doc/EXPORT` sinh ra.
+
+        Tài liệu sau lệnh này **chưa có tên file** — phải `luu()` trước khi
+        `giai()`, xem lý do ở đó.
+        """
+        path = os.path.abspath(path)
+        if not os.path.exists(path):
+            raise NXError(f'không thấy file: {path}')
+        self.post('doc/IMPORT', {'Argument': path}, han=600)
+        n, e = self.dem()
+        if not n:
+            raise NXError(f'nạp {os.path.basename(path)} xong mà mô hình rỗng '
+                          f'(0 nút). `/doc/IMPORT` nhận **JSON** của NX, không '
+                          f'nhận MCT — xem docs/MIDAS-NX-API.md mục 4b.')
+        self._duong_dan = ''
+        self.log(f'  nạp JSON {os.path.basename(path)}: {n} nút · {e} phần tử')
+        return n, e
+
+    def luu(self, mcb: str):
+        """Lưu tài liệu ra `.mcb` (`/doc/SAVEAS`)."""
+        mcb = os.path.abspath(mcb)
+        os.makedirs(os.path.dirname(mcb), exist_ok=True)
+        self.post('doc/SAVEAS', {'Argument': mcb}, han=600)
+        if not os.path.exists(mcb):
+            raise NXError(f'lưu xong mà không thấy file: {mcb}')
+        self._duong_dan = mcb
+        self.log(f'  lưu {os.path.basename(mcb)} '
+                 f'({os.path.getsize(mcb) / 1e6:.1f} MB)')
+        return mcb
 
     def giai(self, han=3600) -> float:
-        """Chạy phân tích. Trả về số giây đã chờ."""
+        """Chạy phân tích. Trả về số giây đã chờ.
+
+        **Tài liệu phải có tên file trước.** NX ghi `.out`/`.CA*` cạnh file
+        `.mcb`; tài liệu chưa lưu thì không có chỗ ghi, và NX **bật hộp thoại
+        Save As rồi ngồi đợi**. Hộp thoại đó là **modal**: nó chặn luôn phản hồi
+        REST, nên nhìn từ phía ta chỉ thấy `doc/ANAL` treo rồi trả *command
+        complete* mà không có kết quả nào.
+
+        Đã xảy ra thật: một lượt `ANAL` trên tài liệu nạp từ JSON chạy **57 s**,
+        báo complete, rồi `post/table` trả *"there is no analysis result"* — và
+        hộp thoại Save As hiện ra trên màn hình VuPQ, phải bấm Cancel bằng tay.
+        Phiên NX là của người dùng; không được để nó rơi vào trạng thái chờ một
+        cú bấm mà người dùng không biết là của ai.
+        """
+        if not self._duong_dan:
+            raise NXError(
+                'tài liệu chưa có tên file — gọi `luu(<đường dẫn .mcb>)` trước. '
+                'Chạy phân tích lúc này thì NX bật hộp thoại Save As và đợi '
+                'người dùng bấm, còn API thì treo.')
         t0 = time.time()
         self.post('doc/ANAL', {}, han=han)
         d = time.time() - t0
