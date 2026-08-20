@@ -165,7 +165,7 @@ def _classify_inner(inn, of, H):
 
     # All remaining vertices = web/haunch region
     # = not inner_top and not inner_bot
-    max_bot_abs_x = max(abs(p[0]) for p in inner_bot) if inner_bot else 0
+    max(abs(p[0]) for p in inner_bot) if inner_bot else 0
 
     def _is_inner_top(p):
         return any(abs(p[0]-t[0]) < _TOL and abs(p[1]-t[1]) < _TOL for t in inner_top)

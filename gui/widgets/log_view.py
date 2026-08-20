@@ -8,7 +8,7 @@ cảnh báo/lỗi, nên traceback dài không lẫn vào thông tin thường.
 import re
 import time
 
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import (QColor, QTextCharFormat, QFont, QTextCursor,
                          QTextDocument, QTextImageFormat)
 from PyQt6.QtWidgets import QTextEdit

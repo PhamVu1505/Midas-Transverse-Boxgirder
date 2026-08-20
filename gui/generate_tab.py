@@ -7,7 +7,6 @@ chạy worker, ghi kết quả ngược vào project. Thiết lập (template, t
 quả) nằm ở panel Project bên trái; khung xem là `ViewerPanel` dùng chung.
 """
 
-import json
 import os
 
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -39,9 +38,6 @@ class GenerateController(QObject):
 
     def set_log(self, log):
         self.log_area = log
-
-    def set_viewer(self, viewer):
-        self.viewer = viewer
 
     def set_project(self, project: Project):
         self.project = project
@@ -136,50 +132,18 @@ class GenerateController(QObject):
     # Tiền kiểm số liệu đầu vào
     # ─────────────────────────────────────────
     def _metrics_for(self, sec):
-        """Hình học của một mặt cắt, lấy đường rẻ nhất còn dùng được.
+        """Hình học của một mặt cắt — chỉ là chỗ nối `Section` với `src`."""
+        from src.input_check import section_metrics
+        return section_metrics(dxf=sec.dxf, topo=sec.topo,
+                               excel=self.project.template_for(sec))
 
-        Đã sinh MCT rồi thì đọc `topo.json` (chỉ là đọc JSON). Chưa thì dựng
-        khung từ DXF — tốn hơn nhưng vẫn chỉ vài chục mili giây, và đây đúng là
-        lúc cần cảnh báo nhất: mặt cắt mới thêm mà vớ nhầm template.
-        """
-        from src.input_check import frame_metrics
-        if sec.topo and os.path.exists(sec.topo):
-            try:
-                with open(sec.topo, encoding='utf-8') as f:
-                    return frame_metrics(json.load(f))
-            except Exception:
-                pass
-        if not sec.dxf or not os.path.exists(sec.dxf):
-            return {}
-        try:
-            import ezdxf
-            from src.dxf_reader import (_get_polyline_vertices, read_inpolys,
-                                        section_type_from_inpolys)
-            from src.frame_builder import build_frame, build_twin_frame
-            from src.load_reader import read_loads
-            msp = ezdxf.readfile(sec.dxf).modelspace()
-            out = _get_polyline_vertices(msp, 'OUTPOLY')
-            ins = read_inpolys(msp)
-            excel = self.project.template_for(sec)
-            ld = read_loads(excel) if (excel and os.path.exists(excel)) else None
-            d_L = ld['d_L'] if ld else 0.4
-            d_R = ld['d_R'] if ld else 0.4
-            if section_type_from_inpolys(ins) == 'twin_box':
-                frame = build_twin_frame(out, ins[0], ins[1], d_L=d_L, d_R=d_R)
-            else:
-                frame = build_frame(out, ins[0], d_L=d_L, d_R=d_R)
-            return frame_metrics(frame)
-        except Exception:
-            # DXF hỏng thì để bước sinh MCT báo lỗi cho tử tế, đừng chết ở đây.
-            return {}
+    def template_notes(self, secs) -> list:
+        """Đối chiếu template ↔ hình học cho một danh sách mặt cắt.
 
-    def preflight(self, secs) -> bool:
-        """Đối chiếu template với hình học trước khi sinh. False = người dùng huỷ.
-
-        Hoạt tải trong template tính theo phương pháp dải tương đương cho MỘT
-        mặt cắt cụ thể. Dùng lại cho mặt cắt khác thì tải sai, và nếu sai về phía
-        thiếu thì không có gì khác trong cả quy trình lộ ra — mô hình vẫn chạy,
-        bảng kiểm toán vẫn ra số đẹp.
+        Dùng chung cho hai chỗ: hộp thoại hỏi-trước-khi-tạo (`preflight`) và
+        menu *Kiểm tra template số liệu…*. Bản đầu để hai chỗ tự gom lấy — mà
+        gom sai một chỗ thì chỗ kia vẫn báo đúng, nên chênh lệch giữa chúng
+        không lộ ra bao giờ.
         """
         from src.input_check import check_template, check_shared_template
         from src.input_reader import read_inputs
@@ -195,7 +159,17 @@ class GenerateController(QObject):
                 notes += check_template(read_inputs(excel), metrics, s.name)
             except Exception:
                 pass
-        notes += check_shared_template(entries)
+        return notes + check_shared_template(entries)
+
+    def preflight(self, secs) -> bool:
+        """Đối chiếu template với hình học trước khi sinh. False = người dùng huỷ.
+
+        Hoạt tải trong template tính theo phương pháp dải tương đương cho MỘT
+        mặt cắt cụ thể. Dùng lại cho mặt cắt khác thì tải sai, và nếu sai về phía
+        thiếu thì không có gì khác trong cả quy trình lộ ra — mô hình vẫn chạy,
+        bảng kiểm toán vẫn ra số đẹp.
+        """
+        notes = self.template_notes(secs)
 
         if self.log_area:
             for n in notes:

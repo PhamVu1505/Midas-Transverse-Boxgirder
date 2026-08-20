@@ -146,7 +146,6 @@ def kiem_dung_lai_combo_khong_keo_cay(c):
 
 def kiem_o_cang_cap(c):
     """Ô "Căng cáp" chỉ mở khi mặt cắt có cáp, và ghi được vào project."""
-    from src.project import Section
     props = c.w.props
     sec = c.w.project.find(c.single)
     assert sec is not None, f'không tìm thấy mặt cắt {c.single!r}'
@@ -288,6 +287,50 @@ def kiem_preflight_hoi_truoc_khi_tao(c):
     return 'hộp thoại hiện · Vẫn tạo / Huỷ đều đúng'
 
 
+def kiem_canh_bao_hoat_tai_tra_duoc_bat_ky_luc_nao(c):
+    """Dock Properties phải nói được tải bánh của mặt cắt này thiếu hay dư.
+
+    Trước đây cảnh báo hoạt tải **chỉ tồn tại đúng lúc bấm Tạo MCT**: một hộp
+    thoại rồi vài dòng trôi trong Messages. Mở lại project hôm sau thì mọi mặt
+    cắt đều `assigned`, bảng kiểm toán đầy số, và không còn gì nói rằng tải
+    bánh của S10 đang thiếu 8%. VuPQ chốt tự sửa template, nên con số phải tra
+    được bất cứ lúc nào chứ không phải chỉ trong khoảnh khắc sinh MCT.
+    """
+    from src.input_check import live_load_compare, section_metrics
+    from src.input_reader import read_inputs
+
+    thay = []
+    for s in c.w.project:
+        tpl = c.w.project.template_for(s)
+        if not (tpl and os.path.exists(tpl)):
+            continue
+        cmp = live_load_compare(
+            read_inputs(tpl, strict=False),
+            section_metrics(dxf=s.dxf, topo=s.topo, excel=tpl))
+        if not cmp:
+            continue
+        c.w.panel.select(s.name)
+        c.step()
+        assert c.props_section() == s.name, 'dock không đi theo mặt cắt được chọn'
+        chu = c.w.props.input[1].text()
+        assert 'DẢI TƯƠNG ĐƯƠNG' in chu, \
+            f'{s.name}: dock không có khối đối chiếu dải tương đương'
+        assert f'{cmp["S"]["tpl"]:.0f} mm' in chu, \
+            f'{s.name}: dock không in trị S mà template đang khai'
+
+        for key in ('S', 'X'):
+            k = cmp[key]
+            if k['off'] and k['unsafe']:
+                pct = (k['ratio'] - 1) * 100
+                assert f'THIẾU {pct:.0f}%' in chu, (
+                    f'{s.name}: {key} thiếu {pct:.0f}% mà dock không nói ra — '
+                    f'đây đúng là chỗ người dùng đọc để biết phải sửa gì')
+                thay.append(f'{s.name}·{key} THIẾU {pct:.0f}%')
+    if not thay:
+        return 'bỏ qua — không mặt cắt nào trong project mẫu bị thiếu tải'
+    return ' · '.join(thay)
+
+
 def kiem_khong_co_widget_mo_coi(c):
     """Không widget nào được vẽ ngoài layout ở kích thước mặc định.
 
@@ -388,6 +431,7 @@ CHECKS = [
     kiem_chay_midas_mac_dinh_tat,
     kiem_tuy_chon_khong_chan_tin_hieu,
     kiem_preflight_hoi_truoc_khi_tao,
+    kiem_canh_bao_hoat_tai_tra_duoc_bat_ky_luc_nao,
     kiem_khong_co_widget_mo_coi,
     kiem_thanh_trang_thai_khong_chong_chu,
     kiem_huy_hieu_nhat_ky,

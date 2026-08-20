@@ -94,12 +94,6 @@ class Section:
         self.status = NEW
         self.note = ''
 
-    @property
-    def ready_for_check(self) -> bool:
-        return bool(self.topo and self.beam_force
-                    and os.path.exists(self.topo)
-                    and os.path.exists(self.beam_force))
-
 
 @dataclass
 class Project:
@@ -187,10 +181,6 @@ class Project:
         self.sections.remove(s)
         self._dirty = True
         return True
-
-    def clear_sections(self):
-        self.sections = []
-        self._dirty = True
 
     def set_template(self, name: str, template: str):
         s = self.find(name)

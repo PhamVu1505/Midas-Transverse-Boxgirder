@@ -18,7 +18,6 @@ nói lại điều mà nhìn hình đã biết.
 
 import json
 import math
-import os
 
 from PyQt6.QtCore import Qt, QPointF, QRectF, pyqtSignal
 from PyQt6.QtGui import (QPainter, QPen, QBrush, QColor, QFont, QPainterPath,

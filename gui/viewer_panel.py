@@ -6,16 +6,12 @@ truy vấn ở đáy. Thanh chế độ nằm ngoài (do cửa sổ chính quả
 của cả vùng trung tâm chứ không riêng canvas.
 """
 
-from PyQt6.QtCore import Qt, QSize, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                             QToolButton, QFrame, QSpinBox, QButtonGroup,
-                             QSizePolicy)
+                             QToolButton)
 
 from .frame_view import FrameView, MODEL, SHAPE, PARTS
-from .icons import support_icon, SUPPORT_NAME, SUPPORT_CODE
 from .theme import LIGHT, FONT_MONO
-
-KIND_LABEL = [('pin', 'Gối cố định'), ('roller', 'Gối di động'), ('fixed', 'Ngàm')]
 
 
 class ViewerPanel(QWidget):

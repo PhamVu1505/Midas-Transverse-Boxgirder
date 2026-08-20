@@ -13,7 +13,7 @@ from PyQt6.QtGui import QColor, QBrush, QFont, QAction
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget,
                              QTreeWidgetItem, QLabel, QPushButton, QMenu,
                              QFileDialog, QAbstractItemView, QHeaderView,
-                             QCheckBox, QLineEdit, QToolButton, QScrollArea,
+                             QCheckBox, QLineEdit, QScrollArea,
                              QFrame, QSizePolicy)
 
 from src.project import (Project, STATUS_LABEL, NEW, GENERATED, ASSIGNED,

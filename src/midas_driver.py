@@ -187,13 +187,6 @@ def _dinh(pid):
     return ra
 
 
-def _tieu_diem():
-    g = _GTI()
-    g.cbSize = ctypes.sizeof(_GTI)
-    tid = u32.GetWindowThreadProcessId(u32.GetForegroundWindow(), None)
-    return g.hwndFocus if u32.GetGUIThreadInfo(tid, ctypes.byref(g)) else 0
-
-
 # ─────────────────────────────────────────────────────────────
 
 class MidasSession:

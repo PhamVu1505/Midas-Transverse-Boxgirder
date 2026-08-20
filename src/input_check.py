@@ -40,9 +40,11 @@ thuỷ vẫn được in kèm trong thông báo, vì chênh lệch đúng bằng
 thường chính là lý do người lập template gõ nhầm.
 """
 
+import json
+import os
+
 # Nửa trục thiết kế HL93 — TCVN 11823-3 Điều 3.6.1.2 (kN)
 P_TRUCK = 72.5      # nửa trục 145 kN của xe tải
-P_TANDEM = 55.0     # nửa trục 110 kN của xe hai trục
 
 # Câu mở đầu chung cho mọi cảnh báo về số liệu template. Đặt ngay đầu dòng để
 # quét mắt qua cửa sổ Messages là thấy ngay việc phải làm, không phải đọc hết
@@ -169,6 +171,92 @@ def strip_width(S=None, X=None):
     return {'pos': 660.0 + 0.55 * S, 'neg': 1220.0 + 0.25 * S}
 
 
+def live_load_compare(data: dict, metrics: dict) -> dict:
+    """Đối chiếu dải tương đương của template với hình học — dạng SỐ, không phải câu.
+
+    `check_template` gói kết quả này thành câu cho nhật ký và hộp thoại; dock
+    Properties dựng nó thành bảng hai cột ngay cạnh mấy ô hoạt tải mà nó nói
+    tới. Hai lối trình bày, nhưng **phép tính chỉ viết một lần** — hai bản sao
+    của cùng một công thức tỉ số thì lệch nhau lúc nào cũng không ai thấy.
+
+    Returns:
+        {} khi thiếu số liệu, hoặc khi template không lập theo phương pháp dải
+        tương đương (hai công thức cho hai `S` khác nhau). Ngược lại mỗi tham
+        số một khối::
+
+            {'S': {'tpl', 'real', 'clear', 'spans', 'ratio', 'unsafe', 'off'},
+             'X': {'tpl', 'real', 'left', 'right', 'ratio', 'unsafe', 'off'}}
+
+        `ratio` = E_template / E_mặt_cắt — lớn hơn 1 nghĩa là dải rộng hơn thực
+        tế, tức tải bánh **thiếu**. `off` = lệch quá dung sai, mới đáng báo.
+    """
+    tpl = template_strip_geometry(data)
+    if not tpl or not metrics or not tpl['consistent']:
+        return {}
+
+    # Nhịp NGẮN NHẤT cho dải hẹp nhất, tức tải bánh lớn nhất — đó là nhịp dễ bị
+    # template làm cho thiếu tải nhất.
+    centre, clear = metrics['spans_centre'], metrics['spans_clear']
+    S_real = min(centre)
+    e_t, e_r = strip_width(S=tpl['S']), strip_width(S=S_real)
+    S = {
+        'tpl': tpl['S'], 'real': S_real,
+        'clear': clear[centre.index(S_real)], 'spans': list(centre),
+        'ratio': max(e_t['pos'] / e_r['pos'], e_t['neg'] / e_r['neg']),
+        'unsafe': e_t['pos'] > e_r['pos'] or e_t['neg'] > e_r['neg'],
+        'off': abs(tpl['S'] - S_real) > max(TOL_ABS_MM, TOL_REL * S_real),
+    }
+
+    cl, cr = metrics['cantilever_left'], metrics['cantilever_right']
+    X_real = min(cl, cr)
+    x_t, x_r = strip_width(X=tpl['X']), strip_width(X=X_real)
+    X = {
+        'tpl': tpl['X'], 'real': X_real, 'left': cl, 'right': cr,
+        'ratio': x_t / x_r, 'unsafe': x_t > x_r,
+        'off': abs(tpl['X'] - X_real) > max(TOL_ABS_MM, TOL_REL * X_real),
+    }
+    return {'S': S, 'X': X}
+
+
+def section_metrics(dxf=None, topo=None, excel=None) -> dict:
+    """Hình học dải của MỘT mặt cắt — đọc `topo.json` nếu có, không thì dựng từ DXF.
+
+    Dựng lại từ DXF tốn hơn đọc JSON nhưng vẫn chỉ vài chục mili giây, và đó
+    đúng là lúc cần đối chiếu nhất: mặt cắt vừa thêm mà vớ nhầm template thì
+    chưa có `topo` nào để đọc.
+
+    DXF hỏng thì trả `{}` chứ không ném — chỗ gọi là hộp thoại và dock
+    Properties, còn việc báo lỗi bản vẽ cho tử tế là việc của bước sinh MCT.
+    """
+    if topo and os.path.exists(topo):
+        try:
+            with open(topo, encoding='utf-8') as f:
+                return frame_metrics(json.load(f))
+        except Exception:
+            pass
+    if not dxf or not os.path.exists(dxf):
+        return {}
+    try:
+        import ezdxf
+        from .dxf_reader import (_get_polyline_vertices, read_inpolys,
+                                 section_type_from_inpolys)
+        from .frame_builder import build_frame, build_twin_frame
+        from .load_reader import read_loads
+        msp = ezdxf.readfile(dxf).modelspace()
+        out = _get_polyline_vertices(msp, 'OUTPOLY')
+        ins = read_inpolys(msp)
+        ld = read_loads(excel) if (excel and os.path.exists(excel)) else None
+        d_L = ld['d_L'] if ld else 0.4
+        d_R = ld['d_R'] if ld else 0.4
+        if section_type_from_inpolys(ins) == 'twin_box':
+            frame = build_twin_frame(out, ins[0], ins[1], d_L=d_L, d_R=d_R)
+        else:
+            frame = build_frame(out, ins[0], d_L=d_L, d_R=d_R)
+        return frame_metrics(frame)
+    except Exception:
+        return {}
+
+
 # ─────────────────────────────────────────────────────────────
 # Đối chiếu
 # ─────────────────────────────────────────────────────────────
@@ -195,51 +283,45 @@ def check_template(data: dict, metrics: dict, name: str = '') -> list:
             f'pháp dải tương đương.')})
         return out
 
+    cmp = live_load_compare(data, metrics)
+
     # ── Cự ly sườn ──
-    # So với nhịp NGẮN NHẤT: nhịp ngắn cho dải hẹp nhất, tức tải bánh lớn nhất,
-    # nên đó là nhịp dễ bị template làm cho thiếu tải nhất.
     centre, clear = metrics['spans_centre'], metrics['spans_clear']
-    S_real = min(centre)
-    if abs(tpl['S'] - S_real) > max(TOL_ABS_MM, TOL_REL * S_real):
+    s = cmp['S']
+    if s['off']:
         real = (f'{centre[0]:.0f} mm (tim–tim; thông thuỷ {clear[0]:.0f} mm)'
                 if len(centre) == 1 else
                 f'{min(centre):.0f}…{max(centre):.0f} mm tim–tim '
                 f'cho {len(centre)} nhịp')
         # E nhỏ hơn ⇒ tải bánh lớn hơn ⇒ thiên về an toàn
-        e_tpl = strip_width(S=tpl['S'])
-        e_real = strip_width(S=S_real)
-        unsafe = e_tpl['pos'] > e_real['pos'] or e_tpl['neg'] > e_real['neg']
-        ratio = max(e_tpl['pos'] / e_real['pos'], e_tpl['neg'] / e_real['neg'])
-        hq = (f'tải bánh đang THIẾU khoảng {(ratio - 1) * 100:.0f}% — '
-              f'sai về phía KHÔNG an toàn' if unsafe else
-              f'tải bánh đang dư khoảng {(1 / ratio - 1) * 100:.0f}% — '
+        hq = (f'tải bánh đang THIẾU khoảng {(s["ratio"] - 1) * 100:.0f}% — '
+              f'sai về phía KHÔNG an toàn' if s['unsafe'] else
+              f'tải bánh đang dư khoảng {(1 / s["ratio"] - 1) * 100:.0f}% — '
               f'thiên về an toàn')
-        out.append({'level': 'warn' if unsafe else 'info', 'text': (
+        out.append({'level': 'warn' if s['unsafe'] else 'info', 'text': (
             f'{tag}{CHECK_TEMPLATE} — ô S (sheet Load) đang khai '
-            f'{tpl["S"]:.0f} mm, cự ly sườn của mặt cắt này là {real}. {hq}.')})
+            f'{s["tpl"]:.0f} mm, cự ly sườn của mặt cắt này là {real}. {hq}.')})
 
     # ── Cánh hẫng ──
     # `X` đo từ mép bản tới TIM sườn ngoài, cùng quy ước với `S`.
-    cl, cr = metrics['cantilever_left'], metrics['cantilever_right']
-    X_real = min(cl, cr)
-    if abs(tpl['X'] - X_real) > max(TOL_ABS_MM, TOL_REL * X_real):
-        e_tpl = strip_width(X=tpl['X'])
-        e_real = strip_width(X=X_real)
-        unsafe = e_tpl > e_real
-        ratio = e_tpl / e_real
+    x = cmp['X']
+    if x['off']:
         hq = (f'tải bánh trên cánh hẫng đang THIẾU khoảng '
-              f'{(ratio - 1) * 100:.0f}% — sai về phía KHÔNG an toàn'
-              if unsafe else
-              f'tải bánh trên cánh hẫng dư khoảng {(1 / ratio - 1) * 100:.0f}%')
-        span = (f'{cl:.0f} mm' if abs(cl - cr) < 1 else
-                f'{min(cl, cr):.0f}…{max(cl, cr):.0f} mm')
-        out.append({'level': 'warn' if unsafe else 'info', 'text': (
+              f'{(x["ratio"] - 1) * 100:.0f}% — sai về phía KHÔNG an toàn'
+              if x['unsafe'] else
+              f'tải bánh trên cánh hẫng dư khoảng '
+              f'{(1 / x["ratio"] - 1) * 100:.0f}%')
+        span = (f'{x["left"]:.0f} mm' if abs(x['left'] - x['right']) < 1 else
+                f'{min(x["left"], x["right"]):.0f}…'
+                f'{max(x["left"], x["right"]):.0f} mm')
+        out.append({'level': 'warn' if x['unsafe'] else 'info', 'text': (
             f'{tag}{CHECK_TEMPLATE} — ô X (sheet Load) đang khai '
-            f'{tpl["X"]:.0f} mm, cánh hẫng tới tim sườn của mặt cắt này là '
+            f'{x["tpl"]:.0f} mm, cánh hẫng tới tim sườn của mặt cắt này là '
             f'{span}. {hq}.')})
 
     # ── Bề rộng đoạn lan can không được vượt cánh hẫng ──
-    for key, cant, side in (('d_L', cl, 'trái'), ('d_R', cr, 'phải')):
+    for key, cant, side in (('d_L', x['left'], 'trái'),
+                            ('d_R', x['right'], 'phải')):
         try:
             d_mm = float(data[key]) * 1000.0
         except (KeyError, TypeError, ValueError):
@@ -284,7 +366,6 @@ def check_shared_template(entries: list) -> list:
                     or abs(g['cantilever_left'] - ref['cantilever_left']) > TOL_ABS_MM):
                 differ = True
         if differ:
-            import os
             out.append({'level': 'warn', 'text': (
                 f'{CHECK_TEMPLATE} — {len(members)} mặt cắt dùng chung template '
                 f'{os.path.basename(tpl)} nhưng hình học khác nhau — hoạt tải và '

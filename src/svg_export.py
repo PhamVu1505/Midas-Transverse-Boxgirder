@@ -144,7 +144,7 @@ def export_frame_svg(outpoly_dxf: list, inpoly_dxf,
                 svg.append(f'<polyline points="{pts}" class="inner-bnd"/>')
 
     # Complete INPOLY inner boundary (orange dashed) — single box only
-    inf = frame['inner_features']
+    frame['inner_features']
     inpoly_bnd = []
     if stype != 'twin_box':
         inpoly_bnd.extend(top.get('inner_boundary_box', []))

@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, QRectF, QSize
 from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QFontMetrics
 from PyQt6.QtWidgets import QWidget, QSizePolicy
 
-from ..theme import LIGHT, FONT_UI
+from ..theme import LIGHT
 
 IDLE, ACTIVE, DONE = 'idle', 'active', 'done'
 
@@ -77,7 +77,7 @@ class StepBar(QWidget):
         f_lb = QFont(); f_lb.setPointSize(9)
         f_num = QFont(); f_num.setPointSize(8); f_num.setBold(True)
         f_sub = QFont(); f_sub.setPointSize(8)
-        fm_lb, fm_sub = QFontMetrics(f_lb), QFontMetrics(f_sub)
+        _fm_lb, fm_sub = QFontMetrics(f_lb), QFontMetrics(f_sub)
 
         x, cy, r = 10, self.height() / 2, 9
         for i, (label, sub, external) in enumerate(self.steps):

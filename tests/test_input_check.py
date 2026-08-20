@@ -21,8 +21,8 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.input_check import (CHECK_TEMPLATE, P_TRUCK, check_shared_template,
-                             check_template, frame_metrics, strip_width,
-                             template_strip_geometry)
+                             check_template, frame_metrics, live_load_compare,
+                             strip_width, template_strip_geometry)
 from src.mct_frame_writer import _write_tendon_prestress_block
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -163,6 +163,70 @@ def test_one_section_per_template_is_silent():
     e = [{'name': 'a', 'template': 't1.xls', 'metrics': _metrics(8000.0, 3900.0)},
          {'name': 'b', 'template': 't2.xls', 'metrics': _metrics(5500.0, 3300.0)}]
     assert check_shared_template(e) == []
+
+
+# ─────────────────────────────────────────────────────────────
+# Hai lối trình bày, một phép tính
+# ─────────────────────────────────────────────────────────────
+#
+# Cảnh báo hoạt tải xuất hiện ở hai nơi: câu văn trong nhật ký/hộp thoại, và
+# bảng hai cột ở dock Properties. Hai nơi phải nói **cùng một con số** — bản đầu
+# suýt có hai bản sao của cùng công thức tỉ số, mà lệch nhau thì chẳng có gì lộ
+# ra: người dùng đọc dock thấy 8%, đọc log thấy 12%, và không ai đối chiếu.
+
+@pytest.mark.parametrize('S_tpl,X_tpl,S_that,X_that', [
+    (6468.0, 3632.0, 5550.0, 3375.0),    # S20 — thiếu cả hai
+    (6468.0, 3632.0, 6977.0, 3279.0),    # S10 — chỉ thiếu cánh hẫng
+    (6468.0, 3632.0, 8450.0, 3945.0),    # S1  — dư cả hai
+])
+def test_dock_va_nhat_ky_noi_cung_mot_con_so(S_tpl, X_tpl, S_that, X_that):
+    d = _template(S_tpl, X_tpl)
+    m = _metrics(S_that, X_that)
+    cmp = live_load_compare(d, m)
+    notes = check_template(d, m, 'X')
+    assert cmp, 'template lập theo dải tương đương mà không đối chiếu được'
+
+    for key, tu_khoa in (('S', 'ô S (sheet Load)'), ('X', 'ô X (sheet Load)')):
+        c = cmp[key]
+        cau = [n for n in notes if tu_khoa in n['text']]
+        if not c['off']:
+            assert not cau, f'{key} khớp mà nhật ký vẫn kêu: {cau}'
+            continue
+        assert len(cau) == 1, f'{key} lệch mà nhật ký nói {len(cau)} lần'
+
+        # Cùng chiều: `unsafe` của dock ⇔ chữ THIẾU của nhật ký ⇔ mức warn
+        assert c['unsafe'] == ('THIẾU' in cau[0]['text']), key
+        assert cau[0]['level'] == ('warn' if c['unsafe'] else 'info'), key
+
+        # Cùng con số: phần trăm dock tính ra phải là phần trăm trong câu
+        pct = ((c['ratio'] - 1) if c['unsafe'] else (1 / c['ratio'] - 1)) * 100
+        assert f'{pct:.0f}%' in cau[0]['text'], (
+            f'{key}: dock ra {pct:.0f}%, nhật ký ghi {cau[0]["text"]!r}')
+
+
+def test_template_khong_theo_dai_tuong_duong_thi_khong_so_sanh():
+    """Không suy ngược được thì trả rỗng, chứ không đoán bừa một tỉ số."""
+    d = _template(6468.0, 3632.0)
+    d['truck_neg'] *= 2.0                      # hai công thức cho hai S khác nhau
+    assert live_load_compare(d, _metrics(5550.0, 3375.0)) == {}
+    assert live_load_compare({}, _metrics(5550.0, 3375.0)) == {}
+    assert live_load_compare(_template(6468.0, 3632.0), {}) == {}
+
+
+def test_nhieu_nhip_lay_nhip_ngan_nhat_va_dung_thong_thuy_cua_no():
+    """`clear` phải là thông thuỷ của ĐÚNG nhịp được đem so, không phải nhịp đầu.
+
+    Mặt cắt nhiều bụng so với nhịp ngắn nhất (dải hẹp nhất ⇒ tải bánh lớn nhất).
+    Lấy `spans_clear[0]` thì dock in thông thuỷ của một nhịp khác — con số vô
+    nghĩa đặt ngay cạnh con số đang bị nghi là gõ nhầm.
+    """
+    m = {'B': 24000.0, 'n_webs': 3,
+         'spans_centre': [9000.0, 5550.0], 'spans_clear': [8500.0, 5050.0],
+         'cantilever_left': 3375.0, 'cantilever_right': 3375.0}
+    c = live_load_compare(_template(6468.0, 3632.0), m)['S']
+    assert c['real'] == 5550.0
+    assert c['clear'] == 5050.0
+    assert c['unsafe'] is True
 
 
 # ─────────────────────────────────────────────────────────────

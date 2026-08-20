@@ -41,7 +41,6 @@ def _quote(sheet):
 def build(src_path, out_path, use_values=False):
     import openpyxl
     from openpyxl.styles import Font, Alignment, PatternFill
-    from openpyxl.utils import get_column_letter
 
     snap = read_inputs(src_path, strict=False)
 

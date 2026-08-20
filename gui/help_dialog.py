@@ -18,7 +18,7 @@ def _topics(t):
     """(tiêu đề, nội dung HTML). Màu lấy từ token nên đổi theme là theo."""
     ink, ink2, ink3 = t['ink'], t['ink_2'], t['ink_3']
     acc, warn, ok = t['accent'], t['warn'], t['ok']
-    soft, line = t['accent_soft'], t['border_soft']
+    soft, _line = t['accent_soft'], t['border_soft']
 
     def note(txt, color=acc, bg=None):
         return (f'<table width="100%" cellpadding="8" cellspacing="0"'
@@ -107,9 +107,9 @@ nút <b>⤢</b> để vừa khung · rê chuột lên node để xem toạ độ
     <td>Cáp dự ứng lực, ví dụ <code>PT-TOP-1</code>, <code>PT-BOT-2</code>,
         <code>PT-WEB-L-1</code>. Chương trình tự nhận theo <b>tên lớp</b>.</td></tr>
 </table>
-{note(f'Mặt cắt <b>ba hộp trở lên chưa hỗ trợ</b>. Nếu file có từ ba đường '
-      f'<code>INPOLY</code>, chương trình dừng và báo lỗi rõ ràng chứ không '
-      f'âm thầm bỏ sót.', warn, t["warn_bg"])}
+{note('Mặt cắt <b>ba hộp trở lên chưa hỗ trợ</b>. Nếu file có từ ba đường '
+      '<code>INPOLY</code>, chương trình dừng và báo lỗi rõ ràng chứ không '
+      'âm thầm bỏ sót.', warn, t["warn_bg"])}
 
 <h3 style="color:{ink}">Hệ toạ độ</h3>
 <p>Trong DXF: X ngang, Y đứng. Chương trình tự quy về hệ của Midas với X = 0 tại
@@ -131,9 +131,9 @@ tên <code>INPUT</code>, bố cục khoá – giá trị:</p>
 hay xoá dòng ở sheet <code>INPUT</code> lẫn ở các sheet con đều không ảnh hưởng
 kết quả — miễn là không đổi tên khoá.</p>
 
-{note(f'<b>Thiếu khoá thì chương trình dừng và báo tên khoá thiếu</b>, không tự '
-      f'điền giá trị mặc định. Điền mặc định âm thầm từng làm mô hình xuất ra '
-      f'sai số liệu mà không ai biết.')}
+{note('<b>Thiếu khoá thì chương trình dừng và báo tên khoá thiếu</b>, không tự '
+      'điền giá trị mặc định. Điền mặc định âm thầm từng làm mô hình xuất ra '
+      'sai số liệu mà không ai biết.')}
 
 <h3 style="color:{ink}">Gán template</h3>
 <p>Vào <b>Tệp → Chọn template số liệu</b> để đặt template dùng chung. Muốn một
@@ -168,9 +168,9 @@ thức bị dán thành số cứng.</p>
 <tr><td style="color:{ok}">✓</td><td>Đã kiểm toán xong</td></tr>
 <tr><td style="color:{t["err"]}">✕</td><td>Lỗi — xem chi tiết ở Messages</td></tr>
 </table>
-{note(f'Chưa gán template thì MCT chỉ có hình học, vật liệu và gối; toàn bộ '
-      f'khối tải trọng cùng tổ hợp bị bỏ qua. Chương trình ghi rõ điều này vào '
-      f'đầu file và vào Messages.', warn, t["warn_bg"])}
+{note('Chưa gán template thì MCT chỉ có hình học, vật liệu và gối; toàn bộ '
+      'khối tải trọng cùng tổ hợp bị bỏ qua. Chương trình ghi rõ điều này vào '
+      'đầu file và vào Messages.', warn, t["warn_bg"])}
 
 <h3 style="color:{ink}">Căng cáp một đầu hay hai đầu</h3>
 <p>Mặt cắt có cáp DƯL thì panel <b>Properties</b> bên phải có ô <b>Căng cáp</b>.
@@ -196,9 +196,9 @@ cảnh báo mở đầu bằng <b>KIỂM TRA SỐ LIỆU FILE TEMPLATE</b>.</p>
 tim–tim của bộ phận đỡ (TCVN 11823-4 Điều 4.6.2.1). Thông báo có in kèm trị
 thông thuỷ, vì chênh lệch đúng bằng một bề dày sườn thường chính là chỗ gõ nhầm
 khi lập template. Mặt cắt nhiều bụng thì so với <b>nhịp ngắn nhất</b>.</p>
-{note(f'Đọc kỹ chiều của sai số. Mặt cắt có S <b>nhỏ hơn</b> template thì dải '
-      f'rộng hơn thực tế nên tải bánh bị <b>THIẾU</b> — sai về phía không an '
-      f'toàn. S lớn hơn thì tải dư, thiên về an toàn, chỉ ghi chú.',
+{note('Đọc kỹ chiều của sai số. Mặt cắt có S <b>nhỏ hơn</b> template thì dải '
+      'rộng hơn thực tế nên tải bánh bị <b>THIẾU</b> — sai về phía không an '
+      'toàn. S lớn hơn thì tải dư, thiên về an toàn, chỉ ghi chú.',
       warn, t["warn_bg"])}
 '''),
 

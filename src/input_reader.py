@@ -284,11 +284,6 @@ def read_inputs(excel_path: str, strict: bool = True) -> dict:
     return out
 
 
-def clear_cache():
-    """Xóa cache (dùng khi người dùng vừa sửa Excel trong lúc app đang mở)."""
-    _CACHE.clear()
-
-
 def _find_input_sheet(book):
     """Tìm sheet INPUT, không phân biệt hoa thường."""
     for s in book.sheets:

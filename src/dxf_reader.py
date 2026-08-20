@@ -24,8 +24,6 @@ _TOL = 0.01  # Tolerance 10mm
 #   gạch dưới / khoảng trắng → gạch nối, gộp gạch lặp, bỏ gạch thừa hai đầu.
 # Vị trí chấp nhận cả tên viết tắt và tiếng Việt không dấu; số thứ tự có thể
 # thiếu (mặc định 1) hoặc có số 0 đứng đầu.
-PT_LAYER_RE = re.compile(r'^PT-(TOP|BOT|WEB-L|WEB-R)-(\d+)$', re.IGNORECASE)
-
 _PT_ALIAS = {
     'TOP': 'TOP', 'T': 'TOP', 'TREN': 'TOP', 'BANTREN': 'TOP',
     'BANMAT': 'TOP', 'MAT': 'TOP', 'UP': 'TOP', 'U': 'TOP',

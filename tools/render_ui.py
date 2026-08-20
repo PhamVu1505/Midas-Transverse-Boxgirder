@@ -300,7 +300,7 @@ def main():
               'chạy pipeline trước rồi quay lại.')
         return 1
     sections = [(n, t, b, load_topo(t)) for n, t, b in found]
-    print(f'Mặt cắt: ' + ' · '.join(
+    print('Mặt cắt: ' + ' · '.join(
         f'{n}{"" if b else " (chưa có Beam Force)"}' for n, _t, b, _o in sections))
 
     from PyQt6.QtWidgets import QApplication

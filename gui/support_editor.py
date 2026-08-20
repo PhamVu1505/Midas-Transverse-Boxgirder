@@ -9,7 +9,7 @@ Ba nút icon vẽ đúng ký hiệu sẽ hiện trên mô hình — mượn lố
 SAP2000: nhìn hình là biết chọn gì, không phải đọc chữ trong danh sách xổ.
 """
 
-from PyQt6.QtCore import Qt, QSize, pyqtSignal
+from PyQt6.QtCore import QSize, pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QToolButton, QSpinBox, QFrame, QButtonGroup)
 

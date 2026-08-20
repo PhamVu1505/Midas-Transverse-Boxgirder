@@ -18,12 +18,12 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget,
                              QListWidgetItem, QStackedWidget, QWidget, QLabel,
                              QComboBox, QRadioButton, QButtonGroup, QSlider,
                              QPushButton, QCheckBox, QFormLayout, QFrame,
-                             QLineEdit, QFileDialog, QSpinBox, QGroupBox,
+                             QLineEdit, QFileDialog, QGroupBox,
                              QGridLayout)
 
 from .theme import (THEMES, ACCENTS, DENSITY, FONT_CHOICES, FONT_MONO,
                     DEFAULT_THEME, DEFAULT_ACCENT, DEFAULT_DENSITY,
-                    make_theme, make_size, build_qss, font_stack)
+                    make_theme, make_size, build_qss)
 
 # Lớp hiển thị của khung xem, bày đúng thứ tự trong panel Project
 LAYER_LABELS = [

@@ -5,11 +5,11 @@ import os
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                               QLineEdit, QLabel, QComboBox, QTableWidget,
-                              QTableWidgetItem, QPlainTextEdit, QFileDialog,
+                              QTableWidgetItem, QFileDialog,
                               QHeaderView, QSplitter, QListWidget,
                               QAbstractItemView, QMessageBox)
 from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QFontMetrics
+from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QBrush
 
 from .worker import ResultsWorker
 from .widgets import LogView
@@ -19,8 +19,6 @@ from .force_diagram import ForceDiagram, QUANTITY_LABELS
 
 
 POINTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-LABELS = ['Center +', 'Haunch M-', 'Haunch M+', 'Out Side',
-          'Center', 'Haunch', 'Mid->upper', 'Mid->lower']
 GROUPS = ['Top slab', '', '', '', 'Bottom slab', '', 'Web', '']
 
 # Bộ phận theo CHỮ CÁI ĐẦU, không theo chỉ số cột: mặt cắt nhiều hộp có thêm
@@ -206,7 +204,6 @@ class CheckPointDiagram(PanZoom, QWidget):
             s, cw, ch = scale_for(mt)
         self._r, self._rows, self._out = r, rows, out
 
-        mb = mt
         ox = ml + (cw - (x1 - x0) * s) / 2
         oz = mt + (ch - (z1 - z0) * s) / 2
 
@@ -499,11 +496,6 @@ class ResultsTab(QWidget):
         if self.all_results:
             self._on_section_changed(self.section_combo.currentText())
 
-    # API công khai cho menu/toolbar
-    def process(self): self._process()
-    def clear(self): self._clear()
-    def open_folder(self): self._open_folder()
-
     def set_log(self, log):
         """Chuyển sang dùng cửa sổ Messages chung.
 
@@ -565,7 +557,6 @@ class ResultsTab(QWidget):
     # API công khai
     def process(self): self._process()
     def clear(self): self._clear()
-    def open_folder(self): self._open_folder()
 
     def _row_name(self, item):
         return item.text().split()[0] if item else ''

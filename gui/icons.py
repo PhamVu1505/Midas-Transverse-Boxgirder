@@ -167,7 +167,7 @@ def level_image(level: str, theme: dict = None, size: int = 15):
         return None
 
     from PyQt6.QtCore import QPointF, QRectF
-    from PyQt6.QtGui import QColor, QImage, QPen, QPolygonF, QFont
+    from PyQt6.QtGui import QColor, QImage, QPen, QPolygonF
 
     img = QImage(size, size, QImage.Format.Format_ARGB32)
     img.fill(Qt.GlobalColor.transparent)

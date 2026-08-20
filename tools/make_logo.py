@@ -18,7 +18,6 @@ ngang dầm hộp**.
 """
 
 import os
-import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -82,7 +81,10 @@ def render(svg: str, px: int):
 
 def main():
     from PyQt6.QtWidgets import QApplication
-    app = QApplication.instance() or QApplication(sys.argv)
+    # Phải GIỮ tham chiếu: QApplication không còn ai trỏ tới thì Python thu
+    # hồi và Qt sập giữa chừng. Tên bắt đầu bằng gạch dưới để công cụ soi mã
+    # không đòi xoá.
+    _app = QApplication.instance() or QApplication(sys.argv)
 
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out_ico = os.path.join(base, 'installer', 'icon.ico')

@@ -17,7 +17,6 @@ Nguồn:
 import base64
 import io
 import os
-import sys
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_GIF = os.path.join(BASE, 'docs', 'logo_TEDI', 'LOGOTEDI-2.gif')

@@ -1,7 +1,6 @@
 """Cửa sổ chính: dock project, menu, toolbar, thanh bước, status bar."""
 
 import os
-import webbrowser
 
 from PyQt6.QtCore import Qt, QSize, QSettings
 from PyQt6.QtGui import QAction, QKeySequence
@@ -9,8 +8,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QTabBar, QStackedWidget,
                              QStatusBar, QLabel, QPlainTextEdit,
                              QProgressBar, QWidget, QVBoxLayout, QToolBar,
                              QMessageBox, QFrame, QDockWidget, QFileDialog,
-                             QDialog, QHBoxLayout, QPushButton, QToolButton,
-                             QTabWidget)
+                             QDialog, QHBoxLayout, QPushButton, QToolButton)
 
 from src.project import Project, FILE_EXT, CHECKED, ERROR
 from .generate_tab import GenerateController
@@ -22,7 +20,7 @@ from .viewer_panel import ViewerPanel
 from .frame_view import MODEL, SHAPE, PARTS
 from .widgets import LogView
 from .icons import icon
-from .theme import LIGHT, FONT_MONO, THEMES, apply_theme
+from .theme import FONT_MONO, THEMES, apply_theme
 from .prefs import Prefs, PreferencesDialog
 from .widgets import StepBar, IDLE, ACTIVE, DONE
 from . import assets
@@ -956,11 +954,29 @@ class MainWindow(QMainWindow):
                     for k, a, b, addr in bad)
         except Exception as e:
             text = f'Không đọc được:\n{e}'
+
+        # Đối chiếu hoạt tải với hình học TỪNG mặt cắt. Trước đây hộp thoại này
+        # chỉ soát sheet INPUT với ô gốc — tức bỏ qua đúng phép kiểm quan trọng
+        # nhất, và cũng là phép kiểm duy nhất không có chỗ nào tra lại được sau
+        # khi đã sinh MCT xong.
+        notes = self.gen_tab.template_notes(list(self.project))
+        hard = [n for n in notes if n['level'] == 'warn']
         box = QMessageBox(self)
         box.setWindowTitle('Số liệu đầu vào')
-        box.setText('Kết quả đọc template:')
+        if hard:
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setText(f'{len(hard)} cảnh báo về số liệu template.')
+            box.setInformativeText('\n\n'.join(n['text'] for n in hard))
+        else:
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText('Kết quả đọc template:')
+            if notes:
+                box.setInformativeText('\n\n'.join(n['text'] for n in notes))
+        if notes:
+            text = ('ĐỐI CHIẾU HOẠT TẢI VỚI HÌNH HỌC\n\n'
+                    + '\n\n'.join(f'[{n["level"]}] {n["text"]}' for n in notes)
+                    + '\n\n' + '─' * 60 + '\n\n' + text)
         box.setDetailedText(text)
-        box.setIcon(QMessageBox.Icon.Information)
         box.exec()
 
     def open_guide(self):

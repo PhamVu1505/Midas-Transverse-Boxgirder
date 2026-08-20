@@ -278,7 +278,6 @@ def export_check_xlsx(path: str, section_name: str, points: list,
                         cell.fill = (bad_fill if v < 1.0 else
                                      tight_fill if v < MARGIN_TIGHT else ok_fill)
 
-    last_row = r
     r += 2
     c = ws.cell(r, 1, 'Hệ số ≥ 1,00 là đạt · dưới 1,05 là đạt nhưng dư chưa tới '
                       '5% (ô vàng) · dưới 1,00 là không đạt (ô đỏ)')

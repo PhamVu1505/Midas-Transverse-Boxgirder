@@ -11,7 +11,6 @@ Commands:
 import argparse
 import json
 import os
-import sys
 import glob
 
 import ezdxf
@@ -267,8 +266,8 @@ def _export_excel(section_name: str, check_points: dict, xlsx_path: str):
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
     except ImportError:
-        print(f'  [WARN] openpyxl not installed, skipping Excel export')
-        print(f'         Install: pip install openpyxl')
+        print('  [WARN] openpyxl not installed, skipping Excel export')
+        print('         Install: pip install openpyxl')
         return
 
     wb = Workbook()

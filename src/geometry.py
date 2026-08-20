@@ -87,25 +87,3 @@ class TendonProperty:
     anchor_set: float   # Δ (m)
     duct_dia: float     # Dduct (mm)
 
-
-@dataclass
-class LoadParameters:
-    """Thông số tải trọng thay đổi theo mặt cắt."""
-    # --- Tải gió trên kết cấu (WS) ---
-    ws_beam_intensity: float    # Cường độ gió trên bụng (kN/m)
-    ws_nodal_fx: float          # Lực nút FX tại mép (kN)
-    ws_nodal_my: float          # Moment MY tại mép (kN.m)
-
-    # --- Tải gió trên xe (WL) ---
-    wl_nodal_fx: float          # Lực WL FX (kN)
-    wl_nodal_my: float          # Moment WL MY (kN.m)
-
-    # --- Lan can, lớp phủ, dải phân cách ---
-    barrier_load: float         # kN/m
-    pavement_load: float        # kN/m
-    median_load: float          # kN/m
-
-    # --- Gradient nhiệt ---
-    tg_pos: float = 23.0        # Gradient nhiệt (+) °C
-    tg_neg: float = -7.0        # Gradient nhiệt (-) °C
-    system_temp: float = 20.0   # Nhiệt độ đồng đều °C

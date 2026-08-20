@@ -171,6 +171,39 @@ def test_pipeline(dxf_rel, stype, n_node, n_elem, n_const, tendon_names):
     assert len(hinges) == 1, f'phải có đúng 1 gối chốt, đang có {len(hinges)}'
 
 
+@pytest.mark.parametrize('dxf_rel,stype,n_node,n_elem,n_const,tendon_names', CASES)
+def test_web_thickness_stays_physical(dxf_rel, stype, n_node, n_elem,
+                                      n_const, tendon_names):
+    """Bụng không thể dày hơn khoảng cách tới bụng bên cạnh.
+
+    Bụng ngoài của mặt cắt hai hộp lấy bề dày bằng khoảng cách ngang từ biên
+    ngoài tới **mặt void gần nó**. Vớ nhầm mặt void phía xa thì bề dày nhảy từ
+    0,85 m lên 6,37 m — mà MCT vẫn ghi xong, vẫn đủ node và phần tử, vẫn qua hết
+    các bất biến đang có; chỉ tiết diện là vô nghĩa và không gì báo.
+
+    Chỗ này trước đây được canh bằng `tests/_check_web_logic.py` — một script
+    **in số ra màn hình** cho người ngồi soi, không `assert` gì, và bản thân trị
+    số nó gọi là "đúng" đã lạc hậu so với mã (nó báo `match=False` cho hình
+    hoàn toàn đúng). Script như vậy không chặn được gì mà còn làm người đọc
+    tưởng đang có lỗi, nên đã bỏ và thay bằng bất biến này.
+    """
+    from src.input_check import frame_metrics
+
+    _mct, topo, _ = generate(dxf_rel)
+    m = frame_metrics(topo)
+    assert m, 'không đo được hình học khung'
+    nhip_ngan = min(m['spans_centre']) / 1000.0        # mm → m
+
+    for key in ('wL_nodes', 'wC_nodes', 'wR_nodes'):
+        for n in topo.get(key) or []:
+            t = float(n['thickness'])
+            assert t > 0, f'{key}: bề dày {t} ≤ 0 tại x={n["x"]:.3f}'
+            assert t < nhip_ngan, (
+                f'{key}: bề dày {t:.3f} m tại x={n["x"]:.3f} lớn hơn cả nhịp '
+                f'ngắn nhất {nhip_ngan:.3f} m — hình học bất khả, dấu hiệu điển '
+                f'hình của việc đo sang mặt void phía xa')
+
+
 def test_custom_supports():
     """Gối tuỳ đặt: lưu theo toạ độ X, ghi MCT thì quy về node đáy gần nhất."""
     from src.mct_frame_writer import write_mct, SUPPORT_CODE

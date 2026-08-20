@@ -201,8 +201,60 @@ class PropertiesPanel(QWidget):
                      f'padding-top:8px">Chọn một mặt cắt ở panel trái.</div>')
         self.body[1].setText(''.join(h))
 
+    def _live_load_block(self, d, sec):
+        """Đối chiếu dải tương đương của template với hình học mặt cắt đang chọn.
+
+        Vì sao khối này nằm ngay đây, chứ không chỉ ở nhật ký lúc sinh MCT:
+        cảnh báo hoạt tải trước đây **chỉ tồn tại đúng lúc bấm Tạo MCT** — một
+        hộp thoại rồi vài dòng trôi trong Messages. Mở lại project hôm sau thì
+        mọi mặt cắt đều `assigned`, bảng kiểm toán đầy số, và không còn gì nói
+        rằng tải bánh của mặt cắt này đang thiếu 8%. Người sửa template cần
+        con số để gõ vào, ở chỗ tra được bất cứ lúc nào.
+        """
+        from src.input_check import live_load_compare, section_metrics
+        if not sec:
+            return []
+        try:
+            cmp = live_load_compare(
+                d, section_metrics(dxf=sec.dxf, topo=sec.topo,
+                                   excel=self.project.template_for(sec)))
+        except Exception:
+            return []
+        if not cmp:
+            return []
+
+        h = [self._grp('Dải tương đương')]
+        for key, nhan, phu in (
+                ('S', 'S — cự ly sườn', f'thông thuỷ {cmp["S"]["clear"]:.0f}'),
+                ('X', 'X — cánh hẫng', '')):
+            c = cmp[key]
+            h.append(self._row(f'{nhan} · template', f'{c["tpl"]:.0f} mm'))
+            if not c['off']:
+                h.append(self._row('mặt cắt này',
+                                   f'<span style="color:{self.t["ok"]}">'
+                                   f'{c["real"]:.0f} mm ✓</span>'))
+                continue
+            # E lớn hơn ⇒ tải bánh chia cho dải rộng hơn ⇒ THIẾU tải. Chỉ chiều
+            # thiếu mới tô đỏ: cảnh báo không phân biệt chiều thì kêu suốt.
+            col = self.t['err'] if c['unsafe'] else self.t['ink_2']
+            pct = ((c['ratio'] - 1) if c['unsafe'] else (1 / c['ratio'] - 1)) * 100
+            verdict = f'THIẾU {pct:.0f}%' if c['unsafe'] else f'dư {pct:.0f}%'
+            h.append(self._row('mặt cắt này',
+                               f'<span style="color:{col}">{c["real"]:.0f} mm · '
+                               f'{verdict}</span>'))
+            if phu:
+                h.append(f'<div style="color:{self.t["ink_3"]};font-size:8pt;'
+                         f'text-align:right">{phu} mm</div>')
+        if any(cmp[k]['off'] and cmp[k]['unsafe'] for k in ('S', 'X')):
+            h.append(f'<div style="color:{self.t["err"]};font-size:8pt;'
+                     f'padding-top:4px">Tải bánh đang thiếu — sửa ô S/X ở sheet '
+                     f'Load của template cho khớp mặt cắt này, hoặc gán template '
+                     f'riêng cho nó.</div>')
+        return h
+
     def refresh_input(self):
         tpl = ''
+        sec = None
         if self.project:
             sec = self.project.find(self._section)
             tpl = self.project.template_for(sec) if sec else self.project.template
@@ -266,4 +318,8 @@ class PropertiesPanel(QWidget):
                 v = d[k]
                 txt = f'{v:.6g}' + (f' {unit}' if unit else '')
                 h.append(self._row(label, txt))
+            # Bốn ô hoạt tải trên kia là thứ `S`/`X` được suy ngược ra — đặt phép
+            # đối chiếu ngay dưới chúng thì đọc một mạch là hiểu.
+            if title.startswith('Hoạt tải'):
+                h += self._live_load_block(d, sec)
         self.input[1].setText(''.join(h))
