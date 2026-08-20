@@ -10,6 +10,7 @@ Hệ tọa độ DXF: X ngang, Y đứng (Y max tại top, Y min tại bottom)
 Ánh xạ MCT: MCT_X = DXF_X - x_center, MCT_Z = H + DXF_Y
 """
 
+import math
 import os
 import re
 import ezdxf
@@ -17,7 +18,78 @@ from .geometry import CrossSectionGeometry
 
 _TOL = 0.01  # Tolerance 10mm
 
-PT_LAYER_RE = re.compile(r'^PT-(TOP|BOT|WEB-L|WEB-R)-(\d+)$', re.IGNORECASE)
+# ── Nhận diện layer cáp dự ứng lực ──────────────────────────────────────
+# Mẫu chuẩn: PT-TOP-1, PT-BOT-2, PT-WEB-L-1, PT-WEB-R-1
+# Thực tế bản vẽ hay lệch chuẩn, nên chuẩn hoá trước khi so:
+#   gạch dưới / khoảng trắng → gạch nối, gộp gạch lặp, bỏ gạch thừa hai đầu.
+# Vị trí chấp nhận cả tên viết tắt và tiếng Việt không dấu; số thứ tự có thể
+# thiếu (mặc định 1) hoặc có số 0 đứng đầu.
+_PT_ALIAS = {
+    'TOP': 'TOP', 'T': 'TOP', 'TREN': 'TOP', 'BANTREN': 'TOP',
+    'BANMAT': 'TOP', 'MAT': 'TOP', 'UP': 'TOP', 'U': 'TOP',
+    'BOT': 'BOT', 'B': 'BOT', 'DAY': 'BOT', 'BANDAY': 'BOT',
+    'DUOI': 'BOT', 'DOWN': 'BOT', 'D': 'BOT',
+    'WEB-L': 'WEB-L', 'WEBL': 'WEB-L', 'WL': 'WEB-L', 'W-L': 'WEB-L',
+    'SUONT': 'WEB-L', 'SUON-T': 'WEB-L', 'BUNGT': 'WEB-L', 'BUNG-T': 'WEB-L',
+    'LEFT': 'WEB-L', 'L': 'WEB-L',
+    'WEB-R': 'WEB-R', 'WEBR': 'WEB-R', 'WR': 'WEB-R', 'W-R': 'WEB-R',
+    'SUONP': 'WEB-R', 'SUON-P': 'WEB-R', 'BUNGP': 'WEB-R', 'BUNG-P': 'WEB-R',
+    'RIGHT': 'WEB-R', 'R': 'WEB-R',
+}
+_PT_NORM_RE = re.compile(r'^PT-(.+?)(?:-(\d+))?$')
+
+
+def _norm_layer(name: str) -> str:
+    """Chuẩn hoá tên layer: hoa, gạch dưới/khoảng trắng → gạch nối, gộp gạch."""
+    s = re.sub(r'[\s_]+', '-', str(name).strip().upper())
+    return re.sub(r'-{2,}', '-', s).strip('-')
+
+
+def parse_pt_layer(name: str):
+    """Tên layer → (vị_trí, chỉ_số) hoặc None nếu không phải layer cáp.
+
+    Chấp nhận cả biến thể lệch chuẩn thường gặp trong bản vẽ thực tế:
+    PT_TOP_1, pt top 1, PT-TOP (thiếu số → 1), PT-T-2, PT-BANDAY-1…
+    """
+    n = _norm_layer(name)
+    if not n.startswith('PT-') and n != 'PT':
+        return None
+    m = _PT_NORM_RE.match(n)
+    if not m:
+        return None
+    loc_raw, idx = m.group(1), m.group(2)
+    loc = _PT_ALIAS.get(loc_raw.replace('-', ''), _PT_ALIAS.get(loc_raw))
+    if loc is None:
+        return None
+    return loc, int(idx) if idx else 1
+
+
+def read_inpolys(msp) -> list:
+    """Đọc tất cả LWPOLYLINE trên layer INPOLY, sắp xếp trái → phải theo tâm X.
+
+    Returns:
+        list of vertex lists; len==1 single box, len==2 twin box.
+    """
+    polys = []
+    for e in msp.query('LWPOLYLINE'):
+        if e.dxf.layer.upper() == 'INPOLY':
+            pts = [(round(x, 6), round(y, 6)) for x, y in e.get_points(format='xy')]
+            if len(pts) < 6:
+                raise ValueError(f"INPOLY cần ít nhất 6 đỉnh, chỉ tìm thấy {len(pts)}")
+            polys.append(pts)
+    if not polys:
+        raise ValueError("Không tìm thấy LWPOLYLINE trên layer 'INPOLY'")
+    polys.sort(key=lambda p: sum(v[0] for v in p) / len(p))
+    return polys
+
+
+def section_type_from_inpolys(inpolys: list) -> str:
+    """'single' hoặc 'twin_box'."""
+    if len(inpolys) == 1:
+        return 'single'
+    if len(inpolys) == 2:
+        return 'twin_box'
+    raise ValueError(f"Mặt cắt cần 1 hoặc 2 INPOLY, tìm thấy {len(inpolys)}")
 
 
 def read_dxf(dxf_path: str) -> CrossSectionGeometry:
@@ -34,46 +106,154 @@ def read_dxf(dxf_path: str) -> CrossSectionGeometry:
 
     section_name = _extract_section_name(msp, dxf_path)
     outpoly_verts = _get_polyline_vertices(msp, 'OUTPOLY')
-    inpoly_verts = _get_polyline_vertices(msp, 'INPOLY')
+    inpolys = read_inpolys(msp)
 
     if len(outpoly_verts) < 6:
         raise ValueError(f"OUTPOLY cần ít nhất 6 đỉnh, chỉ tìm thấy {len(outpoly_verts)}")
-    if len(inpoly_verts) < 6:
-        raise ValueError(f"INPOLY cần ít nhất 6 đỉnh, chỉ tìm thấy {len(inpoly_verts)}")
 
-    geo = _extract_geometry(section_name, outpoly_verts, inpoly_verts)
+    if section_type_from_inpolys(inpolys) == 'twin_box':
+        geo = _extract_geometry_twin(section_name, outpoly_verts, inpolys[0], inpolys[1])
+    else:
+        geo = _extract_geometry(section_name, outpoly_verts, inpolys[0])
     geo.pt_cables = read_pt_cables(msp)
     return geo
 
 
-def read_pt_cables(msp) -> list:
-    """Quét tất cả LWPOLYLINE trên các layer khớp pattern ^PT-(TOP|BOT|WEB-L|WEB-R)-(\\d+)$.
+def _pt_points(e):
+    """Đỉnh + bulge của một thực thể đường. None nếu không phải kiểu đường."""
+    t = e.dxftype()
+    if t == 'LWPOLYLINE':
+        return [(round(x, 6), round(y, 6), round(b, 6))
+                for x, y, b in e.get_points(format='xyb')]
+    if t == 'POLYLINE' and not e.is_3d_polyline:
+        # POLYLINE kiểu cũ: bulge nằm ở từng vertex
+        return [(round(v.dxf.location.x, 6), round(v.dxf.location.y, 6),
+                 round(getattr(v.dxf, 'bulge', 0.0), 6)) for v in e.vertices]
+    return None
+
+
+def tessellate_bulge(pts_xyb: list, seg_deg: float = 6.0) -> list:
+    """Rời rạc hoá polyline có bulge thành list (x, y) — cung tròn thành đoạn.
+
+    Cáp DƯL bẻ góc bằng cung tròn (bulge), nên nếu chỉ nối thẳng các đỉnh thì
+    hình vẽ cắt góc so với đường cáp thật. Dùng cho KHUNG XEM; phần ghi MCT vẫn
+    đi đường inverse-fillet vì Midas nhận đỉnh góc + RADIUS chứ không nhận cung.
+
+    Args:
+        pts_xyb: [(x, y, bulge), ...] — bulge của đỉnh i là độ cong cạnh i→i+1.
+        seg_deg: góc tối đa mỗi đoạn xấp xỉ (độ).
+    """
+    if not pts_xyb:
+        return []
+    out = [(float(pts_xyb[0][0]), float(pts_xyb[0][1]))]
+    step = math.radians(max(1.0, seg_deg))
+    for i in range(len(pts_xyb) - 1):
+        x0, y0 = float(pts_xyb[i][0]), float(pts_xyb[i][1])
+        x1, y1 = float(pts_xyb[i + 1][0]), float(pts_xyb[i + 1][1])
+        b = float(pts_xyb[i][2]) if len(pts_xyb[i]) > 2 else 0.0
+        dx, dy = x1 - x0, y1 - y0
+        chord = math.hypot(dx, dy)
+        if abs(b) < 1e-6 or chord < 1e-9:
+            out.append((x1, y1))
+            continue
+        # bulge = tan(θ/4) với θ = góc chắn cung (dương = ngược chiều kim đồng hồ)
+        theta = 4.0 * math.atan(b)
+        half = theta / 2.0
+        if abs(math.sin(half)) < 1e-9:
+            out.append((x1, y1))
+            continue
+        R = chord / (2.0 * math.sin(half))          # có dấu
+        # Tâm nằm trên trung trực dây cung; pháp tuyến trái n = (-dy, dx)/chord.
+        # d = R·cos(θ/2) mang dấu nên tự lật đúng phía cho cung lớn / cung ngược.
+        d = R * math.cos(half)
+        cx = (x0 + x1) / 2.0 - dy / chord * d
+        cy = (y0 + y1) / 2.0 + dx / chord * d
+        a0 = math.atan2(y0 - cy, x0 - cx)
+        n = max(2, int(math.ceil(abs(theta) / step)))
+        for k in range(1, n + 1):
+            a = a0 + theta * k / n
+            out.append((cx + abs(R) * math.cos(a), cy + abs(R) * math.sin(a)))
+    return out
+
+
+def _iter_line_entities(msp, depth=0):
+    """Duyệt thực thể đường ở modelspace VÀ bên trong block (INSERT).
+
+    Cáp hay được vẽ trong block rồi chèn vào — `msp.query()` không thấy chúng,
+    nên trước đây im lặng bỏ sót.
+    """
+    for e in msp:
+        t = e.dxftype()
+        if t in ('LWPOLYLINE', 'POLYLINE'):
+            yield e
+        elif t == 'INSERT' and depth < 3:
+            try:
+                for sub in e.virtual_entities():
+                    if sub.dxftype() in ('LWPOLYLINE', 'POLYLINE'):
+                        yield sub
+                    elif sub.dxftype() == 'INSERT':
+                        yield from _iter_line_entities([sub], depth + 1)
+            except Exception:
+                continue
+
+
+def scan_pt_layers(msp) -> dict:
+    """Chẩn đoán: layer nào là cáp, layer nào giống cáp mà sai quy ước.
 
     Returns:
-        list of (layer_name, [(x_dxf, y_dxf, bulge), ...]) sorted by (location_priority, index).
-        bulge = DXF bulge field of vertex i = curvature of edge i→i+1 (tan(θ/4)).
-        location_priority: TOP=0, WEB-L=1, WEB-R=2, BOT=3.
+        {'ok': {layer: (loc, idx)}, 'suspect': {layer: lý_do}}
+    """
+    ok, suspect = {}, {}
+    seen = {}
+    for e in _iter_line_entities(msp):
+        seen.setdefault(e.dxf.layer, 0)
+        seen[e.dxf.layer] += 1
+    for e in msp:
+        seen.setdefault(e.dxf.layer, seen.get(e.dxf.layer, 0))
+    for layer, n_line in seen.items():
+        parsed = parse_pt_layer(layer)
+        if parsed:
+            if n_line:
+                ok[layer] = parsed
+            else:
+                suspect[layer] = 'tên đúng quy ước nhưng không có đường nào trên layer'
+        elif 'PT' in _norm_layer(layer).split('-') or _norm_layer(layer).startswith('PT'):
+            suspect[layer] = ('không khớp quy ước PT-<TOP|BOT|WEB-L|WEB-R>-<số>')
+    return {'ok': ok, 'suspect': suspect}
+
+
+def read_pt_cables(msp) -> list:
+    """Quét cáp dự ứng lực từ tên layer.
+
+    Nhận cả LWPOLYLINE lẫn POLYLINE kiểu cũ, kể cả khi nằm trong block, và
+    chấp nhận biến thể tên layer thường gặp (xem `parse_pt_layer`).
+
+    Returns:
+        list of (layer_name, [(x_dxf, y_dxf, bulge), ...]) sắp theo
+        (ưu tiên vị trí, chỉ số). bulge của đỉnh i = độ cong cạnh i→i+1.
+        Ưu tiên vị trí: TOP=0, WEB-L=1, WEB-R=2, BOT=3.
     """
     cables_by_layer = {}
-    for e in msp.query('LWPOLYLINE'):
+    meta = {}
+    for e in _iter_line_entities(msp):
         layer = e.dxf.layer
-        m = PT_LAYER_RE.match(layer)
-        if not m:
+        parsed = parse_pt_layer(layer)
+        if not parsed:
             continue
-        pts = [(round(x, 6), round(y, 6), round(b, 6))
-               for x, y, b in e.get_points(format='xyb')]
+        pts = _pt_points(e)
+        if not pts or len(pts) < 2:
+            continue
         if layer in cables_by_layer:
-            print(f'  [WARN] PT layer {layer!r} có nhiều hơn 1 LWPOLYLINE — chỉ giữ entity đầu tiên.')
+            print(f'  [WARN] PT layer {layer!r} có nhiều hơn 1 đường — '
+                  f'chỉ giữ đường đầu tiên.')
             continue
         cables_by_layer[layer] = pts
+        meta[layer] = parsed
 
     loc_priority = {'TOP': 0, 'WEB-L': 1, 'WEB-R': 2, 'BOT': 3}
 
     def _key(item):
-        layer = item[0]
-        m = PT_LAYER_RE.match(layer)
-        loc = m.group(1).upper()
-        idx = int(m.group(2))
+        loc, idx = meta[item[0]]
         return (loc_priority.get(loc, 99), idx)
 
     return sorted(cables_by_layer.items(), key=_key)
@@ -99,7 +279,7 @@ def _extract_section_name(msp, dxf_path: str) -> str:
 
 
 def _get_polyline_vertices(msp, layer_name: str) -> list:
-    """Lấy vertices từ LWPOLYLINE trên layer chỉ định."""
+    """Lấy vertices từ LWPOLYLINE đầu tiên trên layer chỉ định (single-box compat)."""
     for e in msp.query('LWPOLYLINE'):
         if e.dxf.layer.upper() == layer_name.upper():
             return [(round(x, 6), round(y, 6)) for x, y in e.get_points(format='xy')]
@@ -336,6 +516,7 @@ def _extract_geometry(name: str, outpoly: list, inpoly: list) -> CrossSectionGeo
 
     return CrossSectionGeometry(
         name=name,
+        section_type='single',
         H=H,
         B_total=B_total,
         B_box_top=B_box_top,
@@ -351,4 +532,58 @@ def _extract_geometry(name: str, outpoly: list, inpoly: list) -> CrossSectionGeo
         cant_right=cant_right,
         outpoly=outpoly_mct,
         inpoly=inpoly_mct,
+    )
+
+
+def _extract_geometry_twin(name: str, outpoly: list,
+                           in_left: list, in_right: list) -> CrossSectionGeometry:
+    """Trích xuất thông số tổng hợp cho mặt cắt 2 hộp (dùng cho read_dxf)."""
+    out_feat = _classify_outpoly(outpoly)
+    in_l = _classify_inpoly(in_left, out_feat)
+    in_r = _classify_inpoly(in_right, out_feat)
+
+    def _avg(a, b):
+        return round((a + b) / 2, 4)
+
+    H = out_feat['H']
+    x_center = out_feat['x_center']
+    B_total = out_feat['B_total']
+    t_top_tip = _avg(out_feat['t_tip_left'], out_feat['t_tip_right'])
+    t_top_at_web = _avg(out_feat['t_at_web_left'], out_feat['t_at_web_right'])
+    t_top_center = _avg(in_l['t_top_center'], in_r['t_top_center'])
+    t_bot_center = _avg(in_l['t_bot_center'], in_r['t_bot_center'])
+    t_bot_at_web = _avg(in_l['t_bot_at_web'], in_r['t_bot_at_web'])
+    t_web_top = _avg(in_l['t_web_top'], in_r['t_web_top'])
+    t_web_bot = _avg(in_l['t_web_bot'], in_r['t_web_bot'])
+
+    gap = round(max(p[0] for p in in_right) - min(p[0] for p in in_left), 4)
+    B_box_top = round(gap + in_l['t_web_top'] + in_r['t_web_top'], 4)
+    B_box_bot = out_feat['B_box_bot_outer']
+    half_B = B_total / 2
+    cant_left = round(half_B - abs(out_feat['web_junc_left'][0] - x_center), 4)
+    cant_right = round(half_B - abs(out_feat['web_junc_right'][0] - x_center), 4)
+
+    outpoly_mct = [(round(x - x_center, 6), round(H + y, 6)) for x, y in outpoly]
+    in_l_mct = [(round(x - x_center, 6), round(H + y, 6)) for x, y in in_left]
+    in_r_mct = [(round(x - x_center, 6), round(H + y, 6)) for x, y in in_right]
+
+    return CrossSectionGeometry(
+        name=name,
+        section_type='twin_box',
+        H=H,
+        B_total=B_total,
+        B_box_top=B_box_top,
+        B_box_bot=B_box_bot,
+        t_top_tip=t_top_tip,
+        t_top_at_web=t_top_at_web,
+        t_top_center=t_top_center,
+        t_bot_center=t_bot_center,
+        t_bot_at_web=t_bot_at_web,
+        t_web_top=t_web_top,
+        t_web_bot=t_web_bot,
+        cant_left=cant_left,
+        cant_right=cant_right,
+        outpoly=outpoly_mct,
+        inpoly=in_l_mct,
+        inpoly_right=in_r_mct,
     )

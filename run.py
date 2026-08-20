@@ -9,19 +9,21 @@ Commands:
 """
 
 import argparse
+import json
 import os
-import sys
 import glob
 
 import ezdxf
 
-from src.dxf_reader import _get_polyline_vertices, read_pt_cables
+from src.dxf_reader import (_get_polyline_vertices, read_inpolys, read_pt_cables,
+                            scan_pt_layers, section_type_from_inpolys)
 from src.frame_builder import build_frame
 from src.load_reader import read_loads
+from src.input_reader import source_line
 from src.mct_frame_writer import write_mct
 from src.pt_property_reader import read_pt_properties
 from src.result_reader import (parse_beam_force, _build_element_thickness,
-                               _classify_check_elements, extract_check_points,
+                               classify_check_elements, extract_check_points,
                                format_check_table)
 
 
@@ -33,10 +35,12 @@ EXCEL_PATH = os.path.join(os.path.dirname(__file__),
 # Generate: DXF → MCT + SVG
 # ─────────────────────────────────────────────
 
-def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
+def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
+                  pt_jacking: str = 'begin'):
     """Generate MCT + SVG for one DXF file into output_dir/name/.
 
     include_pt: True/False/None (None = auto-detect from DXF layers).
+    pt_jacking: 'begin' căng một đầu · 'both' căng hai đầu.
     """
     name = os.path.splitext(os.path.basename(dxf_path))[0]
     section_dir = os.path.join(output_dir, name)
@@ -46,38 +50,71 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None):
     doc = ezdxf.readfile(dxf_path)
     msp = doc.modelspace()
     outpoly = _get_polyline_vertices(msp, 'OUTPOLY')
-    inpoly = _get_polyline_vertices(msp, 'INPOLY')
+    inpolys = read_inpolys(msp)
+    stype = section_type_from_inpolys(inpolys)
+    inpoly = inpolys if stype == 'twin_box' else inpolys[0]
     pt_cables = read_pt_cables(msp) if include_pt is not False else []
 
     excel = EXCEL_PATH if os.path.exists(EXCEL_PATH) else None
     if not excel:
         print(f'[{name}] WARNING: Excel not found at {EXCEL_PATH}')
         print(f'[{name}] WARNING: using fallback d_L=d_R=0.4 m and skipping all load blocks')
+    else:
+        print(f'[{name}] ' + source_line(excel))
     ld = read_loads(excel) if excel else None
     d_L = ld['d_L'] if ld else 0.4
     d_R = ld['d_R'] if ld else 0.4
 
-    print(f'[{name}] Building frame (d_L={d_L:.3f}, d_R={d_R:.3f})...')
+    print(f'[{name}] Building frame ({stype}, d_L={d_L:.3f}, d_R={d_R:.3f})...')
     frame = build_frame(outpoly, inpoly, d_L=d_L, d_R=d_R)
 
     pt_props = read_pt_properties(excel) if (excel and pt_cables) else None
     if pt_cables:
-        print(f'[{name}] PT cables detected: {[n for n, _ in pt_cables]}')
+        print(f'[{name}] Cáp DƯL: {[n for n, _ in pt_cables]}')
+    elif include_pt is not False:
+        print(f'[{name}] Không tìm thấy cáp DƯL nào')
+    if include_pt is not False:
+        for lay, why in scan_pt_layers(msp)['suspect'].items():
+            print(f'[{name}] WARNING: bỏ qua layer {lay!r} — {why}')
 
     print(f'[{name}] Writing MCT...')
     mct_text, topo = write_mct(frame, name, excel,
                                pt_cables=pt_cables, pt_props=pt_props,
-                               include_pt=include_pt)
+                               include_pt=include_pt, pt_jacking=pt_jacking)
+
+    for w in topo.get('pt_warnings', []):
+        print(f'[{name}] WARNING: {w}')
+    for w in topo.get('combo_warnings', []):
+        print(f'[{name}] LỖI TỔ HỢP: {w}')
+    # Hoạt tải của template tính theo dải tương đương cho MỘT mặt cắt — dùng lại
+    # cho mặt cắt khác thì tải sai, mà sai về phía thiếu thì không gì khác lộ ra.
+    if excel:
+        from src.input_reader import read_inputs
+        from src.input_check import frame_metrics, check_template
+        try:
+            for w in check_template(read_inputs(excel), frame_metrics(topo), name):
+                head = 'WARNING: ' if w['level'] == 'warn' else ''
+                print(f'[{name}] {head}{w["text"]}')
+        except Exception as e:
+            print(f'[{name}] không đối chiếu được số liệu đầu vào — {e}')
 
     mct_path = os.path.join(section_dir, f'{name}_frame.mct')
     with open(mct_path, 'w', encoding='utf-8') as f:
         f.write(mct_text)
 
+    # Ghi luôn topo.json như `gui/worker.py` — trước đây nhánh CLI chỉ ghi MCT,
+    # nên sinh lại một mặt cắt bằng dòng lệnh để lại topo.json **của mô hình cũ**
+    # nằm cạnh MCT mới. Không gì báo: thẻ Results table, tab Kiểm toán và phép
+    # đối chiếu tập phần tử của `midas_driver` đều đọc file đó và tin nó.
+    topo_path = os.path.join(section_dir, f'{name}_topo.json')
+    with open(topo_path, 'w', encoding='utf-8') as f:
+        json.dump(topo, f, indent=2)
+
     # SVG
     from src.svg_export import export_frame_svg
     svg_path = os.path.join(section_dir, f'{name}_frame.svg')
     try:
-        export_frame_svg(outpoly, inpoly, svg_path, name)
+        export_frame_svg(outpoly, inpoly, svg_path, name, section_type=stype)
     except Exception:
         pass
 
@@ -108,7 +145,8 @@ def cmd_generate(args):
     print(f'Generating {len(dxf_files)} section(s)...\n')
     for dxf_path in dxf_files:
         try:
-            _generate_one(dxf_path, output_dir, include_pt=include_pt)
+            _generate_one(dxf_path, output_dir, include_pt=include_pt,
+                          pt_jacking=getattr(args, 'pt_jacking', 'begin'))
         except Exception as e:
             print(f'  [ERROR] {dxf_path}: {e}')
             import traceback
@@ -168,14 +206,17 @@ def _process_results(section_dir: str):
     ld = read_loads(excel) if excel else None
     d_L = ld['d_L'] if ld else 0.4
     d_R = ld['d_R'] if ld else 0.4
-    frame = build_frame(
-        _get_polyline_vertices(msp, 'OUTPOLY'),
-        _get_polyline_vertices(msp, 'INPOLY'),
-        d_L=d_L, d_R=d_R)
+    inpolys = read_inpolys(msp)
+    stype = section_type_from_inpolys(inpolys)
+    inpoly = inpolys if stype == 'twin_box' else inpolys[0]
+    frame = build_frame(_get_polyline_vertices(msp, 'OUTPOLY'), inpoly, d_L=d_L, d_R=d_R)
     _, topo = write_mct(frame, name, excel)
 
     # Parse beam force
-    results = parse_beam_force(xls_path)
+    bf_report = []
+    results = parse_beam_force(xls_path, report=bf_report)
+    for line in bf_report:
+        print(f'[{name}] {line}')
     result_elems = set(r['elem'] for r in results)
     mct_elems = set(eid for eid, _, _, _ in topo['elements'])
 
@@ -195,16 +236,7 @@ def _process_results(section_dir: str):
     # Build check points
     thick_map = _build_element_thickness(topo['elements'], topo['sections'])
 
-    top_eids = list(range(topo['eid_top_start'], topo['eid_top_end'] + 1))
-    bot_eids = list(range(topo['e_bot_first'], topo['e_bot_last'] + 1))
-    wL_eids = list(range(topo['eid_wL_start'], topo['eid_wL_end'] + 1))
-    wR_eids = list(range(topo['eid_wR_start'], topo['eid_wR_end'] + 1))
-
-    check_elems = _classify_check_elements(
-        topo['top_ids'], top_eids,
-        topo['wL_insert_idx'], topo['wR_insert_idx'],
-        topo['bot_ids'], bot_eids, wL_eids, wR_eids,
-        topo['eid_top_start'])
+    check_elems = classify_check_elements(topo)
 
     check_points = extract_check_points(results, check_elems, thick_map)
 
@@ -234,8 +266,8 @@ def _export_excel(section_name: str, check_points: dict, xlsx_path: str):
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
     except ImportError:
-        print(f'  [WARN] openpyxl not installed, skipping Excel export')
-        print(f'         Install: pip install openpyxl')
+        print('  [WARN] openpyxl not installed, skipping Excel export')
+        print('         Install: pip install openpyxl')
         return
 
     wb = Workbook()
@@ -295,11 +327,11 @@ def _export_excel(section_name: str, check_points: dict, xlsx_path: str):
     data_rows = [
         ('Depth h (mm)', 'h', '{:.0f}'),
         ('Strength Mu (kN.m)', 'Mu', '{:.2f}'),
-        ('  -> element', 'Mu_ref', '{}'),
+        ('  -> nút · phần tử', 'Mu_ref', '{}'),
         ('Strength Vu (kN)', 'Vu', '{:.2f}'),
-        ('  -> element', 'Vu_ref', '{}'),
+        ('  -> nút · phần tử', 'Vu_ref', '{}'),
         ('Service Mser (kN.m)', 'Mser', '{:.2f}'),
-        ('  -> element', 'Mser_ref', '{}'),
+        ('  -> nút · phần tử', 'Mser_ref', '{}'),
     ]
 
     for i, (label, key, fmt) in enumerate(data_rows):
@@ -390,6 +422,9 @@ def main():
                            help='Output root directory (default: output)')
     gen_parser.add_argument('--no-pt', action='store_true',
                            help='Skip PT tendon detection even if DXF has PT-* layers')
+    gen_parser.add_argument('--pt-jacking', choices=('begin', 'both'),
+                           default='begin',
+                           help='Căng cáp một đầu (begin, mặc định) hay hai đầu (both)')
 
     # results
     res_parser = subparsers.add_parser('results', help='Beam Force → check table + Excel')

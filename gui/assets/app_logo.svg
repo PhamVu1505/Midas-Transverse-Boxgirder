@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- cánh hẫng trái/phải — tông TEDI sáng hơn để tạo chiều sâu -->
+  <path d="M6 74 L60 74 L60 116 L6 96 Z" fill="#1B8FE0"/>
+  <path d="M250 74 L196 74 L196 116 L250 96 Z" fill="#1B8FE0"/>
+  <!-- thân hộp: bản mặt + vách xiên + bản đáy -->
+  <path d="M52 74 L204 74 L204 96 L186 202 L70 202 L52 96 Z" fill="#1B5E9E"/>
+  <!-- lỗ rỗng vát góc trên: chính chỗ vát LÀ vút, không cần chồng tam giác lên -->
+  <path d="M78 126 L100 104 L156 104 L178 126 L166 178 L90 178 Z" fill="#EDF4FB"/>
+  <!-- trục tim X=0 trong lỗ rỗng, đúng cách chương trình vẽ mặt cắt -->
+  <rect x="126.6" y="122" width="2.8" height="42" rx="1.4" fill="#EE1C2E"/>
+  <!-- gối: cố định (đặc) + di động (rỗng), tì sát bản đáy -->
+  <path d="M100 202 L112 222 L88 222 Z" fill="#0E3A63"/>
+  <path d="M156 202 L168 222 L144 222 Z" fill="none" stroke="#0E3A63" stroke-width="7"/>
+  <rect x="84" y="227" width="88" height="7" rx="3.5" fill="#0E3A63"/>
+</svg>

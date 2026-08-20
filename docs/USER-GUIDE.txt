@@ -1,199 +1,495 @@
-================================================================================
-  MIDAS TRANSVERSE BOXGIRDER - HUONG DAN SU DUNG
-  Phan tich khung ngang dam hop BTCT DUL
-  Phien ban: 1.2.0
-================================================================================
+==============================================================================
+  MIDAS TRANSVERSE BOXGIRDER — HƯỚNG DẪN SỬ DỤNG
+  Phân tích khung ngang dầm hộp bê tông cốt thép dự ứng lực
+  Phiên bản: v1.4.1
+==============================================================================
 
-MUC LUC
-  1. Gioi thieu
-  2. Cai dat
-  3. Chuan bi file DXF (mat cat ngang)
-  4. Chuan bi file Excel (tai trong + vat lieu)
-  5. Tao file MCT (Generate)
-  6. Chay Midas/Civil
-  7. Doc ket qua (Results)
+Tài liệu này sinh tự động từ cửa sổ Hướng dẫn trong chương trình
+(Trợ giúp → Hướng dẫn sử dụng, phím F1). Đừng sửa tay: chạy lại
+tools/make_user_guide.py sau khi cập nhật nội dung trong app.
 
-================================================================================
-1. GIOI THIEU
-================================================================================
+MỤC LỤC
+  1. Tổng quan
+  2. Giao diện
+  3. Chuẩn bị file DXF
+  4. Template số liệu
+  5. Tạo file MCT
+  6. Gối
+  7. Chạy Midas/Civil
+  8. Đọc kết quả
+  9. Kiểm toán mặt cắt
+  10. Tùy chọn giao diện
+  11. Phím tắt
+  12. Xử lý sự cố
 
-Cong cu tu dong tao file MCT cho phan tich khung ngang dam hop trong Midas/Civil.
+==============================================================================
+1. TỔNG QUAN
+==============================================================================
 
-Pipeline:
-  DXF mat cat --> MCT file --> Midas/Civil --> Beam Force XLS --> Check Points
+CHƯƠNG TRÌNH LÀM GÌ
+-------------------
 
-================================================================================
-2. CAI DAT
-================================================================================
+Tự động hóa việc phân tích khung ngang dầm hộp bê tông cốt thép dự ứng lực:
+đọc mặt cắt từ file DXF, dựng mô hình khung, xuất file MCT cho Midas/Civil,
+rồi đọc kết quả nội lực về lập bảng kiểm toán.
 
-Chay file: MidasTransverseBoxgirder_Setup_v1.2.0.exe
-  - Khong can cai Python
-  - Chi ho tro Windows 64-bit
-  - Sau khi cai, mo tu Start Menu hoac Desktop shortcut
+Quy trình năm bước
 
-File can di kem (KHONG nam trong bo cai):
-  - File Excel du lieu tai trong (xem muc 4)
-  - File DXF mat cat ngang (xem muc 3)
+  1  Thêm các mặt cắt DXF vào project
+  2  Tạo file MCT
+  3  Mở MCT trong Midas/Civil và chạy phân tích — bước này nằm ngoài chương
+     trình
+  4  Nạp file Beam Force do Midas xuất ra
+  5  Xem bảng kiểm toán và xuất Excel
 
-================================================================================
-3. CHUAN BI FILE DXF (MAT CAT NGANG)
-================================================================================
+Thanh bước ở đầu cửa sổ luôn hiển thị bạn đang ở đâu trong quy trình. Bước 3
+vẽ nét đứt vì phải làm bên Midas.
 
-3.1. Phan mem: AutoCAD (hoac tuong thich, luu dang .dxf)
+==============================================================================
+2. GIAO DIỆN
+==============================================================================
 
-3.2. Don vi: MET (meters) - tat ca kich thuoc tinh bang met
+CÁC VÙNG TRÊN MÀN HÌNH
+----------------------
 
-3.3. He toa do:
-     - X: phuong ngang
-     - Y = 0 tai mat tren ban mat cau
-     - Y < 0 huong xuong duoi
-     - Y = -H tai day ban day
+  Panel Project bên trái     Cây mặt cắt · Thiết lập (template số liệu, thư
+                             mục kết quả) · Lớp hiển thị
+  Vùng giữa                  Các thẻ chế độ xem: Model, Section shape, Parts,
+                             Results table, Kiểm toán mặt cắt, MCT source
+  Panel Properties bên phải  Thông tin mặt cắt, node đang trỏ, danh sách gối ·
+                             thẻ Input data liệt kê số liệu đọc từ template
+  Messages dưới đáy          Nhật ký. Dòng vàng là cảnh báo, dòng đỏ là lỗi
 
-3.4. Cac layer bat buoc:
+Ba chế độ xem mặt cắt
 
-     +----------+-------------+----------------------------------------------+
-     | Layer    | Entity      | Mo ta                                        |
-     +----------+-------------+----------------------------------------------+
-     | OUTPOLY  | LWPOLYLINE  | 8 dinh = duong vien ngoai mat cat            |
-     | INPOLY   | LWPOLYLINE  | 10 dinh = lo rong ben trong                  |
-     | TEXT     | TEXT         | Ten mat cat (vd: "s16", "S1")                |
-     +----------+-------------+----------------------------------------------+
+Model — hình dạng khung và cách chia phần tử. Mỗi node có một vạch cắt vuông
+góc nên đếm được số phần tử bằng mắt.
 
-     CHU Y: Chi dung LWPOLYLINE (polyline 2D), KHONG dung LINE, CIRCLE, SPLINE
+Section shape — vẽ mặt cắt đúng như Midas sẽ dựng: mỗi phần tử là một dải vuốt
+côn theo chiều dày hai đầu, theo quy ước lệch tâm CT (bản mặt treo xuống), CB
+(bản đáy nhô lên), CC (bụng đối xứng). Biên bê tông thật từ DXF vẽ nét đứt
+phía dưới, nên lệch chỗ nào thấy ngay.
 
-3.5. OUTPOLY - 8 dinh (duong vien ngoai):
+Parts — tô màu theo bộ phận, dùng khi cần kiểm tra chương trình có phân loại
+đúng bản mặt / bụng / bản đáy hay không.
 
-     V2(-8.17, 0) -------------------------------- V1(+8.17, 0)     <- mat tren
-     V3(-8.17,-0.25)                          V8(+8.17,-0.25)       <- mep canh hang
-              \                            /
-               V4(-4.60,-0.65)  V7(+4.60,-0.65)                     <- web junction
-                \              /
-                 V5(-4.28,-H)--V6(+4.28,-H)                         <- day
+Xem trước từ DXF
 
-     - V1, V2: mep tren (Y=0), xac dinh B_total
-     - V3, V8: dau canh hang, xac dinh chieu day dau canh
-     - V4, V7: vi tri giao web/ban tren
-     - V5, V6: day mat cat, xac dinh H va B_box_bot
+Mặt cắt vừa thêm mà chưa tạo MCT vẫn hiện hình: chương trình đọc thẳng biên bê
+tông và đường cáp DƯL từ DXF rồi vẽ ra, kèm dải nhắc XEM TRƯỚC TỪ DXF ở góc
+trên. Lúc này chưa có node và phần tử vì chưa chia lưới.
 
-3.6. INPOLY - 10 dinh (lo rong ben trong):
+Nhờ vậy bản vẽ sai (thiếu layer, sai đơn vị, cáp đặt lệch chỗ) lộ ra ngay khi
+nạp file, không phải chạy hết một lượt tạo MCT mới biết.
 
-          V6(-2.05,-0.30)------V7(+2.05,-0.30)     <- mat trong ban tren
-         /                                      \
-     V5(-4.05,-0.65)                  V8(+4.05,-0.65)  <- web inner top
-        |                                        |
-     V4(-4.05,-mid)                   V9(+4.05,-mid)   <- web inner mid
-         \                                      /
-       V3(-3.90,-(H-0.6))        V10(+3.90,-(H-0.6))  <- haunch day
-            \                        /
-          V2(-2.40,-(H-0.3))--V1(+2.40,-(H-0.3))      <- mat trong ban day
+Thao tác trên hình
 
-     - V1, V2: mat trong ban day -> chieu day ban day
-     - V3, V10: haunch day
-     - V4,V5 va V8,V9: mat trong bung -> chieu day bung
-     - V6, V7: mat trong ban tren -> chieu day ban tren
+Lăn chuột để phóng to thu nhỏ · kéo chuột để di chuyển · phím F hoặc nút ⤢ để
+vừa khung · rê chuột lên node để xem toạ độ và chiều dày.
 
-3.7. Dat ten file: S0.dxf, S1.dxf, ..., S16.dxf, SLT.dxf
+==============================================================================
+3. CHUẨN BỊ FILE DXF
+==============================================================================
 
-================================================================================
-4. CHUAN BI FILE EXCEL (TAI TRONG + VAT LIEU)
-================================================================================
+QUY ƯỚC LỚP TRONG DXF
+---------------------
 
-File Excel (.xls) gom 2 sheet bat buoc:
+Mặt cắt vẽ bằng LWPOLYLINE khép kín, đặt trên các lớp sau:
 
-4.1. Sheet "General" - Vat lieu:
+  OUTPOLY           Đường bao ngoài mặt cắt. Bắt buộc, chỉ một đường.
+  INPOLY            Lỗ rỗng bên trong. Một đường cho mặt cắt một hộp, hai
+                    đường cho mặt cắt hai hộp.
+  PT-<VỊ TRÍ>-<SỐ>  Cáp dự ứng lực, ví dụ PT-TOP-1, PT-BOT-2, PT-WEB-L-1.
+                    Chương trình tự nhận theo tên lớp.
 
-     +------+----------+-------------------------------+
-     | Cell | Gia tri  | Mo ta                         |
-     +------+----------+-------------------------------+
-     | H72  | 38007    | Ec - Module dan hoi (MPa)     |
-     | H73  | 1.08e-05 | Alpha - He so gian no nhiet   |
-     +------+----------+-------------------------------+
+LƯU Ý: Mặt cắt ba hộp trở lên chưa hỗ trợ. Nếu file có từ ba đường INPOLY,
+  chương trình dừng và báo lỗi rõ ràng chứ không âm thầm bỏ sót.
 
-4.2. Sheet "Load" - Tai trong:
+Hệ toạ độ
 
-     +------+----------+-------------------------------+
-     | Cell | Gia tri  | Mo ta                         |
-     +------+----------+-------------------------------+
-     | F74  | 20.0     | Nhiet do he thong (C)         |
-     | F75  | "+23oC"  | TpG(+) gradient nhiet duong   |
-     | F76  | "-7oC"   | TpG(-) gradient nhiet am      |
-     | I10  | 35.5     | Barrier (kN/m2)               |
-     | G9   | 1.89     | Pavement (kN/m)               |
-     | I11  | 19.14    | Median strip (kN/m2)          |
-     | F68  | 5.12     | WS Fx - Gio ket cau (kN)      |
-     | F69  | 3.43     | WS My - Gio ket cau (kN.m)    |
-     | G66  | 3.82     | WS PD - Gio phan bo (kN/m)    |
-     | C71  | 1.5      | WL Fx - Gio tren xe (kN)      |
-     | C72  | 2.7      | WL My - Gio tren xe (kN.m)    |
-     | H49  | ...      | Lane load (kN/m)              |
-     | I49  | ...      | Truck overhang (kN)           |
-     | J49  | ...      | Tandem overhang (kN)          |
-     | I50  | ...      | Truck interior +M (kN)        |
-     | J50  | ...      | Tandem interior +M (kN)       |
-     | I51  | ...      | Truck interior -M (kN)        |
-     | J51  | ...      | Tandem interior -M (kN)       |
-     | G26  | 0.25     | IM - He so xung kich          |
-     +------+----------+-------------------------------+
+Trong DXF: X ngang, Y đứng. Chương trình tự quy về hệ của Midas với X = 0 tại
+tim dầm và Z = 0 tại đáy, nên bản vẽ đặt ở đâu trong không gian cũng được.
 
-     LUU Y:
-     - Cell F75, F76 co the la chuoi ("+23oC") hoac so (23) deu duoc
-     - Tat ca don vi theo he kN, m, C
-     - File mau: Midas-Transverse-Boxgirder-analysis.xls
+==============================================================================
+4. TEMPLATE SỐ LIỆU
+==============================================================================
 
-================================================================================
-5. TAO FILE MCT (GENERATE)
-================================================================================
+SHEET INPUT
+-----------
 
-5.1. Mo ung dung
-5.2. Tab "Generate":
-     - [Files...] hoac [Folder...] : chon file DXF
-     - [Browse...] Excel data      : chon file Excel tai trong
-     - [Browse...] Output dir       : chon thu muc xuat (mac dinh: output/)
-     - [Generate All]               : tao MCT + SVG
+Toàn bộ tải trọng, vật liệu và thông số cáp đọc từ một sheet duy nhất tên
+INPUT, bố cục khoá – giá trị:
 
-5.3. Ket qua:
-     output/
-       S16/
-         S16_frame.mct    <- File MCT, import vao Midas
-         S16_frame.svg    <- Hinh SVG de kiem tra
+  A — khoá  B — giá trị   C — đơn vị
+  fc        =General!H70  MPa
+  pavement  =Load!G9      kN/m
+  d_L       =Load!I11     m
 
-================================================================================
-6. CHAY MIDAS/CIVIL
-================================================================================
+Chương trình tra theo khoá ở cột A, không theo số dòng. Nhờ vậy chèn hay xoá
+dòng ở sheet INPUT lẫn ở các sheet con đều không ảnh hưởng kết quả — miễn là
+không đổi tên khoá.
 
-6.1. Mo Midas/Civil
-6.2. File > Import > chon file .mct
-6.3. Kiem tra mo hinh:
-     - Nodes/Elements dung vi tri
-     - Section shapes hien thi dung
-     - Tai trong dung huong va cuong do
-6.4. Analysis > Perform Analysis
-6.5. Export ket qua:
-     - Results > Forces > Beam Forces
-     - Export dang .xls
-     - Dat ten: "Beam Force_S16.xls" (hoac tuong tu)
-     - Luu vao thu muc output/S16/
+LƯU Ý: Thiếu khoá thì chương trình dừng và báo tên khoá thiếu, không tự điền
+  giá trị mặc định. Điền mặc định âm thầm từng làm mô hình xuất ra sai số liệu
+  mà không ai biết.
 
-================================================================================
-7. DOC KET QUA (RESULTS)
-================================================================================
+Gán template
 
-7.1. Tab "Results":
-     - [Browse...] Excel data   : chon file Excel (cung file o buoc 5)
-     - [Browse...] Output folder : chon thu muc output
-     - [Scan]                    : tim cac section co Beam Force XLS
-     - [Process All]             : doc ket qua, tinh check points
+Vào Tệp → Chọn template số liệu để đặt template dùng chung. Muốn một mặt cắt
+dùng template khác, bấm chuột phải lên nó trong cây rồi chọn Gán template số
+liệu — các mặt cắt cùng số sườn và cùng bề rộng thường dùng chung được một
+template.
 
-7.2. Bang kiem tra 8 diem A-H:
-     - A-D: Ban tren (top slab)
-     - E-F: Ban day (bottom slab)
-     - G-H: Bung (web)
-     - Gia tri: Mu (kN.m), Vu (kN), Mser (kN.m), h (mm)
+Kiểm tra trước khi chạy: Công cụ → Kiểm tra template số liệu sẽ liệt kê cả 40
+khoá và đối chiếu với ô gốc bên sheet con, bắt được trường hợp công thức bị
+dán thành số cứng.
 
-7.3. Ket qua luu tai:
-     output/S16/S16_check.txt    <- Bang text
-     output/S16/S16_check.xlsx   <- File Excel bao cao
+==============================================================================
+5. TẠO FILE MCT
+==============================================================================
 
-================================================================================
-  CITEC - VuPQ
-================================================================================
+CÁC BƯỚC
+--------
+
+Bước 1 — Thêm mặt cắt Bấm Thêm DXF trên thanh công cụ, hoặc Tệp → Thêm cả thư
+mục DXF để nạp một lượt. Nhanh nhất là kéo file .dxf (hoặc cả thư mục) từ
+Windows Explorer thả vào cửa sổ — thả file .mtbproj thì mở luôn project đó.
+Thêm xong mặt cắt hiện hình ngay để kiểm tra bản vẽ.
+
+Bước 2 — Chọn template Xem mục Template số liệu.
+
+Bước 3 — Đặt thư mục kết quả Ô Thư mục kết quả trong panel Project. Mỗi mặt
+cắt sẽ có một thư mục con riêng.
+
+Bước 4 — Tạo MCT Bấm Tạo MCT toàn bộ (phím F5), hoặc chọn vài mặt cắt trong
+cây rồi bấm Shift+F5 để chỉ tạo cho những mặt cắt đó.
+
+Chấm trạng thái trong cây
+
+  ○  Chưa tạo MCT
+  ●  Đã tạo MCT
+  ◐  Đã gán file Beam Force
+  ✓  Đã kiểm toán xong
+  ✕  Lỗi — xem chi tiết ở Messages
+
+LƯU Ý: Chưa gán template thì MCT chỉ có hình học, vật liệu và gối; toàn bộ
+  khối tải trọng cùng tổ hợp bị bỏ qua. Chương trình ghi rõ điều này vào đầu
+  file và vào Messages.
+
+Căng cáp một đầu hay hai đầu
+
+Mặt cắt có cáp DƯL thì panel Properties bên phải có ô Căng cáp. Ô này đi thẳng
+vào trường JACKING của khối *TDN-PRESTRESS:
+
+- Căng một đầu (mặc định) — chỉ đầu đầu bó có ứng suất căng
+- Căng hai đầu — cả hai đầu cùng căng, tổn hao ma sát đối xứng và ứng suất
+  giữa bó cao hơn
+
+Lựa chọn lưu riêng cho từng mặt cắt trong file project. Đổi xong phải tạo lại
+MCT thì mới có hiệu lực. Mặt cắt không có cáp thì ô này bị khoá.
+
+Cảnh báo số liệu đầu vào không khớp hình học
+
+Hoạt tải trong template tính theo phương pháp dải tương đương, mà bề rộng dải
+phụ thuộc thẳng vào cự ly sườn S và cánh hẫng X của đúng mặt cắt đó. Dùng một
+template cho nhiều DXF khác hình học thì tải sai.
+
+Khi bấm Tạo MCT, chương trình suy ngược S và X mà template đã dùng rồi so với
+hình học thật của từng mặt cắt. Lệch nhiều thì hiện hộp thoại liệt kê rõ mặt
+cắt nào lệch bao nhiêu, cho chọn Vẫn tạo hoặc Huỷ. Mọi dòng cảnh báo mở đầu
+bằng KIỂM TRA SỐ LIỆU FILE TEMPLATE.
+
+S và X đo tới tim sườn — quy phạm định nghĩa S là cự ly tim–tim của bộ phận đỡ
+(TCVN 11823-4 Điều 4.6.2.1). Thông báo có in kèm trị thông thuỷ, vì chênh lệch
+đúng bằng một bề dày sườn thường chính là chỗ gõ nhầm khi lập template. Mặt
+cắt nhiều bụng thì so với nhịp ngắn nhất.
+
+LƯU Ý: Đọc kỹ chiều của sai số. Mặt cắt có S nhỏ hơn template thì dải rộng hơn
+  thực tế nên tải bánh bị THIẾU — sai về phía không an toàn. S lớn hơn thì tải
+  dư, thiên về an toàn, chỉ ghi chú.
+
+==============================================================================
+6. GỐI
+==============================================================================
+
+ĐẶT VÀ SỬA GỐI
+--------------
+
+Mặc định chương trình đặt một gối cố định ở đáy bụng trái, một gối di động ở
+đáy bụng phải, và với mặt cắt hai hộp thì thêm một gối di động ở đáy vách
+giữa.
+
+Muốn đổi, bấm nút Sửa gối phía trên khung nhìn. Danh sách gối hiện ở panel
+Properties bên phải, mỗi gối một thẻ:
+
+- Gõ số hiệu node rồi Enter để dời gối sang node khác
+- Bấm một trong ba nút ký hiệu để đổi loại gối
+- Nút ✕ để xoá, ＋ Thêm gối để đặt thêm
+
+Trên hình vẽ: bấm vào node bản đáy để đặt gối, kéo tam giác để dời, bấm chuột
+phải lên tam giác để xoá.
+
+Ba loại gối
+
+  Gối cố định  111000 — khoá Dx, Dy, Dz
+  Gối di động  011000 — khoá Dy, Dz
+  Ngàm         111111 — khoá cả sáu bậc tự do
+
+LƯU Ý: Phương Dy luôn bị khoá. Khung ngang là bài toán phẳng trong mặt phẳng
+  XZ, nhưng Midas giải trong không gian ba chiều — thiếu ràng buộc Dy thì báo
+  lỗi ma trận suy biến.
+
+Gối lưu theo toạ độ chứ không theo số hiệu node, nên sửa lại DXF hay đổi kích
+thước phần tử thì gối vẫn nằm đúng vị trí cũ.
+
+==============================================================================
+7. CHẠY MIDAS/CIVIL
+==============================================================================
+
+BƯỚC ③ — MẶC ĐỊNH LÀM BẰNG TAY
+------------------------------
+
+Đây là bước duy nhất nằm ngoài chương trình, nên thanh bước vẽ nó bằng nét đứt
+và chữ nghiêng. Cách làm thông thường: mở Midas/Civil, nhập file MCT vừa tạo,
+chạy Perform Analysis, rồi xuất bảng Beam Force.
+
+Đường tự động — phải tự bật
+
+Chương trình chạy được Midas thay bạn, nhưng tính năng này mặc định tắt. Bật ở
+Tùy chọn → Midas (Ctrl+,), rồi dùng Mô hình → Chạy Midas/Civil (phím F8).
+
+Chưa bật thì mục menu vẫn hiện nhưng bị khoá — để bạn biết là có, chứ không tự
+chạy.
+
+Vì sao mặc định tắt
+
+Midas/Civil không có COM và không có API, nên cách duy nhất để tự động hoá là
+lái qua chính giao diện của nó. Trong lúc chạy, chương trình bấm thật vào
+ribbon và chiếm tiền cảnh — máy không dùng được, khoảng 1–3 phút mỗi mặt cắt.
+Đừng chạm chuột và bàn phím cho tới khi xong.
+
+Ba điều chương trình không bao giờ làm
+
+Không tự mở Midas · không tự đóng Midas · không tắt tiến trình Midas. Phiên
+làm việc là của bạn. Bạn tự mở Midas và để tài liệu trống, chương trình bám
+vào phiên đó. Tài liệu đang mở không sạch thì chương trình dừng và báo, chứ
+không đè lên — mất việc chưa lưu là không lấy lại được.
+
+Chạy xong, file Beam Force được gán luôn cho mặt cắt, đi thẳng sang bước ④
+không phải chọn file bằng tay.
+
+==============================================================================
+8. ĐỌC KẾT QUẢ
+==============================================================================
+
+SAU KHI CHẠY MIDAS
+------------------
+
+Bước 1 — Xuất Beam Force Trong Midas/Civil, xuất bảng nội lực phần tử ra file
+Excel. Bật chạy tự động thì bước này chương trình làm hộ — xem mục Chạy
+Midas/Civil.
+
+Bước 2 — Gán file cho mặt cắt Sang thẻ Results table, bấm đúp vào dòng của mặt
+cắt rồi chọn file Beam Force tương ứng. Hoặc bấm chuột phải lên mặt cắt trong
+cây và chọn Gán file Beam Force.
+
+Bước 3 — Xử lý Bấm Xử lý Beam Force (phím F6). Chương trình đối chiếu số phần
+tử giữa file kết quả và mô hình; lệch nhau thì báo để chọn lại file.
+
+Tám điểm kiểm toán
+
+Bảng kết quả cho mô men, lực cắt và chiều cao tiết diện tại tám điểm: A–D trên
+bản mặt, E–F trên bản đáy, G–H trên bụng. Hình mặt cắt phía trên bảng vẽ từ
+toạ độ DXF thật và chỉ rõ vị trí từng điểm bằng ký hiệu vết cắt theo quy ước
+bản vẽ.
+
+Hình này lăn chuột để phóng to thu nhỏ, kéo chuột để di chuyển, bấm đúp hoặc
+phím F để vừa khung — như thẻ Model. Kéo thanh chia giữa hình và bảng để đổi
+tỉ lệ hai phần.
+
+Biểu đồ bao nội lực
+
+Ô bên phải vẽ đường bao mômen hoặc lực cắt lên chính hình khung ngang, chọn
+bằng ô Biểu đồ: Cường độ (str_all) hoặc Sử dụng (ser_all) — đúng hai tổ hợp
+bao mà bảng bên dưới vẫn tra, nên hình và bảng luôn nói cùng một con số.
+
+Hai đường bao vẽ chồng: max và min. Nhìn hình mới thấy được hình dạng nội lực
+— chỗ đổi dấu, chỗ vút, chỗ nào lẽ ra phải trơn mà lại gãy khúc (dấu hiệu chia
+lưới hoặc gán tải sai). Ô này cũng zoom/pan như ô mặt cắt.
+
+Mặt cắt nhiều hộp có thêm điểm phân giải cho từng khoang và từng vách — A1,
+A2… (giữa mỗi khoang bản mặt), E1, E2… (giữa mỗi khoang bản đáy), G1…Gm và
+H1…Hm (đầu trên và đầu dưới mỗi vách). Tám điểm A–H vẫn giữ nguyên ý nghĩa bao
+để bố trí lưới thép chung.
+
+==============================================================================
+9. KIỂM TOÁN MẶT CẮT
+==============================================================================
+
+KIỂM TOÁN TIẾT DIỆN THEO TCVN 11823
+-----------------------------------
+
+Thẻ Kiểm toán mặt cắt (phím F7) lấy nội lực vừa xử lý ở thẻ Results table,
+cộng với cốt thép do người dùng nhập, rồi kiểm bốn nhóm theo TCVN 11823-5.
+Tiết diện xét là lát cắt rộng 1 m của mặt cắt ngang.
+
+Bước 1 — Nhập cốt thép Bảng trên cùng, mỗi cột là một điểm kiểm toán. Nhập
+đường kính, cự ly, lớp bảo vệ (tính đến tâm thanh) và cốt đai. As tự tính. Số
+liệu lưu vào project theo từng mặt cắt.
+
+Bước 2 — Chọn tiêu chuẩn và hệ số TCVN 11823 hoặc 22TCN 272-05 (để đối chiếu
+hồ sơ cũ). f'c lấy sẵn từ template số liệu, sửa được. φ mặc định 0,90 cho cả
+uốn và cắt.
+
+Bước 3 — Bấm Kiểm toán Bảng dưới chia bốn nhóm, trình bày theo mẫu bảng kiểm
+toán quen dùng. Bấm Xuất Excel… để đưa vào hồ sơ.
+
+Cáp dự ứng lực nhận diện tự động
+
+Hai hàng Cáp dp và Cự ly cáp @ chỉ mở ở những bộ phận thật sự có cáp trong bản
+vẽ. Mặt cắt chỉ căng cáp ngang ở bản mặt thì các cột bản đáy và bụng bị khoá,
+hiện dấu gạch — không gõ nhầm vào được.
+
+dp tính thẳng từ đường cáp trong DXF: nội suy cao độ cáp tại vị trí điểm kiểm
+toán rồi đo tới thớ chịu nén (thớ nào chịu nén thì suy từ dấu của Mu). Sửa lại
+được nếu cần.
+
+LƯU Ý: Ô Kể đến cáp DƯL mặc định TẮT: sức kháng uốn tính như tiết diện bê tông
+  cốt thép thường, bỏ cáp ra ngoài — thiên về bất lợi. Bật lên thì sức kháng
+  uốn tăng rất mạnh (điểm A của S1: hệ số 1,36 → 3,28) và kiểm toán nứt bị bỏ
+  qua vì chưa xét nén trước. Nhật ký ghi rõ đang chạy ở chế độ nào, file Excel
+  xuất ra cũng ghi ngay dòng đầu.
+
+Diện tích một bó lấy từ template số liệu (khoá Ap). Cự ly cáp theo phương dọc
+cầu mặc định 1000 mm — đúng bằng giả thiết của mô hình Midas: khung ngang được
+dựng thành dải rộng 1 m và cáp trong dải đó mang diện tích của một bó. Đổi cự
+ly thì bảng kiểm toán và mô hình nói hai chuyện khác nhau. Ap trên 1 m = (diện
+tích một bó) × 1000 / cự ly.
+
+Đọc bảng kết quả
+
+Mỗi nhóm kết thúc bằng hàng hệ số sức kháng / nội lực (Mr/Mu, Vr/Vu…) — số
+càng lớn càng an toàn. Nền ô nói ngay kết quả:
+
+  Xanh  hệ số ≥ 1,05 — đạt và còn dư
+  Vàng  1,00 ≤ hệ số < 1,05 — đạt nhưng dư chưa tới 5%
+  Đỏ    hệ số < 1,00 — không đạt
+
+Số chữ số thập phân theo đúng bảng kiểm toán mẫu: nội lực, kích thước, diện
+tích và ứng suất lấy tròn số; hệ số không thứ nguyên lấy 2–3 chữ số. Ô nào
+bằng 0 thì hiện dấu gạch cho đỡ rối.
+
+Bốn nhóm kiểm tra
+
+  Sức kháng uốn      Mu ≤ Mr = φMn — Điều 7.3.2
+  Giới hạn cốt thép  Mr ≥ min(Mcr, 1,33Mu) — Điều 7.3.3, kèm phân loại tiết
+                     diện theo biến dạng kéo thực εt (Điều 7.2.1)
+  Nứt                Cự ly cốt thép ở trạng thái giới hạn Sử dụng — Điều 7.3.4
+  Cắt                Vu ≤ Vr = φVn theo MCFT — Điều 8.3.3 và 8.3.4.2
+
+Hai phương pháp tra θ và β
+
+Điều 8.3.4.2 cho dùng ngang hàng hai cách. Ô Cắt theo chọn giữa:
+
+  bảng       Tra Bảng 4 / Bảng 5, nội suy hai chiều, lặp θ. Mặc định.
+  công thức  Công thức đóng, phương trình 77–79. Cho kết quả chặt hơn nhiều ở
+             tiết diện vùng nén vì chặn εs ≥ 0.
+
+LƯU Ý: Điều kiện c/de ≤ 0,42 chỉ có ở 22TCN 272-05. TCVN 11823 không có điều
+  kiện này mà phân loại tiết diện theo εt, nên khi chọn TCVN thì bảng hiện εt
+  thay cho c/de.
+
+Kiểm nứt được bỏ qua khi tiết diện có cáp dự ứng lực (chưa xét nén trước) hoặc
+khi ứng suất kéo ở trạng thái Sử dụng chưa tới 80% fr — lúc đó tiết diện chưa
+nứt. Cột nào bỏ qua thì cột đó ghi rõ lý do ở hàng Ghi chú.
+
+==============================================================================
+10. TÙY CHỌN GIAO DIỆN
+==============================================================================
+
+TÙY CHỌN
+--------
+
+Mở bằng nút ⚙ cuối thanh công cụ, hoặc Công cụ → Tùy chọn (Ctrl+,). Bấm mũi
+tên cạnh nút bánh răng để đổi nhanh bảng màu mà không cần mở hộp thoại. Thiết
+lập áp dụng ngay, không phải khởi động lại, và được nhớ cho lần mở sau.
+
+Giao diện
+
+  Bảng màu        Sáng — mặc định, nền xám lệch xanh kiểu phần mềm kỹ thuật.
+                  Tối — nền xám than, dùng khi làm việc lâu hoặc phòng thiếu
+                  sáng. Tương phản cao — nền trắng, chữ đen thuần, viền đậm;
+                  hợp khi trình chiếu hoặc chụp màn hình đưa vào báo cáo.
+  Màu nhấn        Màu của nút chính, dòng đang chọn và các chi tiết nhấn.
+  Mật độ          Chặt cho màn hình nhỏ, Thoáng cho màn hình lớn.
+  Cỡ chữ · Phông  8–14 pt. Ô Xem thử ngay bên dưới đổi theo tức thì.
+
+Khung xem
+
+Chọn những lớp bật sẵn mỗi khi mở một mặt cắt, và chế độ xem mặc định lúc khởi
+động. Trong lúc làm việc vẫn bật tắt được ở mục Lớp hiển thị panel Project.
+
+Mặc định
+
+Thư mục kết quả và template số liệu dùng cho project mới — project đã lưu giữ
+thiết lập riêng của nó. Cùng chỗ này tắt được việc mở lại project gần nhất khi
+khởi động và việc tự chọn mặt cắt vừa thêm.
+
+Khôi phục mặc định đưa mọi mục về ban đầu nhưng giữ nguyên hai đường dẫn thư
+mục kết quả và template.
+
+==============================================================================
+11. PHÍM TẮT
+==============================================================================
+
+PHÍM TẮT
+--------
+
+  Ctrl+N        Project mới
+  Ctrl+Shift+O  Mở project
+  Ctrl+S        Lưu project
+  Ctrl+O        Thêm DXF
+  Ctrl+T        Chọn template số liệu
+  F5            Tạo MCT toàn bộ
+  Shift+F5      Tạo MCT cho mặt cắt đang chọn
+  F8            Chạy Midas/Civil (phải bật ở Tùy chọn → Midas)
+  Ctrl+B        Gán file Beam Force
+  F6            Xử lý Beam Force
+  F7            Kiểm toán mặt cắt
+  F             Vừa khung nhìn
+  Ctrl+L        Xoá nhật ký
+  Ctrl+,        Tùy chọn giao diện
+  F1            Mở hướng dẫn này
+
+==============================================================================
+12. XỬ LÝ SỰ CỐ
+==============================================================================
+
+CÁC LỖI HAY GẶP
+---------------
+
+Midas báo: The specified load name ((null)) does not exist File MCT có tổ hợp
+tải trọng nhưng thiếu trường hợp tải mà tổ hợp đó gọi tới. Nguyên nhân thường
+là chưa gán template số liệu khi tạo MCT. Gán template rồi tạo lại.
+
+Thiếu số liệu đầu vào — liệt kê tên khoá Sheet INPUT thiếu khoá hoặc ô giá trị
+đang rỗng. Mở template, điền đủ rồi chạy lại. Dùng Công cụ → Kiểm tra template
+số liệu để xem toàn bộ 40 khoá.
+
+Số phần tử của Beam Force không khớp mô hình File kết quả không phải của mặt
+cắt này, hoặc mô hình đã được tạo lại sau khi chạy Midas. Chọn lại đúng file,
+hoặc chạy lại Midas với MCT mới nhất.
+
+Mặt cắt cần 1 hoặc 2 INPOLY, tìm thấy N File DXF có số đường lỗ rỗng không hợp
+lệ. Kiểm tra lớp INPOLY, xoá các đường thừa hoặc đường vẽ trùng.
+
+Giá trị trên sheet INPUT lệch so với ô gốc Công thức tham chiếu đã bị dán
+thành số cứng hoặc trỏ sang workbook khác. Số vẫn hiện đúng hôm nay nhưng
+không còn bám theo sheet con nữa. Dán lại công thức.
+
+Mọi lỗi đều ghi đầy đủ ở cửa sổ Messages dưới đáy, kèm dấu vết ngăn xếp khi
+cần.
+
+==============================================================================
+Hết.
+==============================================================================

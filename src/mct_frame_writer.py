@@ -10,17 +10,123 @@ Minimal MCT: UNIT, STRUCTYPE, MATERIAL, NODE, ELEMENT, SECTION, GROUP, CONSTRAIN
 """
 
 import os
+from .dxf_reader import tessellate_bulge
 from .geometry import Tendon, TendonProperty
-from .material_reader import read_material, write_material_mct
+from .material_reader import read_material
 from .load_reader import read_loads
+
+
+
+SUPPORT_CODE = {'pin': '111000', 'roller': '011000', 'fixed': '111111'}
+SUPPORT_LABEL = {'pin': 'gối cố định', 'roller': 'gối di động', 'fixed': 'ngàm'}
+
+
+def _write_constraint_block(blocks, bot_ids, bot_nodes, supports, defaults):
+    """Ghi khối *CONSTRAINT.
+
+    `supports` là danh sách {'x', 'kind'} do người dùng đặt — lưu theo TOẠ ĐỘ nên
+    ở đây mới quy về node đáy gần nhất. Để None/rỗng thì dùng `defaults` là bộ
+    gối mặc định [(node_id, code), ...].
+
+    Dy luôn bị khóa: khung ngang là bài toán phẳng XZ, thiếu Dy thì Midas báo
+    singular trong không gian 3D.
+    """
+    blocks.append('*CONSTRAINT    ; Supports')
+    blocks.append('; NODE_LIST, CONST(Dx,Dy,Dz,Rx,Ry,Rz), GROUP')
+    eff = []
+    if supports:
+        used = set()
+        for sp in sorted(supports, key=lambda d: float(d.get('x', 0))):
+            x = float(sp.get('x', 0))
+            i = min(range(len(bot_nodes)),
+                    key=lambda k: abs(bot_nodes[k]['x'] - x))
+            nid = bot_ids[i]
+            if nid in used:
+                continue
+            used.add(nid)
+            kind = sp.get('kind', 'roller')
+            code = SUPPORT_CODE.get(kind, SUPPORT_CODE['roller'])
+            blocks.append(f'   {nid}, {code}, Boundary'
+                          f'    ; {SUPPORT_LABEL.get(kind, kind)}'
+                          f' @ X={bot_nodes[i]["x"]:.3f}')
+            eff.append({'id': int(nid), 'x': round(float(bot_nodes[i]['x']), 6),
+                        'kind': kind, 'code': code})
+    else:
+        by_id = {int(n): bot_nodes[k]['x'] for k, n in enumerate(bot_ids)}
+        rev = {v: k for k, v in SUPPORT_CODE.items()}
+        for nid, code in defaults:
+            blocks.append(f'   {nid}, {code}, Boundary')
+            eff.append({'id': int(nid), 'x': round(float(by_id.get(int(nid), 0)), 6),
+                        'kind': rev.get(code, 'roller'), 'code': code})
+    blocks.append('')
+    # Trả lại bộ gối THỰC TẾ đã ghi để lưu vào topo.json — nhờ vậy khung xem
+    # hiện đúng thứ có trong MCT, kể cả khi người dùng chưa đặt gối nào.
+    return sorted(eff, key=lambda d: d['x'])
+
+
+def _kiem_hinh_hoc(txt: str, section_name: str) -> None:
+    """Soi *NODE/*ELEMENT của MCT vừa ghi: node trùng toạ độ, phần tử dài 0.
+
+    Vì sao kiểm trên CHÍNH văn bản MCT chứ không trên `frame`: đây đúng là thứ
+    Midas đọc, và một mình nó dùng được cho cả nhánh một hộp lẫn hai hộp.
+
+    Đây là lỗi đã xảy ra thật, và nó im lặng suốt cả quy trình: SLT dựng vách
+    giữa xuống dưới đáy dầm nên node 18 và 39 trùng nhau ở (0; 0), phần tử 38
+    nối hai node đó thành phần tử dài 0. Midas chối ngay lúc import ("The
+    geometry of the element no. 38 is incorrect. Run Error : command in line
+    171"), bỏ dở nốt file — nên .mcb chỉ 17 KB, không có khối tải nào, và thông
+    báo tiếp theo lại là "Load information has not been entered", trỏ sai hẳn
+    chỗ. Không có gì trong app lộ ra: MCT vẫn ghi xong, topo vẫn đủ khoá, khung
+    xem vẫn vẽ. Chỉ chạy Midas mới biết.
+    """
+    toa_do, khoi = {}, None
+    for dong in txt.splitlines():
+        s = dong.strip()
+        if s.startswith('*'):
+            khoi = s.split(';')[0].strip().upper()
+            continue
+        if not s or s.startswith(';'):
+            continue
+        c = [t.strip() for t in s.split(',')]
+        try:
+            if khoi == '*NODE' and len(c) >= 4:
+                toa_do[int(c[0])] = (float(c[1]), float(c[2]), float(c[3]))
+            elif khoi == '*ELEMENT' and len(c) >= 6:
+                # iEL, TYPE, iMAT, iPRO, iN1, iN2, ANGLE, iSUB
+                i, j = int(c[4]), int(c[5])
+                if i in toa_do and j in toa_do and toa_do[i] == toa_do[j]:
+                    x, _, z = toa_do[i]
+                    raise ValueError(
+                        f'{section_name}: phần tử {int(c[0])} dài 0 — node {i} và '
+                        f'{j} trùng nhau tại (x={x:.4f}, z={z:.4f}). Midas sẽ chối '
+                        f'file ngay lúc import và bỏ dở phần còn lại.')
+        except ValueError as e:
+            if 'dài 0' in str(e):
+                raise
+            continue
+
+    trung = {}
+    for nid, p in toa_do.items():
+        trung.setdefault(p, []).append(nid)
+    lap = {p: ids for p, ids in trung.items() if len(ids) > 1}
+    if lap:
+        mo_ta = '; '.join(f'(x={p[0]:.4f}, z={p[2]:.4f}) → node {ids}'
+                          for p, ids in list(lap.items())[:5])
+        raise ValueError(f'{section_name}: {len(lap)} vị trí có node trùng toạ độ — '
+                         f'{mo_ta}')
 
 
 def write_mct(frame: dict, section_name: str = 'Section',
               excel_path: str = None,
               pt_cables: list = None,
               pt_props: TendonProperty = None,
-              include_pt: bool = None) -> str:
+              include_pt: bool = None,
+              supports: list = None,
+              pt_jacking: str = 'begin') -> str:
     """Tạo file MCT từ frame data.
+
+    pt_jacking: 'begin' = căng một đầu · 'both' = căng hai đầu. Chỉ có nghĩa
+    khi thực sự ghi khối cáp.
 
     Node numbering:
       Bottom slab:  1 .. N_bot
@@ -37,10 +143,18 @@ def write_mct(frame: dict, section_name: str = 'Section',
                202 (top_slab→webR_top, vertical)
     """
     # ── PT auto-detect ──
+    # Thiếu thuộc tính cáp thì VẪN dựng hình học cáp (để khung xem hiển thị và
+    # topo.json ghi lại), chỉ không ghi các khối *TDN-*. Trước đây tắt hẳn nên
+    # cáp biến mất không để lại dấu vết nào.
+    pt_warnings = []
     if include_pt is None:
-        include_pt = bool(pt_cables) and pt_props is not None
-    if include_pt and (not pt_cables or pt_props is None):
+        include_pt = bool(pt_cables)
+    if include_pt and not pt_cables:
         include_pt = False
+
+    if frame.get('section_type') == 'twin_box':
+        return _write_mct_twin(frame, section_name, excel_path, pt_cables,
+                               pt_props, include_pt, supports, pt_jacking)
 
     # ── Material ──
     if excel_path and os.path.exists(excel_path):
@@ -67,7 +181,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
     # Web top X = centerline X at web junction Z
     wL_top_x = wL_nodes[0]['x']
     wR_top_x = wR_nodes[0]['x']
-    H = frame['H']
+    frame['H']
 
     # Compute Z on top surface at web centerline X
     ttL = top['surface_line'][0]
@@ -152,7 +266,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
 
     # ── Header ──
     blocks.append(f'; MCT Frame Model — {section_name}')
-    blocks.append(f'; Generated by frame_builder')
+    blocks.append('; Generated by frame_builder')
     blocks.append('')
 
     # ── UNIT ──
@@ -332,7 +446,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
             d = di
             blocks.append(f'   {s_id}, PSC       , Sect {s_id:<16d}, {offset}, 0, 0, 0, 0, 0, 0, NO, NO, PSCM')
             blocks.append('       NONE, NONE, NO, NO, NO, NO, NO, NO, NO, NO, NO')
-            blocks.append(f'       YES, YES, 0, YES, 0,  YES, 0, YES, 0, YES, 0, YES, 0,  0,  YES, NO')
+            blocks.append('       YES, YES, 0, YES, 0,  YES, 0, YES, 0, YES, 0, YES, 0,  0,  YES, NO')
             blocks.append('       NO, , NO, , , , , , ')
             blocks.append('       NO, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0')
             blocks.append(f'       0, {d}, 0, 0, 0, 0, 0, 0, 0, 0')
@@ -383,16 +497,17 @@ def write_mct(frame: dict, section_name: str = 'Section',
 
     # ── CONSTRAINT ──
     # Supports at web-bottom junction nodes (= bottom slab corners)
-    # bot_ids[0] = web L bottom = hinge (Dx+Dz)
-    # bot_ids[-1] = web R bottom = roller (Dz)
-    blocks.append('*CONSTRAINT    ; Supports')
-    blocks.append('; NODE_LIST, CONST(Dx,Dy,Dz,Rx,Ry,Rz), GROUP')
-    blocks.append(f'   {bot_ids[-1]}, 001000, Boundary')
-    blocks.append(f'   {bot_ids[0]}, 101000, Boundary')
-    blocks.append('')
+    # bot_ids[0] = web L bottom = hinge (Dx+Dy+Dz = 111000)
+    # bot_ids[-1] = web R bottom = roller (Dy+Dz = 011000)
+    # Dy luôn bị khóa: khung ngang là bài toán phẳng XZ, không khóa Dy thì
+    # Midas báo singular trong không gian 3D.
+    eff_supports = _write_constraint_block(
+        blocks, bot_ids, bot_nodes, supports,
+        defaults=[(bot_ids[-1], '011000'), (bot_ids[0], '111000')])
 
     # ── PT TENDONS (auto from DXF layers PT-<LOC>-<N>) ──
     tendons = []
+    pt_written = False          # đã ghi khối *TDN-* hay chưa
     if include_pt:
         tendons = _build_tendons(
             pt_cables, frame,
@@ -403,40 +518,64 @@ def write_mct(frame: dict, section_name: str = 'Section',
             eid_wR_start, eid_wR_end,
             e_bot_first=1, e_bot_last=N_bot - 1,
         )
-        if tendons:
+        if tendons and pt_props is not None:
+            pt_written = True
             _write_tendon_property_block(blocks, pt_props)
             _write_tendon_profile_blocks(blocks, tendons, pt_props)
+        elif tendons:
+            # Có cáp trong DXF nhưng chưa khai thông số cáp: bỏ khối *TDN-*,
+            # nói rõ ngay trong file và trả cảnh báo về cho người gọi.
+            _names = ', '.join(t.name for t in tendons)
+            blocks.append(f'; CANH BAO: DXF co {len(tendons)} cap DUL ({_names})')
+            blocks.append('; nhung chua khai thong so cap trong template so lieu,')
+            blocks.append('; nen MCT nay KHONG chua cap. Gan template roi tao lai.')
+            blocks.append('')
+            pt_warnings.append(
+                f'DXF có {len(tendons)} cáp DƯL ({_names}) nhưng chưa khai '
+                f'thông số cáp trong template — MCT tạo ra không có cáp')
 
     # ── ELEM-DEPMATL (chèn sau SECT-COLOR khi có cáp DƯL, cho creep/shrinkage) ──
-    if tendons:
+    if pt_written:
         depmatl_lines = []
         _write_elem_depmatl_block(depmatl_lines, elements, sections)
         blocks[elem_depmatl_insert_idx:elem_depmatl_insert_idx] = depmatl_lines
 
+    # Đọc tải trọng TRƯỚC khi khai báo *STLDCASE — cần biết có template hay không.
+    ld = read_loads(excel_path) if (excel_path and os.path.exists(excel_path)) else None
+
     # ── STLDCASE ──
-    blocks.append('*STLDCASE    ; Static Load Cases')
-    blocks.append('; LCNAME, LCTYPE, DESC')
-    if tendons:
-        blocks.append('   Prestress, PS, ')
-    blocks.append('   Self Weight, DC, ')
-    blocks.append('   TpG(+), TPG, ')
-    blocks.append('   System Temperature, T , ')
-    blocks.append('   WS   , W , ')
-    blocks.append('   Barrier, DW, ')
-    blocks.append('   Pavement, DW, ')
-    blocks.append('   Median Strip, DW, ')
-    blocks.append('   TpG(-), TPG, ')
-    blocks.append('   WL   , WL, ')
-    blocks.append('')
+    # Chỉ khai báo các trường hợp tải khi THẬT SỰ ghi được dữ liệu tải trọng.
+    # Không có template mà vẫn khai báo thì *LOADCOMB phía dưới sẽ trỏ tới
+    # mv1/mv2 chưa hề tồn tại → Midas báo "load name ((null)) does not exist".
+    if ld:
+        blocks.append('*STLDCASE    ; Static Load Cases')
+        blocks.append('; LCNAME, LCTYPE, DESC')
+        if pt_written:
+            blocks.append('   Prestress, PS, ')
+        blocks.append('   Self Weight, DC, ')
+        blocks.append('   TpG(+), TPG, ')
+        blocks.append('   System Temperature, T , ')
+        blocks.append('   WS   , W , ')
+        blocks.append('   Barrier, DW, ')
+        blocks.append('   Pavement, DW, ')
+        blocks.append('   Median Strip, DW, ')
+        blocks.append('   TpG(-), TPG, ')
+        blocks.append('   WL   , WL, ')
+        blocks.append('')
+    else:
+        blocks.append('*STLDCASE    ; Static Load Cases')
+        blocks.append('; LCNAME, LCTYPE, DESC')
+        if pt_written:
+            blocks.append('   Prestress, PS, ')
+        blocks.append('   Self Weight, DC, ')
+        blocks.append('')
+        blocks.append('; CHƯA CÓ TEMPLATE SỐ LIỆU — bỏ toàn bộ khối tải trọng,')
+        blocks.append('; hoạt tải di động và tổ hợp. Chọn template rồi tạo lại.')
+        blocks.append('')
 
     # ── Load data ──
-    if excel_path and os.path.exists(excel_path):
-        ld = read_loads(excel_path)
-    else:
-        ld = None
-
-    if tendons:
-        _write_tendon_prestress_block(blocks, tendons, pt_props)
+    if pt_written:
+        _write_tendon_prestress_block(blocks, tendons, pt_props, pt_jacking)
 
     if ld:
         _write_load_data(blocks, ld, elements, top_ids, top_nodes,
@@ -446,7 +585,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
                          e_bot_first=1, e_bot_last=N_bot - 1)
 
     # ── Construction Stage (giữa load data và moving load, theo file mẫu) ──
-    if tendons:
+    if pt_written:
         _write_stage_block(blocks)
 
     # ── Moving load ──
@@ -457,17 +596,30 @@ def write_mct(frame: dict, section_name: str = 'Section',
                            ll_L_idx, ll_R_idx)
 
     # ── Load combinations ──
-    _write_load_combinations(blocks, has_pt=bool(tendons))
+    if ld:
+        _write_load_combinations(blocks, has_pt=pt_written)
 
     # ── Analysis control (P-delta, time-dependent) khi có CSA ──
-    if tendons:
+    if pt_written:
         _write_anal_ctrl_block(blocks)
 
     # ── ENDDATA ──
     blocks.append('*ENDDATA')
 
+    combo_warnings = _validate_load_references(blocks)
+
     # ── Topology info (for result extraction) ──
     topology = {
+        # hình học biên để khung xem vẽ được mặt cắt mà không phải đọc lại DXF
+        'geometry': {
+            'H': frame['H'],
+            'section_type': 'single',
+            'outpoly': [[round(a, 4), round(b, 4)] for a, b in frame['outpoly_mct']],
+            'inpolys': [[[round(a, 4), round(b, 4)] for a, b in frame['inpoly_mct']]],
+        },
+        'supports': eff_supports,
+        'pt_warnings': pt_warnings,
+        'combo_warnings': combo_warnings,
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,
@@ -493,12 +645,484 @@ def write_mct(frame: dict, section_name: str = 'Section',
                 'name': t.name, 'location': t.location, 'index': t.index,
                 'elem_list': t.elem_list, 'first_elem': t.first_elem,
                 'profile_points': t.profile_points,
+                # profile_points là toạ độ ELEMENT-LOCAL và mỗi vị trí cáp một
+                # quy ước khác nhau (TOP/BOT đo lệch so với mặt bản, WEB thì
+                # thành phần đầu là khoảng cách ĐỨNG) — không dựng ngược ra toạ
+                # độ toàn cục được. path_mct lấy thẳng từ DXF lúc build_tendons.
+                'path_mct': [[a, b] for a, b in t.path_mct],
             }
             for t in tendons
         ],
     }
 
-    return '\n'.join(blocks), topology
+    txt = '\n'.join(blocks)
+    _kiem_hinh_hoc(txt, section_name)
+    return txt, topology
+
+
+def _write_mct_twin(frame: dict, section_name: str = 'Section',
+                    excel_path: str = None,
+                    pt_cables: list = None,
+                    pt_props: TendonProperty = None,
+                    include_pt: bool = None,
+                    supports: list = None,
+                    pt_jacking: str = 'begin') -> tuple:
+    """MCT cho mặt cắt 2 hộp: 3 bụng (ngoài L/R + vách giữa), bản đáy liên tục."""
+    # Thiếu thuộc tính cáp vẫn dựng hình học — xem chú thích ở write_mct.
+    pt_warnings = []
+    if include_pt is None:
+        include_pt = bool(pt_cables)
+    if include_pt and not pt_cables:
+        include_pt = False
+
+    if excel_path and os.path.exists(excel_path):
+        mat = read_material(excel_path)
+    else:
+        mat = {
+            'fc_mpa': 50.0, 'Ec_kpa': 3.8007e+07, 'nu': 0.2,
+            'alpha': 1.08e-05, 'density': 24.5, 'RH': 85.0,
+        }
+
+    top = frame['top_slab']
+    bot = frame['bottom_slab']
+    wL = frame['web_left']
+    wC = frame['web_center']
+    wR = frame['web_right']
+
+    top_nodes_orig = list(top['nodes'])
+    bot_nodes = bot['nodes']
+    wL_nodes = wL['nodes']
+    wC_nodes = wC['nodes']
+    wR_nodes = wR['nodes']
+    N_bot = len(bot_nodes)
+
+    ttL = top['surface_line'][0]
+    ttR = top['surface_line'][1]
+    top_chain = top.get('top_outer_chain', [ttL, ttR])
+    frame['outer_features']
+
+    def z_top_at(x):
+        if len(top_chain) >= 2:
+            from .frame_builder import _lerp
+            return _lerp(x, top_chain)
+        if abs(ttR[0] - ttL[0]) < 1e-9:
+            return ttL[1]
+        t = (x - ttL[0]) / (ttR[0] - ttL[0])
+        return ttL[1] + t * (ttR[1] - ttL[1])
+
+    # Điểm nối bụng↔bản trên = X tim bụng (giống mặt cắt 1 hộp), Z trên mặt deck.
+    # Bụng đã đặt nút đỉnh tại tim → connector 201/202/203 là phần tử đứng thật.
+    wjL = (wL_nodes[0]['x'], round(z_top_at(wL_nodes[0]['x']), 6))
+    wjC = (wC_nodes[0]['x'], round(z_top_at(wC_nodes[0]['x']), 6))
+    wjR = (wR_nodes[0]['x'], round(z_top_at(wR_nodes[0]['x']), 6))
+
+    web_inserts = [
+        (wjL[0], wjL[1], wL_nodes[0]['thickness']),
+        (wjC[0], wjC[1], wC_nodes[0]['thickness']),
+        (wjR[0], wjR[1], wR_nodes[0]['thickness']),
+    ]
+    web_inserts.sort(key=lambda w: w[0])
+
+    top_nodes = []
+    insert_indices = []
+    wi = 0
+    for nd in top_nodes_orig:
+        while wi < len(web_inserts) and web_inserts[wi][0] < nd['x'] - 0.001:
+            insert_indices.append(len(top_nodes))
+            xw, zw, tw = web_inserts[wi]
+            top_nodes.append({
+                'x': xw, 'z': zw,
+                'thickness': tw, 'is_keypoint': True, 'is_barrier': False,
+            })
+            wi += 1
+        if wi < len(web_inserts) and abs(nd['x'] - web_inserts[wi][0]) < 0.001:
+            insert_indices.append(len(top_nodes))
+            wi += 1
+        top_nodes.append(nd)
+    while wi < len(web_inserts):
+        insert_indices.append(len(top_nodes))
+        xw, zw, tw = web_inserts[wi]
+        top_nodes.append({
+            'x': xw, 'z': zw,
+            'thickness': tw, 'is_keypoint': True, 'is_barrier': False,
+        })
+        wi += 1
+
+    wL_insert_idx, wC_insert_idx, wR_insert_idx = insert_indices
+
+    N_top = len(top_nodes)
+    N_wL_unique = len(wL_nodes) - 1
+    N_wC_unique = len(wC_nodes) - 1
+    N_wR_unique = len(wR_nodes) - 1
+
+    bot_ids = list(range(1, N_bot + 1))
+    wL_ids = list(range(N_bot + 1, N_bot + 1 + N_wL_unique))
+    wC_ids = list(range(N_bot + 1 + N_wL_unique, N_bot + 1 + N_wL_unique + N_wC_unique))
+    wR_ids = list(range(N_bot + 1 + N_wL_unique + N_wC_unique,
+                        N_bot + 1 + N_wL_unique + N_wC_unique + N_wR_unique))
+    top_ids = list(range(101, 101 + N_top))
+
+    top_at_wL = top_ids[wL_insert_idx]
+    top_at_wC = top_ids[wC_insert_idx]
+    top_at_wR = top_ids[wR_insert_idx]
+
+    ll_L_x = top['liveload_edge_L_x']
+    ll_R_x = top['liveload_edge_R_x']
+    ll_L_idx = next(i for i, n in enumerate(top_nodes) if abs(n['x'] - ll_L_x) < 1e-3)
+    ll_R_idx = next(i for i, n in enumerate(top_nodes) if abs(n['x'] - ll_R_x) < 1e-3)
+
+    bot_center_idx = bot.get('bot_center_node_idx')
+    if bot_center_idx is None:
+        bC = bot['bot_center']
+        bot_center_idx = min(range(N_bot), key=lambda i: abs(bot_nodes[i]['x'] - bC[0]))
+
+    blocks = []
+    blocks.append(f'; MCT Frame Model — {section_name} (twin box)')
+    blocks.append('; Generated by frame_builder (twin_box)')
+    blocks.append('')
+    blocks.append('*UNIT    ; Unit System')
+    blocks.append('; FORCE, LENGTH, HEAT, TEMPER')
+    blocks.append('   KN   , M, KCAL, C')
+    blocks.append('')
+    blocks.append('*STRUCTYPE    ; Structure Type')
+    blocks.append('; iSTYP, iMASS, iSMAS, bMASSOFFSET, bSELFWEIGHT, GRAV, TEMPER, bALIGNBEAM, bALIGNSLAB, bROTRIGID')
+    blocks.append('     1, 1, 1, NO, NO, 9.8, 0, NO, NO, NO')
+    blocks.append('')
+    blocks.append('*REBAR-MATL-CODE    ; Rebar Material Code')
+    blocks.append('; CONC_CODE, CONC_MDB, SRC_CODE, SRC_MDB')
+    blocks.append(' ASTM(RC), Grade 60, ASTM(RC), Grade 60')
+    blocks.append('')
+    blocks.append('*MATERIAL    ; Material')
+    blocks.append('; iMAT, TYPE, MNAME, SPHEAT, HEATCO, PLAST, TUNIT, bMASS, DAMPRATIO, [DATA1]           ; STEEL, CONC, USER')
+    blocks.append(f'    1, CONC , BoxGirder         , 0, 0, , C, NO, 0.05, 2, '
+                  f' {mat["Ec_kpa"]:.4e},   {mat["nu"]},  {mat["alpha"]:.4e},  {mat["density"]},     0')
+    if include_pt and pt_props is not None:
+        Ep_kpa = pt_props.Ep * 1000
+        blocks.append(f'    2, USER , Tendon            , 0, 0, , C, NO, 0, 2, '
+                      f' {Ep_kpa:.4e},     0,  0.0000e+00,  78.5,     0')
+    blocks.append('')
+    blocks.append('*MATL-COLOR')
+    blocks.append('; iMAT, W_R, W_G, W_B, HF_R, HF_G, HF_B, HE_R, HE_G, HE_B, bBLEND, FACT')
+    blocks.append('    1, 255,   0,   0,    0, 255,   0,    0,   0, 255,  NO, 0.5')
+    if include_pt and pt_props is not None:
+        blocks.append('    2, 255,   0,   0,    0, 255,   0,    0,   0, 255,  NO, 0.5')
+    blocks.append('')
+    fc_int = int(round(mat['fc_mpa']))
+    fc_kpa = int(round(mat['fc_mpa'] * 1000))
+    rh = int(round(mat['RH']))
+    blocks.append('*TDM-TYPE    ; Time Dependent Material')
+    blocks.append(f'   NAME=C{fc_int}, CEB, {fc_kpa}, {rh}, 1, NR, 3, 0')
+    blocks.append('')
+    blocks.append('*TDM-LINK    ; Time Dependent Material Link')
+    blocks.append('; iMAT, TDM-TYPE1(CREEP/SHRINKAGE), TDM-TYPE2(ELASTICITY)')
+    blocks.append(f'    1, C{fc_int}, ')
+    blocks.append('')
+
+    blocks.append('*NODE    ; Nodes')
+    blocks.append('; iNO, X, Y, Z')
+    for nid, nd in zip(bot_ids, bot_nodes):
+        blocks.append(f'  {nid:4d}, {nd["x"]}, 0, {nd["z"]}')
+    for i in range(N_wL_unique):
+        blocks.append(f'  {wL_ids[i]:4d}, {wL_nodes[i]["x"]}, 0, {wL_nodes[i]["z"]}')
+    for i in range(N_wC_unique):
+        blocks.append(f'  {wC_ids[i]:4d}, {wC_nodes[i]["x"]}, 0, {wC_nodes[i]["z"]}')
+    for i in range(N_wR_unique):
+        blocks.append(f'  {wR_ids[i]:4d}, {wR_nodes[i]["x"]}, 0, {wR_nodes[i]["z"]}')
+    for nid, nd in zip(top_ids, top_nodes):
+        blocks.append(f'  {nid:4d}, {nd["x"]}, 0, {nd["z"]}')
+    blocks.append('')
+
+    elements = []
+    sections = []
+    W = 0.5
+    sid = 0
+
+    def _make_section(di, dj, offset):
+        nonlocal sid
+        sid += 1
+        sec_type = 'TAPERED' if abs(di - dj) > 0.001 else 'PSC'
+        sections.append((sid, sec_type, offset, di, dj, W))
+        return sid
+
+    eid = 1
+    for i in range(N_bot - 1):
+        s = _make_section(bot_nodes[i]['thickness'], bot_nodes[i + 1]['thickness'], 'CB')
+        elements.append((eid, bot_ids[i], bot_ids[i + 1], s))
+        eid += 1
+
+    eid_wL_start = eid
+    for i in range(N_wL_unique - 1):
+        s = _make_section(wL_nodes[i]['thickness'], wL_nodes[i + 1]['thickness'], 'CC')
+        elements.append((eid, wL_ids[i], wL_ids[i + 1], s))
+        eid += 1
+    s = _make_section(wL_nodes[N_wL_unique - 1]['thickness'], wL_nodes[-1]['thickness'], 'CC')
+    elements.append((eid, wL_ids[-1], bot_ids[0], s))
+    eid_wL_end = eid
+    eid += 1
+
+    eid_wC_start = eid
+    for i in range(N_wC_unique - 1):
+        s = _make_section(wC_nodes[i]['thickness'], wC_nodes[i + 1]['thickness'], 'CC')
+        elements.append((eid, wC_ids[i], wC_ids[i + 1], s))
+        eid += 1
+    s = _make_section(wC_nodes[N_wC_unique - 1]['thickness'], wC_nodes[-1]['thickness'], 'CC')
+    elements.append((eid, wC_ids[-1], bot_ids[bot_center_idx], s))
+    eid_wC_end = eid
+    eid += 1
+
+    eid_wR_start = eid
+    for i in range(N_wR_unique - 1):
+        s = _make_section(wR_nodes[i]['thickness'], wR_nodes[i + 1]['thickness'], 'CC')
+        elements.append((eid, wR_ids[i], wR_ids[i + 1], s))
+        eid += 1
+    s = _make_section(wR_nodes[N_wR_unique - 1]['thickness'], wR_nodes[-1]['thickness'], 'CC')
+    elements.append((eid, wR_ids[-1], bot_ids[-1], s))
+    eid_wR_end = eid
+    eid += 1
+
+    eid_top_start = 101
+    connector_idxs = {wL_insert_idx, wC_insert_idx, wR_insert_idx}
+    for i in range(N_top - 1):
+        di = top_nodes[i]['thickness']
+        dj = top_nodes[i + 1]['thickness']
+        if i + 1 in connector_idxs:
+            di = dj = top_nodes[i]['thickness']
+        elif i in connector_idxs:
+            di = dj = top_nodes[i + 1]['thickness']
+        s = _make_section(di, dj, 'CT')
+        elements.append((eid_top_start + i, top_ids[i], top_ids[i + 1], s))
+    eid_top_end = eid_top_start + N_top - 2
+
+    # Connector dùng chiều dày đỉnh bụng (giống mặt cắt 1 hộp)
+    wL_top_t = wL_nodes[0]['thickness']
+    wC_top_t = wC_nodes[0]['thickness']
+    wR_top_t = wR_nodes[0]['thickness']
+    elements.append((201, top_at_wL, wL_ids[0], _make_section(wL_top_t, wL_top_t, 'CC')))
+    elements.append((202, top_at_wC, wC_ids[0], _make_section(wC_top_t, wC_top_t, 'CC')))
+    elements.append((203, top_at_wR, wR_ids[0], _make_section(wR_top_t, wR_top_t, 'CC')))
+
+    blocks.append('*ELEMENT    ; Elements')
+    blocks.append('; iEL, TYPE, iMAT, iPRO, iN1, iN2, ANGLE, iSUB                     ; Frame  Element')
+    for e_id, n1, n2, s in elements:
+        blocks.append(f'  {e_id:4d}, BEAM  ,    1,  {s:4d},  {n1:4d},  {n2:4d},     0,     0')
+    blocks.append('')
+
+    blocks.append('*SECTION    ; Section')
+    blocks.append('; iSEC, TYPE, SNAME, OFFSET, ...')
+    for s_id, s_type, offset, di, dj, w in sections:
+        if s_type == 'TAPERED':
+            blocks.append(f'   {s_id}, TAPERED   , Sect {s_id:<16d}, {offset}, 0, 0, 0, 0, 0, 0, 0, 0, NO, NO, PSCM, 1, 1, PSC')
+            blocks.append('       NONE, NONE, NO, NO, NO, NO, NO, NO, NO, NO, NO')
+            blocks.append('       YES, YES, 0, YES, 0, YES, 0, YES, 0,  YES, 0, YES, 0, YES, 0, YES, 0,  YES, 0, YES, 0, YES, 0, YES, 0,  0, 0,  YES, NO')
+            blocks.append('       NO, , NO, , , , , , , , , , , , ')
+            blocks.append('       NO, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0')
+            blocks.append(f'       0, {di}, 0, 0, 0, 0, 0, 0, 0, 0')
+            blocks.append(f'       0, {w}, 0, 0, 0, 0')
+            blocks.append(f'       {di}, 0, 0, 0, 0, 0, 0, 0, 0')
+            blocks.append(f'       0, {w}, 0, 0, 0, 0')
+            blocks.append('')
+            blocks.append(f'       0, {dj}, 0, 0, 0, 0, 0, 0, 0, 0')
+            blocks.append(f'       0, {w}, 0, 0, 0, 0')
+            blocks.append(f'       {dj}, 0, 0, 0, 0, 0, 0, 0, 0')
+            blocks.append(f'       0, {w}, 0, 0, 0, 0')
+            blocks.append('')
+        else:
+            d = di
+            blocks.append(f'   {s_id}, PSC       , Sect {s_id:<16d}, {offset}, 0, 0, 0, 0, 0, 0, NO, NO, PSCM')
+            blocks.append('       NONE, NONE, NO, NO, NO, NO, NO, NO, NO, NO, NO')
+            blocks.append('       YES, YES, 0, YES, 0,  YES, 0, YES, 0, YES, 0, YES, 0,  0,  YES, NO')
+            blocks.append('       NO, , NO, , , , , , ')
+            blocks.append('       NO, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0')
+            blocks.append(f'       0, {d}, 0, 0, 0, 0, 0, 0, 0, 0')
+            blocks.append(f'       0, {w}, 0, 0, 0, 0')
+            blocks.append(f'       {d}, 0, 0, 0, 0, 0, 0, 0, 0')
+            blocks.append(f'       0, {w}, 0, 0, 0, 0')
+            blocks.append('')
+    blocks.append('')
+
+    blocks.append('*SECT-COLOR')
+    blocks.append('; iSEC, W_R, W_G, W_B, HF_R, HF_G, HF_B, HE_R, HE_G, HE_B, bBLEND, FACT')
+    for s_id, *_ in sections:
+        blocks.append(f'    {s_id}, 255,   0,   0,    0, 255,   0,    0,   0, 255,  NO, 0.5')
+    blocks.append('')
+
+    elem_depmatl_insert_idx = len(blocks)
+    bot_range = f'{bot_ids[0]}to{bot_ids[-1]}'
+    wL_range = f'{wL_ids[0]}to{wL_ids[-1]}' if wL_ids else ''
+    wC_range = f'{wC_ids[0]}to{wC_ids[-1]}' if wC_ids else ''
+    wR_range = f'{wR_ids[0]}to{wR_ids[-1]}' if wR_ids else ''
+    top_range = f'{top_ids[0]}to{top_ids[-1]}'
+    all_nodes_str = f'{bot_range} {wL_range} {wC_range} {wR_range} {top_range}'
+    e_bot_first = 1
+    e_bot_last = N_bot - 1
+    all_elems_str = (f'{e_bot_first}to{e_bot_last} {eid_wL_start}to{eid_wL_end} '
+                     f'{eid_wC_start}to{eid_wC_end} {eid_wR_start}to{eid_wR_end} '
+                     f'{eid_top_start}to{eid_top_end} 201 202 203')
+
+    blocks.append('*GROUP    ; Group')
+    blocks.append('; NAME, NODE_LIST, ELEM_LIST, PLANE_TYPE')
+    blocks.append(f'   Model     , {all_nodes_str}, {all_elems_str}, 0')
+    blocks.append(f'   upper slab, {top_range}, {eid_top_start}to{eid_top_end}, 0')
+    blocks.append('')
+    blocks.append('*BNDR-GROUP    ; Boundary Group')
+    blocks.append('; NAME, AUTOTYPE')
+    blocks.append(' Boundary, 0')
+    blocks.append('')
+    blocks.append('*LOAD-GROUP    ; Load Group')
+    blocks.append('; NAME')
+    blocks.append(' Load')
+    blocks.append('')
+    eff_supports = _write_constraint_block(
+        blocks, bot_ids, bot_nodes, supports,
+        defaults=[(bot_ids[-1], '011000'),
+                  (bot_ids[bot_center_idx], '011000'),
+                  (bot_ids[0], '111000')])
+
+    tendons = []
+    pt_written = False          # đã ghi khối *TDN-* hay chưa
+    if include_pt:
+        tendons = _build_tendons(
+            pt_cables, frame,
+            top_nodes, top_ids, bot_nodes, bot_ids,
+            wL_nodes, wL_ids, wR_nodes, wR_ids,
+            eid_top_start, eid_top_end,
+            eid_wL_start, eid_wL_end,
+            eid_wR_start, eid_wR_end,
+            e_bot_first=1, e_bot_last=N_bot - 1,
+        )
+        if tendons and pt_props is not None:
+            pt_written = True
+            _write_tendon_property_block(blocks, pt_props)
+            _write_tendon_profile_blocks(blocks, tendons, pt_props)
+        elif tendons:
+            # Có cáp trong DXF nhưng chưa khai thông số cáp: bỏ khối *TDN-*,
+            # nói rõ ngay trong file và trả cảnh báo về cho người gọi.
+            _names = ', '.join(t.name for t in tendons)
+            blocks.append(f'; CANH BAO: DXF co {len(tendons)} cap DUL ({_names})')
+            blocks.append('; nhung chua khai thong so cap trong template so lieu,')
+            blocks.append('; nen MCT nay KHONG chua cap. Gan template roi tao lai.')
+            blocks.append('')
+            pt_warnings.append(
+                f'DXF có {len(tendons)} cáp DƯL ({_names}) nhưng chưa khai '
+                f'thông số cáp trong template — MCT tạo ra không có cáp')
+
+    if pt_written:
+        depmatl_lines = []
+        _write_elem_depmatl_block(depmatl_lines, elements, sections)
+        blocks[elem_depmatl_insert_idx:elem_depmatl_insert_idx] = depmatl_lines
+
+    # Đọc tải trọng TRƯỚC khi khai báo *STLDCASE — cần biết có template hay không.
+    ld = read_loads(excel_path) if (excel_path and os.path.exists(excel_path)) else None
+
+    # Chỉ khai báo các trường hợp tải khi THẬT SỰ ghi được dữ liệu tải trọng.
+    # Không có template mà vẫn khai báo thì *LOADCOMB phía dưới sẽ trỏ tới
+    # mv1/mv2 chưa hề tồn tại → Midas báo "load name ((null)) does not exist".
+    if ld:
+        blocks.append('*STLDCASE    ; Static Load Cases')
+        blocks.append('; LCNAME, LCTYPE, DESC')
+        if pt_written:
+            blocks.append('   Prestress, PS, ')
+        blocks.append('   Self Weight, DC, ')
+        blocks.append('   TpG(+), TPG, ')
+        blocks.append('   System Temperature, T , ')
+        blocks.append('   WS   , W , ')
+        blocks.append('   Barrier, DW, ')
+        blocks.append('   Pavement, DW, ')
+        blocks.append('   Median Strip, DW, ')
+        blocks.append('   TpG(-), TPG, ')
+        blocks.append('   WL   , WL, ')
+        blocks.append('')
+    else:
+        blocks.append('*STLDCASE    ; Static Load Cases')
+        blocks.append('; LCNAME, LCTYPE, DESC')
+        if pt_written:
+            blocks.append('   Prestress, PS, ')
+        blocks.append('   Self Weight, DC, ')
+        blocks.append('')
+        blocks.append('; CHƯA CÓ TEMPLATE SỐ LIỆU — bỏ toàn bộ khối tải trọng,')
+        blocks.append('; hoạt tải di động và tổ hợp. Chọn template rồi tạo lại.')
+        blocks.append('')
+
+    if pt_written:
+        _write_tendon_prestress_block(blocks, tendons, pt_props, pt_jacking)
+    if ld:
+        _write_load_data(blocks, ld, elements, top_ids, top_nodes,
+                         eid_top_start, eid_top_end,
+                         eid_wL_start, eid_wL_end,
+                         eid_wR_start, eid_wR_end,
+                         e_bot_first=1, e_bot_last=N_bot - 1)
+    if pt_written:
+        _write_stage_block(blocks)
+    if ld:
+        b_total = frame.get('B_total')
+        n_int_floor = int(b_total / 3.5) if b_total else None
+        _write_moving_load(blocks, ld, top_nodes, top_ids,
+                           eid_top_start, eid_top_end,
+                           wL_insert_idx, wR_insert_idx,
+                           ll_L_idx, ll_R_idx,
+                           n_int_floor=n_int_floor)
+    if ld:
+        _write_load_combinations(blocks, has_pt=pt_written)
+    if pt_written:
+        _write_anal_ctrl_block(blocks)
+    blocks.append('*ENDDATA')
+
+    combo_warnings = _validate_load_references(blocks)
+
+    topology = {
+        'section_type': 'twin_box',
+        'geometry': {
+            'H': frame['H'],
+            'section_type': 'twin_box',
+            'outpoly': [[round(a, 4), round(b, 4)] for a, b in frame['outpoly_mct']],
+            'inpolys': [[[round(a, 4), round(b, 4)] for a, b in frame['inpoly_mct']],
+                        [[round(a, 4), round(b, 4)] for a, b in frame['inpoly_right_mct']]],
+        },
+        'supports': eff_supports,
+        'pt_warnings': pt_warnings,
+        'combo_warnings': combo_warnings,
+        'top_ids': top_ids,
+        'top_nodes': top_nodes,
+        'bot_ids': bot_ids,
+        'bot_nodes': bot_nodes,
+        'wL_ids': wL_ids,
+        'wL_nodes': wL_nodes[:N_wL_unique],
+        'wC_ids': wC_ids,
+        'wC_nodes': wC_nodes[:N_wC_unique],
+        'wR_ids': wR_ids,
+        'wR_nodes': wR_nodes[:N_wR_unique],
+        'elements': elements,
+        'sections': sections,
+        'eid_top_start': eid_top_start,
+        'eid_top_end': eid_top_end,
+        'eid_wL_start': eid_wL_start,
+        'eid_wL_end': eid_wL_end,
+        'eid_wC_start': eid_wC_start,
+        'eid_wC_end': eid_wC_end,
+        'eid_wR_start': eid_wR_start,
+        'eid_wR_end': eid_wR_end,
+        'e_bot_first': 1,
+        'e_bot_last': N_bot - 1,
+        'wL_insert_idx': wL_insert_idx,
+        'wC_insert_idx': wC_insert_idx,
+        'wR_insert_idx': wR_insert_idx,
+        'tendons': [
+            {
+                'name': t.name, 'location': t.location, 'index': t.index,
+                'elem_list': t.elem_list, 'first_elem': t.first_elem,
+                'profile_points': t.profile_points,
+                # profile_points là toạ độ ELEMENT-LOCAL và mỗi vị trí cáp một
+                # quy ước khác nhau (TOP/BOT đo lệch so với mặt bản, WEB thì
+                # thành phần đầu là khoảng cách ĐỨNG) — không dựng ngược ra toạ
+                # độ toàn cục được. path_mct lấy thẳng từ DXF lúc build_tendons.
+                'path_mct': [[a, b] for a, b in t.path_mct],
+            }
+            for t in tendons
+        ],
+    }
+    txt = '\n'.join(blocks)
+    _kiem_hinh_hoc(txt, section_name)
+    return txt, topology
 
 
 def _write_load_data(blocks, ld, elements, top_ids, top_nodes,
@@ -656,15 +1280,18 @@ def _make_vehicle_loads(point_load, n_pairs):
 def _write_moving_load(blocks, ld, top_nodes, top_ids,
                        eid_top_start, eid_top_end,
                        wL_insert_idx, wR_insert_idx,
-                       ll_L_idx, ll_R_idx):
+                       ll_L_idx, ll_R_idx,
+                       n_int_floor: int = None):
     """Ghi moving load blocks: MVLDCODE, LINELANE, VEHICLE, VCLASS, MVLDCASE.
 
     Lane phân chia (TCVN 11823 — bánh xe cách mép trong lan can ≥ 0.3m):
       cantilever1:  từ liveload_edge_L → web_junc_L  (loại đoạn lan can + 0.3m)
       tr_lane(mid): giữa 2 web junction
       cantilever2:  từ web_junc_R → liveload_edge_R
+
+    n_int_floor: số làn tối thiểu cho xe HL93 (twin box: INT(B_total/3.5)).
     """
-    top_eids = list(range(eid_top_start, eid_top_end + 1))
+    list(range(eid_top_start, eid_top_end + 1))
 
     # Element index i connects top_ids[i] → top_ids[i+1]
     cant1_eids = list(range(eid_top_start + ll_L_idx, eid_top_start + wL_insert_idx))
@@ -685,6 +1312,8 @@ def _write_moving_load(blocks, ld, top_nodes, top_ids,
     n_total = int(total_width / 3.5)  # AASHTO: INT(W/3.5)
     n_cant = _count_wheel_pairs(max(cant_L_eff, cant_R_eff))
     n_int = _count_wheel_pairs(interior_width)
+    if n_int_floor is not None:
+        n_int = max(n_int, n_int_floor)
 
     # Lane factors: {n_lanes: factor}
     def lane_factor(n):
@@ -758,15 +1387,25 @@ def _write_moving_load(blocks, ld, top_nodes, top_ids,
     blocks.append('; NAME=NAME                  ; line 1')
     blocks.append(';      VLOAD1, VLOAD2, ...   ; from line 2')
 
-    # all move N: lane + tandemN_(+M) + tandemN_(-M) + truckN_(+M) + truckN_(-M)
+    # VCLASS chỉ chứa XE. Midas lấy BAO các xe trong lớp — chọn cái bất lợi
+    # nhất rồi bỏ phần còn lại (xác minh trên S1.MOUT: mỗi tổ hợp con chất
+    # đúng một lớp lên một làn). Trước đây `lane` là thành viên của lớp, làm
+    # ý định "mv1 = xe, mv2 = làn, mv_all = xe + làn" thành mờ mịt: nhìn vào
+    # thì tưởng tải làn bị cộng hai lần.
+    #
+    # Bỏ `lane` khỏi lớp KHÔNG đổi kết quả — xe trội hơn tải làn 8-36 lần ở
+    # mọi phần tử (đo trên Beam Force của S1) nên nó chưa bao giờ được chọn.
+    # Ngưỡng để tải làn thắng trên cánh hẫng là chiều dài ~17 m, không mặt cắt
+    # nào tới. Tải làn vẫn được chất đầy đủ qua `mv2`.
+    # all move N: tandemN_(+M) + tandemN_(-M) + truckN_(+M) + truckN_(-M)
     for n in range(1, n_int + 1):
         blocks.append(f'   NAME=all move {n}')
-        blocks.append(f'        lane, tandem{n}_(+M), tandem{n}_(-M), truck{n}_(+M), truck{n}_(-M)')
+        blocks.append(f'        tandem{n}_(+M), tandem{n}_(-M), truck{n}_(+M), truck{n}_(-M)')
 
-    # cantilever N: lane + tandemN_can + truckN_can
+    # cantilever N: tandemN_can + truckN_can
     for n in range(1, n_cant + 1):
         blocks.append(f'   NAME=cantilever{n}')
-        blocks.append(f'        lane, tandem{n}_can, truck{n}_can')
+        blocks.append(f'        tandem{n}_can, truck{n}_can')
 
     blocks.append('')
 
@@ -795,120 +1434,240 @@ def _write_moving_load(blocks, ld, top_nodes, top_ids,
     blocks.append('')
 
 
+# ─────────────────────────────────────────────────────
+# Load combinations
+# ─────────────────────────────────────────────────────
+# Tổ hợp khai báo bằng DỮ LIỆU, không phải chuỗi cứng. Bản cũ là 90 dòng
+# `blocks.append(...)` trong đó MỖI tổ hợp viết hai lần — một cho nhánh có cáp
+# DƯL, một cho nhánh không. Sửa một hệ số mà quên nhánh kia thì hai nhánh lệch
+# nhau âm thầm, và không có gì bắt được.
+#
+# Mỗi số hạng là (ANAL, LCNAME, FACT), thêm cờ PT nghĩa là "chỉ có mặt khi đã
+# thật sự ghi cáp DƯL":
+#   ST = trường hợp tải tĩnh (*STLDCASE)      CB = tổ hợp khác (*LOADCOMB)
+#   MV = hoạt tải di động (*MVLDCASE)
+#   CS = kết quả phân tích giai đoạn thi công — CHỈ tồn tại khi có *STAGE,
+#        nên mọi số hạng CS đều phải mang cờ PT.
+#
+# iTYPE: 0 = cộng các số hạng, 1 = lấy bao (envelope).
+#
+# pt_only=True: cả tổ hợp chỉ ghi khi có cáp DƯL.
+#
+# TÊN tổ hợp theo TCVN 11823-3 Bảng 3.4.1-1 ("Cường độ I…V", "Sử dụng I…IV")
+# thay cho LCB1…LCB15 chép từ file mẫu. Viết KHÔNG DẤU: tên tổ hợp đi vào
+# model Midas rồi ra lại trong bảng Beam Force, mà MCT ghi UTF-8 còn Midas đọc
+# theo codepage hệ thống — dấu tiếng Việt có thể thành ký tự lỗi. DESC giữ
+# nguyên chuỗi tiếng Anh cũ để còn đối chiếu được với LT-MB-S01.mct.
+#
+# 'wrap_*' chỉ là cách ngắt dòng, chép y bản cũ để phần không đổi nội dung thì
+# cũng không đổi byte. Midas không quan tâm ngắt dòng ở đâu.
+PT = 'pt-only'
+
+_COMBOS = [
+    # ── Tổ hợp trung gian ──
+    dict(name='DW', itype=0, desc='',
+         terms=[('ST', 'Barrier', 1), ('ST', 'Pavement', 1),
+                ('ST', 'Median Strip', 1)],
+         wrap_pt=[3], wrap_plain=[3]),
+    dict(name='TG', itype=1, desc='',
+         terms=[('ST', 'TpG(+)', 1), ('ST', 'TpG(-)', 1)],
+         wrap_pt=[2], wrap_plain=[2]),
+    dict(name='mv_all', itype=0, desc='add lane',
+         terms=[('MV', 'mv1', 1), ('MV', 'mv2', 1)],
+         wrap_pt=[2], wrap_plain=[2]),
+
+    # ── Sử dụng (TCVN 11823-3: Sử dụng I / III) ──
+    # Không khai báo "Sử dụng II": tổ hợp đó dành cho kết cấu thép (trượt bu
+    # lông), không áp cho BTCT — trước đây có LCB2 nhưng không bao nào dùng,
+    # chỉ làm rác bảng kết quả Midas.
+    dict(name='Su dung I', itype=0, desc='service 1 for stress',
+         terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1), ('CB', 'mv_all', 1),
+                ('ST', 'WS', 0.3), ('ST', 'WL', 1),
+                ('CS', 'Creep Secondary', 1, PT),
+                ('CS', 'Shrinkage Secondary', 1, PT),
+                ('CB', 'TG', 0.5),
+                ('CS', 'Tendon Primary', 1, PT),
+                ('CS', 'Tendon Secondary', 1, PT),
+                ('ST', 'System Temperature', 1)],
+         wrap_pt=[5, 3, 2, 1], wrap_plain=[5, 2]),
+    dict(name='Su dung III', itype=0, desc='service 3 for stress',
+         terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1),
+                ('CB', 'mv_all', 0.8),
+                ('CS', 'Creep Secondary', 1, PT),
+                ('CS', 'Shrinkage Secondary', 1, PT),
+                ('ST', 'System Temperature', 1),
+                ('CS', 'Tendon Primary', 1, PT),
+                ('CS', 'Tendon Secondary', 1, PT),
+                ('CB', 'TG', 0.5)],
+         wrap_pt=[4, 2, 3], wrap_plain=[3, 2]),
+
+    # ── Strength (AASHTO: Strength I … V) ──
+    # Strength: chỉ lấy Tendon Secondary — nội lực primary đã nằm trong sức
+    # kháng của tiết diện có cáp. Creep/Shrinkage Secondary hạ về 0.5.
+    dict(name='Cuong do I', itype=0, desc='strength 1',
+         terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
+                ('CB', 'mv_all', 1.75),
+                ('CS', 'Creep Secondary', 0.5, PT),
+                ('CS', 'Shrinkage Secondary', 0.5, PT),
+                ('ST', 'System Temperature', 0.5),
+                ('CS', 'Tendon Secondary', 1, PT)],
+         wrap_pt=[3, 2, 2], wrap_plain=[3, 1]),
+    dict(name='Cuong do II', itype=0, desc='strength 2',
+         terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
+                ('CB', 'mv_all', 1.35),
+                ('CS', 'Creep Secondary', 0.5, PT),
+                ('CS', 'Shrinkage Secondary', 0.5, PT),
+                ('ST', 'System Temperature', 0.5),
+                ('CS', 'Tendon Secondary', 1, PT)],
+         wrap_pt=[3, 2, 2], wrap_plain=[3, 1]),
+    dict(name='Cuong do III', itype=0, desc='strength 3',
+         terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
+                ('ST', 'WS', 1.4),
+                ('CS', 'Creep Secondary', 0.5, PT),
+                ('CS', 'Shrinkage Secondary', 0.5, PT),
+                ('ST', 'System Temperature', 0.5),
+                ('CS', 'Tendon Secondary', 1, PT)],
+         wrap_pt=[3, 2, 2], wrap_plain=[3, 1]),
+    dict(name='Cuong do IV', itype=0, desc='strength 4',
+         terms=[('ST', 'Self Weight', 1.5), ('CB', 'DW', 1.5),
+                ('CS', 'Creep Secondary', 0.5, PT),
+                ('CS', 'Shrinkage Secondary', 0.5, PT),
+                ('ST', 'System Temperature', 0.5),
+                ('CS', 'Tendon Secondary', 1, PT)],
+         wrap_pt=[3, 2, 1], wrap_plain=[3]),
+    dict(name='Cuong do V', itype=0, desc='strength 5',
+         terms=[('ST', 'Self Weight', 1.25), ('CB', 'DW', 1.5),
+                ('CB', 'mv_all', 1.35), ('ST', 'WS', 0.4), ('ST', 'WL', 1),
+                ('CS', 'Creep Secondary', 1, PT),
+                ('CS', 'Shrinkage Secondary', 1, PT),
+                ('CS', 'Tendon Secondary', 1, PT),
+                ('ST', 'System Temperature', 1)],
+         wrap_pt=[4, 3, 2], wrap_plain=[4, 2]),
+
+    # ── Bao ──
+    # Tên 'ser_all' / 'str_all' KHÔNG đổi theo TCVN: `result_reader` tra bảng
+    # Beam Force theo đúng chuỗi 'str_all(max)' / 'ser_all(min)'. Đổi tên ở đây
+    # là vỡ khâu đọc kết quả, phải sửa cả hai đầu cùng lúc.
+    dict(name='ser_all', itype=1, desc='service all for stress',
+         terms=[('CB', 'Su dung I', 1), ('CB', 'Su dung III', 1)],
+         wrap_pt=[2], wrap_plain=[2]),
+    dict(name='str_all', itype=1, desc='strength all',
+         terms=[('CB', 'Cuong do I', 1), ('CB', 'Cuong do II', 1),
+                ('CB', 'Cuong do III', 1), ('CB', 'Cuong do IV', 1),
+                ('CB', 'Cuong do V', 1)],
+         wrap_pt=[3, 2], wrap_plain=[3, 2]),
+
+    # ── Sử dụng để kiểm nứt — CHỈ khi có cáp DƯL ──
+    # Khác "Sử dụng I/III" duy nhất ở chỗ KHÔNG lấy Tendon Primary. Không có
+    # cáp thì số hạng đó vốn không tồn tại, nên hai tổ hợp này trùng y nguyên
+    # "Sử dụng I/III" và z_crack là bản sao của ser_all — Midas chạy hai tổ hợp
+    # cho ra cùng một con số. Vì vậy pt_only.
+    dict(name='Su dung I (nut)', itype=0, pt_only=True, desc='service 1 for crack',
+         terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1), ('CB', 'mv_all', 1),
+                ('ST', 'WS', 0.3), ('ST', 'WL', 1),
+                ('CS', 'Creep Secondary', 1, PT),
+                ('CS', 'Shrinkage Secondary', 1, PT),
+                ('CB', 'TG', 0.5),
+                ('CS', 'Tendon Secondary', 1, PT),
+                ('ST', 'System Temperature', 1)],
+         wrap_pt=[5, 3, 2]),
+    dict(name='Su dung III (nut)', itype=0, pt_only=True, desc='service 3 for crack',
+         terms=[('ST', 'Self Weight', 1), ('CB', 'DW', 1),
+                ('CB', 'mv_all', 0.8),
+                ('CS', 'Creep Secondary', 1, PT),
+                ('CS', 'Shrinkage Secondary', 1, PT),
+                ('ST', 'System Temperature', 1),
+                ('CS', 'Tendon Secondary', 1, PT),
+                ('CB', 'TG', 0.5)],
+         wrap_pt=[4, 2, 2]),
+    dict(name='z_crack', itype=1, pt_only=True, desc='service all for crack',
+         terms=[('CB', 'Su dung I (nut)', 1), ('CB', 'Su dung III (nut)', 1)],
+         wrap_pt=[2]),
+]
+
+# Kết quả chỉ sinh ra khi có phân tích giai đoạn thi công (*STAGE).
+_CS_RESULTS = {'Tendon Primary', 'Tendon Secondary',
+               'Creep Primary', 'Creep Secondary',
+               'Shrinkage Primary', 'Shrinkage Secondary'}
+
+
 def _write_load_combinations(blocks, has_pt=False):
-    """Ghi load combinations (AASHTO LRFD).
+    """Ghi *LOADCOMB — tổ hợp tải trọng theo AASHTO LRFD / TCVN 11823.
 
-    Khi has_pt=True, các tổ hợp Service/Strength/Crack bổ sung nội lực do
-    cáp DƯL và biến dạng dài hạn (Tendon Primary/Secondary, Creep Secondary,
-    Shrinkage Secondary) — theo cấu trúc file mẫu LT-MB-S01.mct (dòng 1120-1166).
+    has_pt=True thì các tổ hợp bổ sung nội lực do cáp DƯL và biến dạng dài hạn
+    (Tendon Primary/Secondary, Creep/Shrinkage Secondary) — theo cấu trúc file
+    mẫu LT-MB-S01.mct. Bảng hệ số nằm trong `_COMBOS`.
     """
-
     blocks.append('*LOADCOMB    ; Combinations')
     blocks.append('; NAME=NAME, KIND, ACTIVE, bES, iTYPE, DESC, iSERV-TYPE, nLCOMTYPE, nSEISTYPE   ; line 1')
     blocks.append(';      ANAL1, LCNAME1, FACT1, ...                                               ; from line 2')
 
-    # Intermediate combinations
-    blocks.append('   NAME=DW, GEN, ACTIVE, 0, 0, , 0, 0, 0')
-    blocks.append('        ST, Barrier, 1, ST, Pavement, 1, ST, Median Strip, 1')
-    blocks.append('   NAME=TG, GEN, ACTIVE, 0, 1, , 0, 0, 0')
-    blocks.append('        ST, TpG(+), 1, ST, TpG(-), 1')
-    blocks.append('   NAME=mv_all, GEN, ACTIVE, 0, 0, add lane, 0, 0, 0')
-    blocks.append('        MV, mv1, 1, MV, mv2, 1')
+    for c in _COMBOS:
+        if c.get('pt_only') and not has_pt:
+            continue
+        terms = [t for t in c['terms'] if has_pt or len(t) < 4]
+        wrap = c['wrap_pt'] if has_pt else c['wrap_plain']
+        if sum(wrap) != len(terms):
+            raise ValueError(f'{c["name"]}: wrap {wrap} không khớp '
+                             f'{len(terms)} số hạng')
 
-    # Service combinations
-    if has_pt:
-        # Service: Primary + Secondary của Tendon, chỉ Secondary của Creep/Shrinkage
-        blocks.append('   NAME=LCB1, GEN, ACTIVE, 0, 0, service 1 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
-        blocks.append('        CS, Creep Secondary, 1, CS, Shrinkage Secondary, 1, CB, TG, 0.5')
-        blocks.append('        CS, Tendon Primary, 1, CS, Tendon Secondary, 1')
-        blocks.append('        ST, System Temperature, 1')
-        blocks.append('   NAME=LCB2, GEN, ACTIVE, 0, 0, service 2 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1.3, CS, Creep Secondary, 1')
-        blocks.append('        CS, Shrinkage Secondary, 1, ST, System Temperature, 1')
-        blocks.append('        CS, Tendon Primary, 1, CS, Tendon Secondary, 1')
-        blocks.append('   NAME=LCB3, GEN, ACTIVE, 0, 0, service 3 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8, CS, Creep Secondary, 1')
-        blocks.append('        CS, Shrinkage Secondary, 1, ST, System Temperature, 1')
-        blocks.append('        CS, Tendon Primary, 1, CS, Tendon Secondary, 1, CB, TG, 0.5')
-    else:
-        blocks.append('   NAME=LCB1, GEN, ACTIVE, 0, 0, service 1 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
-        blocks.append('        CB, TG, 0.5, ST, System Temperature, 1')
-        blocks.append('   NAME=LCB2, GEN, ACTIVE, 0, 0, service 2 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1.3')
-        blocks.append('        ST, System Temperature, 1')
-        blocks.append('   NAME=LCB3, GEN, ACTIVE, 0, 0, service 3 for stress, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8')
-        blocks.append('        ST, System Temperature, 1, CB, TG, 0.5')
+        blocks.append(f'   NAME={c["name"]}, GEN, ACTIVE, 0, {c["itype"]}, '
+                      f'{c["desc"]}, 0, 0, 0')
+        i = 0
+        for n in wrap:
+            chunk, i = terms[i:i + n], i + n
+            blocks.append('        ' + ', '.join(
+                f'{anal}, {name}, {fact:g}' for anal, name, fact, *_ in chunk))
 
-    # Strength combinations
-    if has_pt:
-        # Strength: chỉ Tendon Secondary (primary đã tính trong cáp resistance)
-        # Creep/Shrinkage Secondary giảm xuống factor 0.5 (LCB4-7) hoặc 1 (LCB8)
-        blocks.append('   NAME=LCB4, GEN, ACTIVE, 0, 0, strength 1, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.75')
-        blocks.append('        CS, Creep Secondary, 0.5, CS, Shrinkage Secondary, 0.5')
-        blocks.append('        ST, System Temperature, 0.5, CS, Tendon Secondary, 1')
-        blocks.append('   NAME=LCB5, GEN, ACTIVE, 0, 0, strength 2, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35')
-        blocks.append('        CS, Creep Secondary, 0.5, CS, Shrinkage Secondary, 0.5')
-        blocks.append('        ST, System Temperature, 0.5, CS, Tendon Secondary, 1')
-        blocks.append('   NAME=LCB6, GEN, ACTIVE, 0, 0, strength 3, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, ST, WS, 1.4')
-        blocks.append('        CS, Creep Secondary, 0.5, CS, Shrinkage Secondary, 0.5')
-        blocks.append('        ST, System Temperature, 0.5, CS, Tendon Secondary, 1')
-        blocks.append('   NAME=LCB7, GEN, ACTIVE, 0, 0, strength 4, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.5, CB, DW, 1.5, CS, Creep Secondary, 0.5')
-        blocks.append('        CS, Shrinkage Secondary, 0.5, ST, System Temperature, 0.5')
-        blocks.append('        CS, Tendon Secondary, 1')
-        blocks.append('   NAME=LCB8, GEN, ACTIVE, 0, 0, strength 5, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35, ST, WS, 0.4')
-        blocks.append('        ST, WL, 1, CS, Creep Secondary, 1, CS, Shrinkage Secondary, 1')
-        blocks.append('        CS, Tendon Secondary, 1, ST, System Temperature, 1')
-    else:
-        blocks.append('   NAME=LCB4, GEN, ACTIVE, 0, 0, strength 1, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.75')
-        blocks.append('        ST, System Temperature, 0.5')
-        blocks.append('   NAME=LCB5, GEN, ACTIVE, 0, 0, strength 2, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35')
-        blocks.append('        ST, System Temperature, 0.5')
-        blocks.append('   NAME=LCB6, GEN, ACTIVE, 0, 0, strength 3, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, ST, WS, 1.4')
-        blocks.append('        ST, System Temperature, 0.5')
-        blocks.append('   NAME=LCB7, GEN, ACTIVE, 0, 0, strength 4, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.5, CB, DW, 1.5, ST, System Temperature, 0.5')
-        blocks.append('   NAME=LCB8, GEN, ACTIVE, 0, 0, strength 5, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1.25, CB, DW, 1.5, CB, mv_all, 1.35, ST, WS, 0.4')
-        blocks.append('        ST, WL, 1, ST, System Temperature, 1')
-
-    # Envelope combinations
-    blocks.append('   NAME=ser_all, GEN, ACTIVE, 0, 1, service all for stress, 0, 0, 0')
-    blocks.append('        CB, LCB1, 1, CB, LCB3, 1')
-    blocks.append('   NAME=str_all, GEN, ACTIVE, 0, 1, strength all, 0, 0, 0')
-    blocks.append('        CB, LCB4, 1, CB, LCB5, 1, CB, LCB6, 1, CB, LCB7, 1, CB, LCB8, 1')
-
-    # Crack service combinations
-    if has_pt:
-        # Crack: chỉ Tendon Secondary (theo file mẫu LCB14/LCB15)
-        blocks.append('   NAME=LCB14, GEN, ACTIVE, 0, 0, service 1 for crack, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
-        blocks.append('        CS, Creep Secondary, 1, CS, Shrinkage Secondary, 1, CB, TG, 0.5')
-        blocks.append('        CS, Tendon Secondary, 1, ST, System Temperature, 1')
-        blocks.append('   NAME=LCB15, GEN, ACTIVE, 0, 0, service 3 for crack, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8, CS, Creep Secondary, 1')
-        blocks.append('        CS, Shrinkage Secondary, 1, ST, System Temperature, 1')
-        blocks.append('        CS, Tendon Secondary, 1, CB, TG, 0.5')
-    else:
-        blocks.append('   NAME=LCB14, GEN, ACTIVE, 0, 0, service 1 for crack, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 1, ST, WS, 0.3, ST, WL, 1')
-        blocks.append('        CB, TG, 0.5, ST, System Temperature, 1')
-        blocks.append('   NAME=LCB15, GEN, ACTIVE, 0, 0, service 3 for crack, 0, 0, 0')
-        blocks.append('        ST, Self Weight, 1, CB, DW, 1, CB, mv_all, 0.8')
-        blocks.append('        ST, System Temperature, 1, CB, TG, 0.5')
-    blocks.append('   NAME=z_crack, GEN, ACTIVE, 0, 1, service all for crack, 0, 0, 0')
-    blocks.append('        CB, LCB14, 1, CB, LCB15, 1')
     blocks.append('')
+
+
+def _validate_load_references(blocks):
+    """Soi *LOADCOMB: số hạng nào trỏ tới thứ chưa hề được định nghĩa?
+
+    Midas báo "The specified load name ((null)) does not exist" khi tổ hợp trỏ
+    tới trường hợp tải không tồn tại — đã xảy ra thật vì *LOADCOMB ghi vô điều
+    kiện còn mv1/mv2 chỉ ghi khi có template. Kiểm ở đây thì thấy ngay lúc sinh
+    file, không phải thấy sau khi import vào Midas.
+
+    Returns: danh sách mô tả sự cố, rỗng nghĩa là mọi tham chiếu đều có đích.
+    """
+    st, mv, cb = set(), set(), set()
+    has_stage = any(b.startswith('*STAGE') for b in blocks)
+    problems, section, cur = [], None, None
+
+    for raw in blocks:
+        if raw.startswith('*'):
+            section = raw.split()[0].lstrip('*')
+            continue
+        line = raw.strip()
+        if not line or line.startswith(';'):
+            continue
+
+        if section == 'STLDCASE':
+            st.add(line.split(',')[0].strip())
+        elif section == 'MVLDCASE' and line.startswith('NAME='):
+            mv.add(line.split('=', 1)[1].split(',')[0].strip())
+        elif section == 'LOADCOMB':
+            if line.startswith('NAME='):
+                cur = line.split('=', 1)[1].split(',')[0].strip()
+                cb.add(cur)
+                continue
+            f = [x.strip() for x in line.split(',')]
+            for i in range(0, len(f) - 2, 3):
+                anal, name = f[i], f[i + 1]
+                if anal == 'ST' and name not in st:
+                    problems.append(f'{cur}: ST "{name}" chưa có trong *STLDCASE')
+                elif anal == 'MV' and name not in mv:
+                    problems.append(f'{cur}: MV "{name}" chưa có trong *MVLDCASE')
+                elif anal == 'CB' and (name not in cb or name == cur):
+                    problems.append(f'{cur}: CB "{name}" chưa được định nghĩa trước đó')
+                elif anal == 'CS':
+                    if not has_stage:
+                        problems.append(f'{cur}: CS "{name}" cần *STAGE mà file không có')
+                    elif name not in _CS_RESULTS:
+                        problems.append(f'{cur}: CS "{name}" không phải kết quả giai đoạn thi công')
+    return problems
 
 
 # ─────────────────────────────────────────────────────
@@ -1082,6 +1841,13 @@ def _build_tendons(pt_cables, frame,
         # R = fillet radius. Hai đầu cuối luôn R=0. Output: list (x_dxf, y_dxf, R).
         fillet_pts = _polyline_to_fillet_vertices(orig)
 
+        # Đường vẽ cho khung xem: lấy thẳng toạ độ DXF (đã rời rạc hoá cung) rồi
+        # đổi sang MCT toàn cục bằng đúng phép biến đổi của frame_builder. Dựng
+        # ngược từ profile_points không được — element-local mỗi vị trí một kiểu.
+        # float() tường minh: đỉnh DXF là numpy.float64, json.dump không nuốt được.
+        path_mct = [(round(float(x) - x_center, 4), round(float(y) - y_bot_dxf, 4))
+                    for x, y in tessellate_bulge(orig)]
+
         # Decide whether to reverse so cable direction matches element I→J:
         #   TOP/BOT: I→J = increasing X (left → right)
         #   WEB-L/WEB-R: I→J = top → bottom (decreasing Z, here decreasing Y_dxf)
@@ -1156,6 +1922,7 @@ def _build_tendons(pt_cables, frame,
             profile_points=profile,
             elem_list=elem_list,
             first_elem=first_elem,
+            path_mct=path_mct,
         ))
 
     return tendons
@@ -1163,9 +1930,17 @@ def _build_tendons(pt_cables, frame,
 
 def _write_tendon_property_block(blocks, prop):
     """Write *TDN-PROPERTY (1 entry, name = NS<DP>, vd 5S15.2)."""
+    import math
     name = _pt_property_name(prop)
     AREA = prop.Ap * 1e-6        # mm² → m²
     DIA = prop.duct_dia * 1e-3   # mm → m
+
+    # Safety: ensure DIA is at least large enough for AREA (Midas import warning/error)
+    # Area_duct = pi * (DIA/2)^2 => DIA = 2 * sqrt(Area_duct / pi)
+    min_dia = 2.0 * math.sqrt(AREA / math.pi) * 1.05  # 5% buffer
+    if DIA < min_dia:
+        DIA = min_dia
+
     FF = prop.mu                 # 1/rad
     WF = prop.K * 1000           # 1/mm → 1/m
     US = prop.fpu * 1000         # MPa → kPa
@@ -1175,7 +1950,7 @@ def _write_tendon_property_block(blocks, prop):
     blocks.append('*TDN-PROPERTY    ; Tendon Property')
     blocks.append('; NAME, TYPE, MATL, AREA, DIA, RM, RC, FF, WF, US, YS, LT, ASB, ASE, bBONDED, ALPHA, \\ ')
     blocks.append(';       bOSRF, FT, LR, FPK, ACHANGE, bRELAX, TDMFNAME(User Defined) or TDMFK , WobbleType, AngleDisp')
-    blocks.append(f'   {name}, INTERNAL, 2, {AREA:g}, {DIA:g}, 0, 45, {FF}, {WF:g}, {US:g}, {YS:g}, '
+    blocks.append(f'   {name}, INTERNAL, 2, {AREA:.8f}, {DIA:.6f}, 0, 45, {FF}, {WF:g}, {US:g}, {YS:g}, '
                   f'POST, {ASB}, {ASE}, YES, 0, , , ,, 0, YES, 0, 0, 0')
     blocks.append('')
 
@@ -1215,15 +1990,31 @@ def _write_tendon_profile_blocks(blocks, tendons, prop):
     blocks.append('')
 
 
-def _write_tendon_prestress_block(blocks, tendons, prop):
-    """Write *USE-STLD, Prestress + *TDN-PRESTRESS block."""
+def _write_tendon_prestress_block(blocks, tendons, prop, jacking='begin'):
+    """Write *USE-STLD, Prestress + *TDN-PRESTRESS block.
+
+    `jacking`:
+      'begin' — căng một đầu: ô JACKING = BEGIN, chỉ đầu đầu có ứng suất.
+      'both'  — căng hai đầu: ô JACKING = BOTH, **cả hai** ô BEGIN và END mang
+                ứng suất căng. Để trống ô END mà vẫn khai BOTH thì Midas hiểu
+                đầu kia căng bằng 0.
+
+    Bó ngang dài (bản mặt hộp rộng) căng hai đầu thì tổn hao ma sát đối xứng và
+    ứng suất giữa nhịp cao hơn hẳn — khác biệt thật, không phải tuỳ chọn hình
+    thức, nên mặc định giữ 'begin' đúng như bản cũ và bắt người dùng chủ động
+    chọn.
+    """
     stress_kpa = prop.fpj * 1000  # MPa → kPa
+    both = str(jacking).lower() == 'both'
+    field = 'BOTH' if both else 'BEGIN'
+    end_kpa = stress_kpa if both else 0
     blocks.append('*USE-STLD, Prestress')
     blocks.append('')
     blocks.append('*TDN-PRESTRESS    ; Tendon Prestress Loads')
     blocks.append('; TDN-NAME, FORCE/STRESS, JACKING, BEGIN, END, iGROUTING, GROUP')
     for t in tendons:
-        blocks.append(f' {t.name}, STRESS, BEGIN, {stress_kpa:g}, 0, 0, Load')
+        blocks.append(
+            f' {t.name}, STRESS, {field}, {stress_kpa:g}, {end_kpa:g}, 0, Load')
     blocks.append('')
 
 

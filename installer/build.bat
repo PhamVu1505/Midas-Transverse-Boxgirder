@@ -5,16 +5,43 @@ REM Step 2: Inno Setup (requires iscc.exe in PATH)
 
 echo === Step 1: PyInstaller ===
 cd /d "%~dp0.."
+REM Ke HET module cua src/. Danh sach cu chi co 7 trong khi GUI dung 14 - thieu
+REM input_check, project, preview, pt_layout, section_check... Chung duoc import
+REM LUOI (trong than ham) nen PyInstaller van tim ra, nhung mot danh sach lac
+REM hau thi khong con noi len duoc dieu gi.
+REM GUI chay bang PyQt6. Phai loai tru PyQt5/PySide6/shiboken bang tay: hook Qt
+REM cua PyInstaller gom CA BA bo binding co trong may, va ban v1.4.1 dau tien
+REM dong goi 300 MB trong do 164 MB la PyQt5 + PySide6 hoan toan thua (chi co
+REM DLL, khong mot module Python nao import toi). Installer 86 MB -> kiem lai.
+REM "requests"/"urllib3"/"certifi" VAN dang bi loai tru, va dung nhu vay o V1:
+REM chi src/midas_nx.py can chung, ma GUI chua goi toi module do. KHI NAO them
+REM the Kiem cheo NX thi phai BO BA DONG exclude ay - quen thi loi chi lo ra o
+REM ban da dong goi chu khong lo khi chay tu ma nguon.
 pyinstaller --noconfirm --onedir --windowed ^
     --name "MidasTransverseBoxgirder" ^
     --icon "installer\icon.ico" ^
+    --hidden-import "src.check_export" ^
     --hidden-import "src.dxf_reader" ^
     --hidden-import "src.frame_builder" ^
-    --hidden-import "src.mct_frame_writer" ^
-    --hidden-import "src.result_reader" ^
-    --hidden-import "src.svg_export" ^
-    --hidden-import "src.material_reader" ^
+    --hidden-import "src.geometry" ^
+    --hidden-import "src.input_check" ^
+    --hidden-import "src.input_reader" ^
     --hidden-import "src.load_reader" ^
+    --hidden-import "src.material_reader" ^
+    --hidden-import "src.mct_frame_writer" ^
+    --hidden-import "src.midas_driver" ^
+    --hidden-import "src.preview" ^
+    --hidden-import "src.project" ^
+    --hidden-import "src.pt_layout" ^
+    --hidden-import "src.pt_property_reader" ^
+    --hidden-import "src.result_reader" ^
+    --hidden-import "src.section_check" ^
+    --hidden-import "src.svg_export" ^
+    --exclude-module "PyQt5" ^
+    --exclude-module "PySide6" ^
+    --exclude-module "PySide2" ^
+    --exclude-module "shiboken6" ^
+    --exclude-module "shiboken2" ^
     --exclude-module "matplotlib" ^
     --exclude-module "PIL" ^
     --exclude-module "jedi" ^
