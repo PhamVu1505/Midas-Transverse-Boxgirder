@@ -81,14 +81,20 @@ def mot_mat_cat(nx: NX, ten, mcb, xls, dung_sai, dung_sai_bao,
     shutil.copy2(mcb, ban_sao)
 
     nx.mo(ban_sao)
+    # Tên các trường hợp tải TĨNH, đọc từ chính mô hình. Đây là cách duy nhất
+    # phân loại chắc chắn: `Cuong do III/IV` là tổ hợp nhưng không mang hậu tố
+    # (max)/(min) vì không chứa hoạt tải, nên đoán theo tên là sai.
+    co_ban = {v.get('NAME', '').strip()
+              for v in (nx.get('db/STLD').get('STLD') or {}).values()}
     nx.giai()
     nx_recs = nx.noi_luc()
     cu_recs = parse_beam_force(xls)
 
-    kq = so_sanh(cu_recs, nx_recs, dung_sai, dung_sai_bao)
+    kq = so_sanh(cu_recs, nx_recs, dung_sai, dung_sai_bao, co_ban)
     kq.update({'ten': ten, 'mcb': mcb, 'xls': xls,
                'n_2022': len(cu_recs), 'n_nx': len(nx_recs),
-               'dung_sai': dung_sai, 'dung_sai_bao': dung_sai_bao})
+               'dung_sai': dung_sai, 'dung_sai_bao': dung_sai_bao,
+               'tai_co_ban': sorted(co_ban)})
 
     # Tên file ra suy thẳng từ tên mặt cắt — không hỏi, không tham số.
     os.makedirs(thu_muc_ra, exist_ok=True)

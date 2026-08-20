@@ -109,11 +109,20 @@ xuất hai đầu, nên `midas_nx.NX.noi_luc()` bỏ các điểm 1/4 để hai 
 làm đổi mô hình đều phải **đọc lại `db/NODE`** để xác nhận. Dự án Long Thành đã
 ghi lại đúng luật này trước ("không coi MAPI báo complete là đã hội tụ").
 
-**b. NX không nạp được MCT qua API.**
-`/doc/OPEN` với `.mct` → *Failed to open file*. `/doc/IMPORT` với `.mct` →
-*command complete* nhưng 0 nút. Đã thử 6 dạng tham số. **Hệ quả: chuỗi
-DXF → MCT → NX chưa khép được bằng API.** Muốn khép thì dựng mô hình thẳng bằng
-`PUT /db/*`.
+**b. MCT của ta chưa nạp được vào NX — vì SAI PHƯƠNG NGỮ, không phải vì API.**
+`/doc/IMPORT` với `output/S16/S16_frame.mct` trả *command complete* rồi nạp về
+**0 nút**; `/doc/OPEN` với `.mct` thì *Failed to open file* (OPEN chỉ nhận `.mcb`).
+
+Kết luận đầu tiên tôi rút ra — "NX không nạp được MCT qua API" — **là sai**.
+VuPQ chỉ ra: NX **có** nhập MCT, nhưng **định dạng MCT cho NX khác định dạng cho
+Civil 2022 một ít**. Vậy `/doc/IMPORT` là đúng đường, thứ sai là nội dung file.
+
+Hệ quả cho lộ trình: hướng plugin NX **không cần bộ dựng mô hình thứ hai** qua
+`PUT /db/*`. Chỉ cần `mct_frame_writer` biết xuất thêm phương ngữ NX — rẻ hơn
+hẳn, và không sinh ra hai bộ mã cùng mô tả một mô hình.
+
+**Chưa dò ra khác nhau chỗ nào.** Đường nhanh nhất: dựng một mô hình nhỏ trong
+NX rồi `/doc/EXPORT` ra MCT, so với MCT ta sinh.
 
 **c. `/doc/NEW` và `/doc/OPEN` đè lên tài liệu đang mở, không hỏi.**
 Phiên NX là của người dùng. `NX.kiem_tai_lieu_sach()` phải chạy trước.
@@ -134,11 +143,13 @@ lấy làm đối chứng. `tools/nx_crosscheck.py` chép sang `%TEMP%\mtb_nx` t
 | Mặt cắt | Bản ghi | Tải cơ bản: lệch lớn nhất | Trị số bao: lệch tương đối | |
 |---|---|---|---|---|
 | SLT | 9.180 | `My` 0,0000 · `Vz` 0,0100 | 0,00% | **ĐẠT** |
-| S10 | 6.050 | `My` 0,0100 · `Vz` 0,0100 | 0,50% | **ĐẠT** |
+| S10 | 6.050 | `My` 0,0100 · `Vz` 0,0100 | 1,85% | **ĐẠT** |
 | S16 | 7.656 | `My` 0,0100 · `Vz` 0,0100 | 1,10% | **ĐẠT** |
-| S1_V2 | 12.430 | `My` **0,1300** · 320 bản ghi lệch | **133,56%** | **HỎNG** |
+| S1_V2 | 12.430 | `My` 0,0100 · `Vz` 0,0100 | 133,56% | **ĐẠT** |
 
-Cả bốn ghép được **100%** bản ghi, không thiếu dòng nào ở cả hai phía.
+Cả bốn ghép được **100%** bản ghi (~35.000), không thiếu dòng nào ở cả hai phía,
+và **mọi trường hợp tải cơ bản đều trùng tới đơn vị hiển thị** — kể cả
+`Prestress`, tức các khối `*TDN-*` và `*STAGE` được hai bản Midas hiểu như nhau.
 
 **Phải đo tải cơ bản và trị số bao bằng hai thước khác nhau.** Tải cơ bản là hệ
 tuyến tính — hai bản Midas phải ra cùng một số, nên chỉ cho lệch bằng đơn vị
@@ -147,10 +158,23 @@ theo cách riêng, nên đo bằng sai số **tương đối**. Dùng chung mộ
 đối thì 3/4 mặt cắt bị gọi là hỏng chỉ vì làm tròn — `tests/test_midas_nx.py`
 khoá lại chỗ này.
 
-**S1_V2 cần soi thêm.** Đây là mặt cắt duy nhất **có cáp DƯL**, tức có `*STAGE`
-và từ biến. 133% không phải làm tròn, và 320 bản ghi tải cơ bản lệch quá đơn vị
-hiển thị cũng không phải. Từ biến CEB-FIP có thể khác nhau giữa hai bản Midas —
-**chưa kết luận là lỗi**, nhưng chưa loại trừ được.
+**Phân loại "cơ bản" phải đọc từ `db/STLD`, không đoán theo tên.** `Cuong do
+III` và `Cuong do IV` là **tổ hợp** nhưng không mang hậu tố `(max)/(min)` (chúng
+không chứa hoạt tải nên chỉ có một trị số). Đoán theo hậu tố thì hai tổ hợp đó
+bị xếp nhầm vào tải cơ bản, và lượt kiểm S1_V2 báo *"320 bản ghi tải cơ bản
+lệch"* trong khi cả **22** trường hợp tải cơ bản thật đều trùng khít.
+
+**133% của S1_V2 đã truy ra: `mv2(all)`, đúng 2/226 bản ghi, 3,98 kN·m.**
+`mv2` là trường hợp **tải làn**, và MCT khai nó bằng **sáu dòng `VL, lane` cùng
+trỏ vào một làn**, chỉ khác hệ số làn (1,2 · 1,0 · 0,85 · 0,65 ×3) — chỗ
+`CLAUDE.md` đã ghi là biết-chưa-tối-ưu và VuPQ cố ý giữ. Hai bản Midas gỡ chồng
+lấn đó theo cách khác nhau là hệ quả phải có, **không phải lỗi mới**.
+
+Đáng chú ý là phép kiểm chéo tự tìm đúng chỗ dự án đã nghi, mà không được mách.
+
+Chênh lệch này **không lan sang `str_all`/`ser_all`** (tối đa 0,25 kN·m) — tức
+không đụng tới con số mà `result_reader` và bảng kiểm toán thật sự đọc. Tải làn
+vốn nhỏ hơn tải xe 8–36 lần ở mọi phần tử.
 
 ---
 
@@ -162,8 +186,8 @@ hiển thị cũng không phải. Từ biến CEB-FIP có thể khác nhau giữ
 | Một mặt cắt | 50–70 s | **8–17 s** |
 | Dòng mã | 1.217 | ~260 |
 | Lấy kết quả | xuất `.xls` rồi đọc lại | JSON thẳng |
-| Nạp MCT | **được** | **không được** |
+| Nạp MCT | **được** | được, nhưng cần **phương ngữ MCT của NX** |
 | Hỏng thì biết vì | dò cửa sổ, thử lại cả chặng | mã HTTP + đọc lại `db/NODE` |
 
-Đường API tốt hơn ở mọi mặt **trừ đúng một chỗ**, mà chỗ đó lại là đầu vào của
-cả quy trình: nạp MCT.
+Đường API tốt hơn ở mọi mặt. Chỗ duy nhất còn thiếu là **xuất MCT theo phương
+ngữ NX** — một việc thêm vào `mct_frame_writer`, không phải một kiến trúc khác.

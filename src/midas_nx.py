@@ -248,22 +248,35 @@ class NX:
         return ra
 
 
-def la_bao(ten_tai: str) -> bool:
-    """Trường hợp tải này là kết quả BAO (tổ hợp / hoạt tải di động) hay không.
+def la_bao(ten_tai: str, tai_co_ban=None) -> bool:
+    """Trường hợp tải này là kết quả DẪN XUẤT (tổ hợp / bao) hay không.
 
-    Midas gắn hậu tố `(max)` / `(min)` / `(all)` cho mọi trị số lấy từ đường bao.
-    Phân biệt được hai loại là điều kiện để phép kiểm chéo có nghĩa — xem
-    `so_sanh()`.
+    Args:
+        tai_co_ban: tên các trường hợp tải **tĩnh** của chính mô hình, đọc từ
+            `db/STLD`. Có nó thì phân loại chắc chắn: tên nào không nằm trong
+            đó đều là dẫn xuất.
+
+    Không có `tai_co_ban` thì lui về đoán theo hậu tố `(max)/(min)/(all)` mà
+    Midas gắn cho trị số lấy từ đường bao. **Cách đoán này thiếu**: `Cuong do
+    III` và `Cuong do IV` là tổ hợp nhưng không có hậu tố (chúng không chứa
+    hoạt tải, nên chỉ có một trị số), và đoán nhầm chúng thành tải cơ bản đã
+    làm lượt kiểm S1_V2 báo "320 bản ghi tải cơ bản lệch" trong khi cả 22
+    trường hợp tải cơ bản thật đều trùng khít.
     """
-    t = ten_tai.strip().lower()
-    return t.endswith(('(max)', '(min)', '(all)'))
+    if tai_co_ban is not None:
+        return ten_tai.strip() not in tai_co_ban
+    return ten_tai.strip().lower().endswith(('(max)', '(min)', '(all)'))
 
 
-def so_sanh(a: list, b: list, dung_sai=0.011, dung_sai_bao=0.01) -> dict:
+def so_sanh(a: list, b: list, dung_sai=0.011, dung_sai_bao=0.01,
+            tai_co_ban=None) -> dict:
     """So hai bộ nội lực theo khoá (phần tử, trường hợp tải, đầu I/J).
 
     **Hai loại trường hợp tải phải đo bằng hai thước khác nhau** — đây là kết
     luận rút ra từ lượt kiểm chéo đầu tiên trên bốn mặt cắt thật:
+
+    Loại nào là "cơ bản" thì đọc từ `db/STLD` của chính mô hình (`tai_co_ban`),
+    không đoán theo tên — xem `la_bao()`.
 
     · **Tải cơ bản** (`Prestress`, `Barrier`, `Self`…): hai bản Midas giải cùng
       một hệ phương trình tuyến tính, nên phải ra **cùng một số**. Chỉ cho phép
@@ -295,7 +308,7 @@ def so_sanh(a: list, b: list, dung_sai=0.011, dung_sai_bao=0.01) -> dict:
     for k in sorted(chung):
         dmy = abs(A[k]['My'] - B[k]['My'])
         dvz = abs(A[k]['Vz'] - B[k]['Vz'])
-        if la_bao(k[1]):
+        if la_bao(k[1], tai_co_ban):
             thang = max(abs(A[k]['My']), abs(A[k]['Vz']), 1.0)
             td = max(dmy, dvz) / thang
             max_td = max(max_td, td)
