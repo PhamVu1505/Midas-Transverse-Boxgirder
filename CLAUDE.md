@@ -15,9 +15,11 @@ Tự động hóa toàn bộ quy trình phân tích khung ngang tại các mặt
 
 Kiến trúc chi tiết: xem `docs/ARCHITECTURE.md`.
 
-## Trạng thái hiện tại (v1.4.0)
+## Trạng thái hiện tại (v1.4.1)
 
 Toàn bộ pipeline đã hoàn thiện. **Tested**: S1, S7, S12, S16, S20, SLT, S1_V2 (Twin Box).
+
+**Hướng mở rộng VuPQ đã chốt (2026-08-20):** (1) sinh MCT cho Midas 2022 — đây là **bản V1 sắp phát hành**; (2) làm **plugin cho Midas NX**. Thẻ NX trong app để **sau V1**.
 
 ### Backlog (v2.0)
 | Task | Ưu tiên | Mô tả |
@@ -77,6 +79,27 @@ Hoạt tải trong template tính theo **dải tương đương**, mà bề rộ
 - `frame_metrics()` nhận **cả** `topo` đã ghi (`wL_nodes`/`wC_nodes`/`wR_nodes`) lẫn `frame` vừa ra khỏi `build_frame` (`web_left`/`web_center`/`web_right`) — nhờ vậy hộp thoại hỏi-trước-khi-tạo không phải chạy hết `write_mct` chỉ để lấy hai con số.
 - `GenerateController.preflight()` chạy trước khi dựng worker; có cảnh báo mức `warn` thì hộp thoại **Vẫn tạo / Huỷ**. Dùng lại `topo.json` khi đã có nên tốn ~0,01 s cho 6 mặt cắt.
 - **Template `data/Midas-Transverse-Boxgirder-analysis.xls` mang `S = 6468 mm`, `X = 3632 mm` — không khớp mặt cắt nào** đang có (tim–tim: S1 8450/3945 · S16 8650/3845 · S20 5550/3375 · S10 6977/3294 · SLT 16311/3834 · S1_V2 6347/4503). S1/S16/SLT/S1_V2 thiên an toàn, còn **S20 thiếu 14% (S) và 5% (X)**, **S10 thiếu 8% (X)**.
+
+### Cảnh báo hoạt tải trên giao diện (v1.4.1)
+VuPQ chốt **không sửa template hộ** — app báo rõ, người dùng tự sửa. Nên con số
+phải **tra được bất cứ lúc nào**, không chỉ trong khoảnh khắc bấm Tạo MCT.
+
+- Dock Properties → tab **Input data** có khối **Dải tương đương** ngay dưới bốn
+  ô hoạt tải mà `S`/`X` được suy ngược ra: trị template · trị mặt cắt · THIẾU/dư
+  bao nhiêu phần trăm. **Chỉ chiều THIẾU mới tô đỏ.**
+- Menu *Kiểm tra template số liệu…* chạy luôn phép đối chiếu hình học cho **mọi**
+  mặt cắt — trước đây nó chỉ soát sheet `INPUT` với ô gốc, tức bỏ qua đúng phép
+  kiểm quan trọng nhất.
+- **Một phép tính, hai lối trình bày**: `live_load_compare()` trả số cho dock,
+  `check_template()` gói thành câu cho nhật ký. Bản đầu suýt có hai bản sao của
+  cùng công thức tỉ số — lệch nhau thì người dùng đọc dock thấy 8%, đọc log thấy
+  12%, và không ai đối chiếu. `tests/test_input_check.py` khoá hai nơi phải nói
+  cùng một con số.
+- Lỗi cũ được vá: cảnh báo **chỉ tồn tại đúng lúc bấm Tạo MCT** — một hộp thoại
+  rồi vài dòng trôi trong Messages. Mở lại project hôm sau thì mọi mặt cắt đều
+  `assigned`, bảng kiểm toán đầy số, và không còn gì nói rằng tải bánh của S10
+  đang thiếu 8%. `tools/check_gui.py::kiem_canh_bao_hoat_tai_tra_duoc_bat_ky_luc_nao`
+  đã chứng minh bắt được khi gỡ khối cảnh báo ra.
 
 ### Căng cáp một đầu / hai đầu (v1.4.1)
 `Section.pt_jacking` (`'begin'` mặc định | `'both'`) → trường `JACKING` của `*TDN-PRESTRESS`. Lưu **riêng từng mặt cắt** trong `.mtbproj`, ô chọn nằm ở dock Properties, `run.py generate --pt-jacking both` cho CLI.
@@ -278,8 +301,9 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 ## Lệnh thường dùng
 ```bash
 python run_gui.py
-python -m pytest tests -q                        # 77 bài: MCT, kiểm toán, số liệu, driver
-python tools/check_gui.py                        # 24 phép kiểm, bấm thật (skill kiem-gui)
+python -m pytest tests -q                        # 103 bài: MCT, kiểm toán, số liệu, driver, NX
+python tools/check_gui.py                        # 26 phép kiểm, bấm thật (skill kiem-gui)
+python tools/nx_crosscheck.py                    # kiểm chéo nội lực bằng Midas NX API
 python tools/render_ui.py                        # ảnh mọi thẻ → docs/ui-snapshots/
 python tools/make_user_guide.py                  # sinh lại docs/USER-GUIDE.txt
 installer\build.bat
@@ -332,6 +356,38 @@ Không có COM, không có API HTTP, kết quả nằm trong `.CA*` nhị phân 
 - `'TOTAL ELAPSED TIME'` là dấu hiệu giải xong, **không phải** `'OVERALL TIME LOG'` (Midas in chuỗi đó giãn ký tự). Chỗ này chính tài liệu Giai đoạn 0 tôi viết đã sai.
 - `chay_mot_mat_cat` tự dọn tài liệu **chỉ khi** tài liệu đang mở là của driver (đường dẫn dưới thư mục tạm) — `moi_tai_lieu()` trả lời **No** cho hộp hỏi lưu. Nhận biết phải `realpath` chứ không `abspath`: `gettempdir()` trả dạng 8.3 (`VUPQ~1.CIT`) còn tiêu đề Midas luôn là đường dẫn dài.
 
+### Kiểm chéo bằng MIDAS CIVIL NX API (v1.4.1)
+`src/midas_nx.py` + `tools/nx_crosscheck.py`. Chi tiết: `docs/MIDAS-NX-API.md`.
+
+Cả quy trình đứng trên **một** phép giải: Civil 2022 đọc MCT ta sinh rồi trả nội
+lực, và bảng kiểm toán tin con số đó. Cho **một bản Midas khác** giải lại đúng
+file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạm chuột, ~10 s.
+
+- **Kết quả lượt đầu: 4/4 ĐẠT trên ~35.000 bản ghi** (S10 · S16 · S1_V2 · SLT).
+  Ghép được 100% bản ghi, và **mọi trường hợp tải cơ bản trùng tới 0,01 kN·m** —
+  kể cả `Prestress`, tức các khối `*TDN-*`/`*STAGE` được hai bản hiểu như nhau.
+- **Phải đo tải cơ bản và trị số bao bằng HAI thước.** Tải cơ bản là hệ tuyến
+  tính nên hai bản Midas phải ra cùng một số (ngưỡng tuyệt đối = đơn vị hiển thị
+  0,011). Trị số bao dựng từ đường ảnh hưởng, mỗi bản rời rạc hoá một kiểu, nên
+  đo bằng sai số **tương đối**. Dùng chung thước tuyệt đối thì 3/4 mặt cắt bị
+  gọi là hỏng **chỉ vì làm tròn**.
+- **Phân loại "cơ bản" đọc từ `db/STLD`, không đoán theo tên.** `Cuong do III/IV`
+  là tổ hợp nhưng không mang hậu tố `(max)/(min)` (không chứa hoạt tải). Đoán
+  theo hậu tố thì chúng bị xếp nhầm và S1_V2 báo *"320 bản ghi tải cơ bản lệch"*
+  trong khi cả 22 tải cơ bản thật đều trùng khít.
+- **Phép kiểm tự tìm ra đúng chỗ dự án đã nghi.** Lệch 133% của S1_V2 truy ra là
+  `mv2(all)`, đúng 2/226 bản ghi — `mv2` là tải làn, khai bằng **sáu dòng
+  `VL, lane` cùng trỏ một làn**. Không lan sang `str_all`/`ser_all` (≤0,25 kN·m)
+  nên không đụng con số bảng kiểm toán đọc.
+- **API đi qua máy chủ MIDAS ở Seoul**, không phải cổng cục bộ; NX phải đang
+  chạy và đã Connect. **MAPI-Key chết mỗi lần MIDAS khởi động lại** — đọc từ
+  `MAPI_KEY` hoặc `%USERPROFILE%\mapikey.txt`, **không để trong thư mục dự án**.
+- **`"command complete"` không có nghĩa là xong**: `/doc/IMPORT` trả đúng câu đó
+  cho MCT của ta rồi nạp về 0 nút. Mọi lệnh đổi mô hình phải đọc lại `db/NODE`.
+- **MCT của NX là phương ngữ khác bản 2022** (VuPQ chỉ ra; tôi từng kết luận sai
+  là "NX không nạp được MCT"). Hệ quả: hướng plugin NX **không cần bộ dựng mô
+  hình thứ hai** — chỉ cần `mct_frame_writer` xuất thêm phương ngữ NX.
+
 ### Chạy Midas từ GUI — Giai đoạn 3 (v1.4.1)
 `gui/midas_worker.py` + `Prefs.midas_auto`. **Mặc định TẮT, và đó là yêu cầu của VuPQ**: đường ưu tiên vẫn là tự mở Midas rồi tự bấm. Bật ở `Tùy chọn → Midas`, chạy bằng `Mô hình → Chạy Midas/Civil` (**F8**).
 
@@ -358,9 +414,9 @@ Không có COM, không có API HTTP, kết quả nằm trong `.CA*` nhị phân 
 - `tests/test_regression.py` vốn có bất biến "không node trùng toạ độ", nhưng `CASES` chỉ có S16 và S1_V2 — **cả hai đều có đỉnh sẵn tại x=0**, nên bất biến đó không bao giờ soi tới hình của SLT. Nay có SLT trong `CASES`.
 
 ## Current Sprint
-**Goal:** v1.4.0 — kiểm toán tiết diện theo TCVN 11823 trong app (điểm kiểm toán cho mặt cắt nhiều hộp, `src/section_check.py`, GUI mới).
+**Goal:** phát hành **V1 = sinh MCT cho Midas Civil 2022**. Thẻ Midas NX để sau (VuPQ chốt 2026-08-20).
 
-**Trạng thái:** `pytest tests -q` **69/69 pass**. Đã bump **v1.4.0** và push `feature/t13-twin-box` lên remote (2026-07-29) — chưa mở PR, chưa merge vào `master`. **Hai commit sau đó chưa push**: `eefa941` (sửa vách giữa hai hộp) và `9f91ef5` (CLAUDE.md). Cả 6 mặt cắt đã chạy trên Midas thật bằng driver: **6 đạt · 0 hỏng**.
+**Trạng thái:** `pytest tests -q` **103/103** · `tools/check_gui.py` **26/26** · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ. Nhánh `feature/t13-twin-box` đã đẩy lên remote, **chưa mở PR, chưa merge vào `master`**. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
@@ -394,13 +450,25 @@ Không có COM, không có API HTTP, kết quả nằm trong `.CA*` nhị phân 
 `S1 8.140` · `S10 6.050` · `S16 7.260` · `S1_V2 12.430` · `S20 4.680` · `SLT 9.180` bản ghi. Cả 6 đủ 4 chuỗi `str_all`/`ser_all` và tập phần tử khớp topo. **Không** ghi vào `output/` — muốn dùng số này cho tab Kiểm toán thì phải sinh lại vào `output/<tên>/`.
 
 **Next Action cụ thể:**
-1. **Quyết xem có sửa hoạt tải trong template không** — S10 và S20 đang thiếu tải 5–18% (xem mục *Đối chiếu số liệu template*). Hoặc lập template riêng cho từng mặt cắt, hoặc sửa `S`/`X` ở sheet `Load` rồi tạo lại MCT.
-2. **Kiểm khối `*TDN-*` trên Midas** — treo từ `e0ce04c`. Bản S1 **có cáp** không còn trong `output/S1` nữa (lượt chạy thử bỏ trống template ngày 2026-07-29 đã ghi đè); sinh lại từ `data/LT/S1.dxf`, đừng dùng `input/dxf/S1.dxf` vì bản đó **không có layer cáp nào**. Đường nhanh nhất giờ là `python src/midas_driver.py <mct>` rồi đọc Message Window.
-3. **Giai đoạn 3 của driver: nối vào GUI** — `MidasWorker` theo khuôn `GenerateWorker`, bước ③ của `StepBar` từ nét đứt thành nét liền. Phải cảnh báo rõ **máy không dùng được trong lúc chạy** (driver bấm chuột thật vào ribbon).
-4. **Tạo lại `output/S1_V2`** — mô hình đổi (114 → 113 phần tử), `Beam Force_S1_V2.xls` hiện có không còn khớp.
-5. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
-6. Cân nhắc **merge `feature/t13-twin-box` → `master`** (nhánh đã đẩy lên remote, chưa mở PR).
-7. `installer\build.bat` cho bản v1.4.0 — chỉ sau khi đã kiểm `*TDN-*` (xem `[[feedback_test_before_installer]]`).
+1. **`installer\build.bat` cho v1.4.1** — đây là việc còn lại của V1. Xem
+   `[[feedback_test_before_installer]]`; điều kiện đã đủ: `*TDN-*` kiểm xong,
+   6/6 mặt cắt chạy trên Midas thật, kiểm chéo NX 4/4 đạt.
+2. **Merge `feature/t13-twin-box` → `master`** (đã đẩy remote, chưa mở PR).
+3. **Hoạt tải template S10 / S20** — VuPQ chốt **không sửa hộ**, app đã báo rõ
+   trên dock Properties. Việc sửa file Excel là của người dùng. Không còn là
+   việc chặn phát hành.
+4. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
+
+**Sau V1 — hướng Midas NX** (VuPQ chốt thứ tự 2026-08-20):
+5. **Dò phương ngữ MCT của NX.** MCT ta sinh (cho 2022) nạp vào NX ra 0 nút,
+   nhưng NX **có** nhập MCT — chỉ là định dạng khác một ít. Đường nhanh nhất:
+   dựng mô hình nhỏ trong NX rồi `/doc/EXPORT` ra MCT, so với MCT ta sinh. Việc
+   này quyết định chặng sau rẻ hay đắt: nếu chỉ là vài khác biệt cú pháp thì
+   `mct_frame_writer` xuất thêm một phương ngữ là xong, **không cần bộ dựng mô
+   hình thứ hai**.
+6. **Thẻ Kiểm chéo NX trong app** — chặng 1: nhận `.mcb` đã có, giải lại bằng
+   NX, hiện bảng đạt/hỏng. Lõi đã xong ở `tools/nx_crosscheck.py`.
+7. **Plugin NX** — chặng 2, sau khi có phương ngữ MCT.
 
 **S20 — VuPQ chốt CHƯA tạo lại** (2026-07-29). Đã sinh thử ra thư mục tạm rồi so với `output/S20`: số hiệu node/phần tử **không đổi**, nhưng 8 node bản mặt đổi toạ độ (−5.75 → −5.8…), 32 dòng chiều dày tiết diện lệch (0.2686 → 0.2663), và ràng buộc gối cũ là `101000`/`001000` — tức bản S20 đang lưu **có trước cả bản sửa khoá Dy**. Tạo lại thì `Beam Force_S20.xls` hiện có hết khớp mô hình, phải chạy lại Midas. Hệ quả để nguyên: ô mặt cắt ở Results table của S20 trống (topo thiếu khối `geometry`), biểu đồ bao vẫn vẽ.
 
@@ -413,6 +481,7 @@ Không có COM, không có API HTTP, kết quả nằm trong `.CA*` nhị phân 
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-08-20: **Cảnh báo hoạt tải lên giao diện · dọn mã chết · kiểm chéo bằng Midas NX API.** VuPQ chốt không sửa template hộ mà báo rõ để người dùng tự sửa → khối *Dải tương đương* ở dock Properties, tra được bất cứ lúc nào. Dọn 13 chỗ mã chết (khối `__main__` hỏng của `material_reader`, khối "API công khai" viết hai lần trong `results_tab`, `PT_LAYER_RE` chặt hơn quy tắc thật…) — **MCT trùng khít từng byte cho cả 15 mặt cắt**. Xoá `tests/_check_web_logic.py` (script in ra màn hình, kỳ vọng đã lạc hậu) thay bằng bất biến bề dày bụng. **Dò xong API của MIDAS CIVIL NX** và kiểm chéo 4/4 đạt trên ~35.000 bản ghi; truy ra lệch 133% của S1_V2 là `mv2` — tải làn có sáu dòng `VL, lane` chồng nhau, chỗ đã biết từ trước. Bump **v1.4.1**.
 - 2026-07-30: **Sửa vách giữa mặt cắt hai hộp** — `center_top` nội suy tại tim thay vì tìm đỉnh có sẵn (mặt cầu dốc một chiều không có đỉnh nào ở tim), đỉnh vách giữa đọc từ đỉnh mặt void thay vì `deck − gap_width` (trừ kích thước ngang vào cao độ). SLT lần đầu chạy được trên Midas; S1_V2 mất một phần tử dày 8 mm; sáu mặt cắt một hộp trùng khít từng byte. Thêm `_kiem_hinh_hoc()` + SLT vào `CASES`. **Chạy loạt 6/6 đạt.**
 - 2026-07-30: **Tự động hoá Midas Civil 2022** — Giai đoạn 0 (`tools/midas_probe.py`, `docs/MIDAS-AUTOMATION.md`, `tools/midas_map.json`) → Giai đoạn 2 (`src/midas_driver.py`, chạy loạt, cách li lỗi từng mặt cắt). Xuất Beam Force **trùng md5 với bản làm tay**. Bỏ hết phím thật ở bước tick trường hợp tải sau khi khối phím lạc đóng Midas của VuPQ hai lần. Xem mục *Chạy Midas tự động*.
 - 2026-07-30: **`tools/check_gui.py` + skill `kiem-gui`** — 10 phép kiểm bấm thật rồi đối chiếu chữ người dùng đọc được; đồng bộ mặt cắt giữa các thẻ với dock Properties (`textActivated`, không phải `currentTextChanged`).

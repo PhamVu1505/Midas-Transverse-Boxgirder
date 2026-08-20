@@ -25,7 +25,7 @@ from .prefs import Prefs, PreferencesDialog
 from .widgets import StepBar, IDLE, ACTIVE, DONE
 from . import assets
 
-VERSION = 'v1.4.0'
+VERSION = 'v1.4.1'
 APP_NAME = 'Midas Transverse Boxgirder'
 ORG, APP = 'TEDI', 'MidasTransverseBoxgirder'
 MAX_RECENT = 8
