@@ -2,7 +2,7 @@
 
 **Sản phẩm:** Midas Transverse Boxgirder — phân tích khung ngang dầm hộp BTCT DƯL
 **Phiên bản:** v1.4.1 (V1: sinh MCT cho Midas Civil 2022)
-**Ngày chạy:** 2026-08-20
+**Ngày chạy:** 2026-08-20 · bổ sung đợt driver + phương ngữ MCT ngày 2026-08-21
 **Kết luận:** Đạt. Không còn khiếm khuyết nào ở mức chặn phát hành.
 
 Quy trình và cách đọc từng con số: xem [Hướng dẫn kiểm thử](huong-dan-kiem-thu.md).
@@ -22,12 +22,13 @@ Quy trình và cách đọc từng con số: xem [Hướng dẫn kiểm thử](h
 
 | Hạng mục | Lệnh | Kết quả |
 |---|---|---|
-| Phép tính | `pytest tests -q` | **105/105 đạt** |
+| Phép tính | `pytest tests -q` | **113/113 đạt** |
 | Hành vi giao diện | `tools/check_gui.py` | **28/28 đạt** (14 phép kiểm × 2 bảng màu) |
 | Độ phủ điều khiển | `tools/audit_gui.py` | **53 đạt · 0 hỏng · 1 xem lại · 2 bỏ qua** trên 56 điều khiển, mỗi bảng màu |
 | Diện mạo | `tools/render_ui.py` | 26 ảnh, soi bằng mắt, không thấy lỗi bố cục |
 | Ổn định MCT | so byte sau mỗi đợt dọn mã | **15/15 mặt cắt trùng khít từng byte** |
-| Chạy trên Midas thật | `src/midas_driver.py` | **6/6 mặt cắt đạt** |
+| Chạy trên Midas thật | `src/midas_driver.py` | **6/6 mặt cắt đạt** (311 s) |
+| Phương ngữ MCT (`*VERSION`) | A/B trên Civil 2022 thật | **6/6 trùng khít**, 44.940 bản ghi, Δ = 0,0000 |
 | Đối chiếu chéo | `tools/nx_crosscheck.py` | **4/4 đạt** trên ~35.000 bản ghi |
 | Bản đóng gói | `installer\build.bat` | Chạy thật, tiêu đề cửa sổ ghi đúng `v1.4.1` |
 
@@ -50,10 +51,38 @@ hai bản Midas hiểu các khối `*TDN-*` và `*STAGE` như nhau.
 
 Về con số 133,56% của S1_V2, xem mục [Việc còn để ngỏ](#việc-còn-để-ngỏ).
 
+### Phép đo A/B khối `*VERSION`
+
+NX chỉ nạp được MCT khi file có khối `*VERSION`. Câu hỏi đặt ra là có phải sinh
+**hai** bản MCT hay không — bản cho Civil 2022 và bản cho NX. Bằng chứng bác
+phương án hai file: `9.1.0` là tag mà **chính Civil 2022 ghi ra khi export**
+(`output/TP_BL_test/S1/S1.mct` nằm cạnh `S1.mcb` + `S1.CA*` của cùng lượt giải),
+nên ta ghi tag **thấp** và NX là bản cao đọc xuống — hai file sẽ khác nhau đúng
+0 dòng.
+
+Đo A/B trên **cùng một phiên** Civil 2022, cùng lượt: A = MCT như V1, B = A +
+đúng ba dòng `*VERSION`. Cả hai giải hết 6 mặt cắt, rồi so **từng bản ghi** Beam
+Force.
+
+| | S1 | S10 | S16 | S1_V2 | S20 | SLT |
+|---|---|---|---|---|---|---|
+| bản ghi (A = B) | 6.660 | 6.050 | 5.940 | 12.430 | 4.680 | 9.180 |
+
+Ghép **100%** — 44.940 bản ghi, `max|ΔMy| = max|ΔVz| = 0,0000`. Không phải "sai
+số nhỏ" mà là **cùng từng con số**: bản 2022 đọc file có `*VERSION` y hệt file
+không có.
+
+Rủi ro kỹ thuật bằng không, nhưng mặc định vẫn để **TẮT** ở V1 theo quyết định
+của người dùng — bản phát hành đi đúng file đã đi trọn chu trình kiểm này. Bật
+mặc định ở v1.5, cùng lúc với thẻ Kiểm chéo NX. Ai cần NX ngay thì dùng `--nx`.
+
 ## Khiếm khuyết tìm được và đã sửa
 
-Tám khiếm khuyết dưới đây tìm được trong đợt kiểm này. Cả tám đều **im lặng** —
-phần mềm vẫn chạy, vẫn ra số, và không gì báo.
+Mười hai khiếm khuyết dưới đây tìm được trong đợt kiểm này. Tám cái đầu đều
+**im lặng** — phần mềm vẫn chạy, vẫn ra số, và không gì báo. Bốn cái sau (mục
+9–12) chỉ lộ ra khi lái Midas thật, và ba trong bốn **báo sai chỗ** thay vì báo
+đúng chỗ hỏng: đó là lý do một loạt 6 mặt cắt hỏng dây chuyền mà thông điệp thì
+chỉ về phía người dùng.
 
 ### 1. Ba mục bật/tắt dock xám vĩnh viễn
 
@@ -134,6 +163,65 @@ nào. Hộp thoại đã hiện lên màn hình người dùng và phải bấm 
   cách sửa. Thêm `NX.luu()` và `NX.nap_json()`.
   `tests/test_midas_nx.py` khoá cả hai chiều.
 
+### 9. Cờ `--mct-version` nuốt mất mặt cắt đầu tiên
+
+Bản đầu khai `nargs='?'` cho tiện gõ cờ trơn. Nhưng gõ
+`--mct-version input/dxf/S1.dxf …` thì argparse lấy **đường dẫn đầu tiên** làm
+giá trị cờ: S1 biến mất khỏi danh sách, còn 5 mặt cắt kia nhận `*VERSION` mang
+nội dung `input/dxf/S1.dxf`. Không lỗi, không cảnh báo.
+
+* **Tìm bằng:** đếm lại thư mục kết quả, thấy thiếu một mặt cắt.
+* **Đã sửa:** bỏ `nargs='?'`, thêm lối tắt `--nx`. `tests/test_regression.py`
+  khoá luôn việc cờ không được nuốt DXF.
+
+### 10. Midas cắt tiêu đề cửa sổ ở 159 ký tự — driver từ chối chính sản phẩm của nó
+
+Tài liệu nằm sâu thì tiêu đề cụt giữa chừng: mất `]` đóng, mất luôn hậu tố
+` - [MIDAS/Civil]`, và bản thân đường dẫn cũng bị cắt. Đo được trên máy người
+dùng: `GetWindowTextLengthW` trả đúng **159**.
+
+`_la_tai_lieu_cua_driver()` dùng regex đòi có `]` đóng nên trả `False`. Hệ quả
+là cả loạt 6 mặt cắt hỏng dây chuyền: S1 để lại tài liệu, 5 mặt cắt sau đều
+trượt cổng an toàn kèm câu *"hãy lưu rồi File › New"* — trong khi thứ đang mở
+là file driver vừa ghi ra một phút trước.
+
+* **Tìm bằng:** chạy A/B trên Midas thật. Ba công cụ giao diện không chạm tới
+  driver, và `pytest` thì không có cửa sổ Midas nào để đọc tiêu đề.
+* **Đã sửa:** `]` thành tuỳ chọn; tiêu đề cụt thì so bằng **tiền tố**. Chỉ nới
+  cho trường hợp đã biết là bị cắt — tiêu đề đầy đủ vẫn phải trùng đúng, nên mô
+  hình thật của người dùng vẫn bị từ chối.
+
+### 11. NX và Civil 2022 dùng chung lớp cửa sổ
+
+Cả hai đều là `MidasGenMainFrmClass`. `attach()` đếm theo lớp, nên từ khi NX vào
+quy trình: mở đồng thời hai bản thì driver báo *"có 2 cửa sổ Midas — đóng bớt"*,
+tức bắt người dùng tắt NX vì một lý do không có thật. Nguy hơn — chỉ NX đang mở
+thì driver **bám luôn vào NX** rồi lái bằng bản đồ điều khiển của bản 2022.
+
+* **Đã sửa:** `_chon_civil()` lọc theo phần **đầu** tiêu đề (`Civil 2022` nhận ·
+  `MIDAS CIVIL NX 2026` loại); hai cửa sổ Civil thì vẫn báo nhập nhằng như cũ.
+  Bản đầu của phép lọc viết theo **hậu tố** — gãy y hệt lỗi 10, và chính phép
+  kiểm mới bắt được trước khi lên máy thật.
+
+### 12. Bấm hụt ribbon: bản vá đầu đi nhầm chiều
+
+Đo 8 lượt mở bảng Beam Force trên máy thật: bấm trúng thì submenu hiện trong
+**0,0–0,2 s**; bấm trượt thì **15 s cũng không hiện**; đi lại từ ribbon là qua
+ngay (0,1 s). Hai trạng thái tách bạch, không phải một phổ thời gian.
+
+Bản vá đầu nới hạn chờ 6→15 s và 10→30 s, với lập luận "chờ hụt mất nguyên một
+mặt cắt, chờ thừa chỉ mất vài giây". Lập luận không sai nhưng tiền đề sai, và
+phép đo bác thẳng: lượt trượt vẫn trượt, chỉ tốn thêm 9 s vô ích.
+
+* **Đã sửa:** hạn chờ đặt **sát** trị đo được (`CHO_MUC_MENU` 5 s ·
+  `CHO_HOP_CHON_TAI` 10 s), phần tiết kiệm dồn sang **số lượt đi lại**
+  (`LAN_DI_LAI_RIBBON` 3 → 5) — thứ duy nhất đã chứng minh gỡ được. `mo_bang()`
+  nay ghi độ trễ thật của từng chặng **kể cả khi thành công**, và thông điệp lỗi
+  kê cả 5 lượt thay vì chỉ lượt cuối.
+* **Kiểm lại:** 6/6 đạt trong 311 s, mọi độ trễ 0,0–0,2 s. Loạt này không tái
+  hiện được cú trượt, nên nó chứng minh **không hồi quy** chứ không chứng minh
+  bản vá gỡ được trượt; căn cứ cho phần đó là số đo của loạt trước.
+
 ## Việc còn để ngỏ
 
 Ba việc dưới đây **không chặn phát hành**, nhưng người tiếp nhận phải biết.
@@ -184,6 +272,7 @@ bảng bị mất trước đã.
 | Nội lực từ Midas | 6/6 mặt cắt trên Midas Civil 2022 thật |
 | Đối chiếu độc lập | 4/4 mặt cắt trên MIDAS CIVIL NX |
 | Bản đóng gói | Chạy thật, đọc tiêu đề cửa sổ |
+| Phương ngữ MCT | A/B 12 lượt giải trên cùng một phiên Civil 2022 |
 
 Chưa phủ: mặt cắt **từ ba hộp trở lên** (công thức đã tổng quát nhưng chưa có
 bản vẽ để thử) và tuỳ chọn **căng cáp hai đầu** trên Midas thật.
