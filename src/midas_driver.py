@@ -72,6 +72,25 @@ XONG = 'TOTAL ELAPSED TIME'
 BIFF8 = bytes.fromhex('d0cf11e0a1b11ae1')
 TEN_HOP_CHON_TAI = 'Records Activation Dialog'
 
+# Ngân sách chờ của chặng mở bảng Beam Force.
+#
+# **Bấm hụt ribbon là chuyện NHỊ PHÂN, không phải chuyện chậm.** Đo trên máy VuPQ
+# (loạt 6 mặt cắt, 21/8, 8 lượt mở bảng):
+#
+#     trúng (7 lượt)   Beam 0,0–0,2 s · Force 0,0–0,2 s · hộp thoại 0,0 s
+#     trượt (1 lượt)   'Beam' KHÔNG hiện sau cả 15 s
+#     đi lại sau trượt Beam 0,1 s · Force 0,0 s · hộp thoại 0,0 s
+#
+# Tức khi cú bấm vào ribbon ăn thì submenu có ngay trong một phần mười giây; khi
+# nó trượt thì chờ đến bao giờ cũng không hiện. Bản vá đầu của tôi nới hạn chờ
+# 6→15 s và 10→30 s: **số đo bác thẳng** — lượt trượt vẫn trượt, chỉ tốn thêm 9 s
+# vô ích trước khi đi lại. Nên hạn chờ nay đặt SÁT (vẫn gấp ~25 lần trị đo được,
+# đủ chỗ cho máy chậm), và phần ngân sách tiết kiệm được dồn sang SỐ LƯỢT ĐI LẠI
+# — thứ duy nhất đã chứng minh là gỡ được, cả trong loạt này lẫn loạt trước đó.
+CHO_MUC_MENU = 5.0         # s — submenu Results Tables bung ra (đo: ≤0,2 s)
+CHO_HOP_CHON_TAI = 10.0    # s — hộp thoại chọn trường hợp tải (đo: 0,0 s)
+LAN_DI_LAI_RIBBON = 5      # lượt đi lại cả chặng từ ribbon (trước là 3)
+
 u32 = ctypes.WinDLL('user32', use_last_error=True)
 
 WM_NULL, WM_SETTEXT, WM_GETTEXT, WM_GETTEXTLENGTH = 0x0000, 0x000C, 0x000D, 0x000E
@@ -821,6 +840,7 @@ class MidasSession:
 
         def mo_bang():
             """Ribbon → Results Tables → Beam → Force, trả hwnd hộp chọn tải."""
+            doi = []          # độ trễ thật của từng chặng, để ghi ra nhật ký
             self._len_truoc()
             bang = self._chon_the('Results')
             nhom = [g for g in bang.children()
@@ -835,14 +855,19 @@ class MidasSession:
             # Submenu cũng cần một nhịp mới bung ra — thử lại thay vì kết luận
             # ngay, cùng lý do như `_chon_the`.
             for ten in ('Beam', 'Force'):
-                m = None
-                for _ in range(6):
+                m, t0 = None, time.time()
+                while time.time() - t0 < CHO_MUC_MENU:
                     m = tim(ten, truoc)
                     if m is not None:
                         break
-                    time.sleep(1.0)
+                    time.sleep(0.5)
                 if m is None:
-                    raise MidasError(f'không thấy mục {ten!r} trong Results Tables')
+                    raise MidasError(f'không thấy mục {ten!r} trong Results Tables '
+                                     f'sau {CHO_MUC_MENU:.0f} s')
+                # Ghi lại độ trễ THẬT kể cả khi thành công: chặng này bấm hụt
+                # thất thường, mà nhật ký cũ chỉ nói "hụt" chứ không nói hụt bao
+                # xa — nên không có cách nào biết hạn chờ đặt sát hay còn xa.
+                doi.append(f'{ten} {time.time() - t0:.1f}s')
                 m.click_input()
                 time.sleep(2.0)
 
@@ -854,13 +879,16 @@ class MidasSession:
             # trong khi hộp thoại thật đang mở ngay đó. Script thử nghiệm chạy
             # đúng chính vì nó lọc theo tiêu đề; driver thì không — hai đường khác
             # nhau ở đúng một dòng.
-            for _ in range(10):
+            t0 = time.time()
+            while time.time() - t0 < CHO_HOP_CHON_TAI:
                 ung = [x for x in _dinh(self.pid)
                        if _lop(x) == '#32770' and u32.IsWindowVisible(x)
                        and (_doc(x, 500) or '').strip() == TEN_HOP_CHON_TAI]
                 if ung:
+                    doi.append(f'hộp thoại {time.time() - t0:.1f}s')
+                    self.log('  mở bảng: ' + ' · '.join(doi))
                     return ung[0]
-                time.sleep(1.0)
+                time.sleep(0.5)
             return None
 
         # Thử lại CẢ CHẶNG, không chỉ từng bước.
@@ -873,8 +901,8 @@ class MidasSession:
         # chặng) và "không thấy hộp thoại" (hụt ở bước cuối) — mà bản đầu của vòng
         # này chỉ xử dạng thứ hai, nên dạng thứ nhất thoát thẳng ra ngoài và cơ chế
         # thử lại thành vô dụng đúng lúc cần nó nhất.
-        h, loi = None, None
-        for lan in range(3):
+        h, loi, moi_lan = None, None, []
+        for lan in range(LAN_DI_LAI_RIBBON):
             if lan:
                 self.log(f'  menu bấm hụt ({loi}) — dọn rồi đi lại từ ribbon')
                 self._esc(3)
@@ -882,15 +910,23 @@ class MidasSession:
             try:
                 h = mo_bang()
                 if h is None:
-                    loi = 'hộp thoại chọn tải không hiện'
+                    loi = f'hộp thoại chọn tải không hiện sau {CHO_HOP_CHON_TAI:.0f} s'
             except MidasError as e:
                 h, loi = None, str(e)
             if h is not None:
                 break
+            moi_lan.append(f'lượt {lan + 1}: {loi}')
         if h is None:
             self._esc(3)
-            raise MidasError(f'không mở được bảng Beam Force sau 3 lượt điều hướng '
-                             f'ribbon — lỗi cuối: {loi or "hộp thoại không hiện"}')
+            # Kê CẢ BA lượt, không chỉ lượt cuối. Ba lượt hụt ở những chỗ khác
+            # nhau là dấu hiệu khác hẳn ba lượt cùng hụt một chỗ: cái trước là
+            # thất thường về nhịp, cái sau là chặng đó hỏng thật. Nhật ký cũ chỉ
+            # giữ lỗi lượt cuối nên hai trường hợp đó đọc ra giống hệt nhau —
+            # đúng lúc S1_V2 hỏng thì mất luôn manh mối rằng lượt 1 hụt ở 'Beam'
+            # còn lượt 2–3 hụt ở hộp thoại.
+            raise MidasError('không mở được bảng Beam Force sau '
+                             f'{LAN_DI_LAI_RIBBON} lượt điều hướng ribbon — '
+                             + ' · '.join(moi_lan))
 
         lb = [c for c in _con(h, self.pid)
               if c['lop'] == 'ListBox' and u32.SendMessageW(c['hwnd'], LB_GETCOUNT, 0, 0) > 5]

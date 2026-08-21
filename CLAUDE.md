@@ -386,6 +386,21 @@ nghĩa là người dùng đang làm việc khác).
 
 **Thử lại phải bắt CẢ ngoại lệ, không chỉ giá trị trả về.** Bấm hụt menu lộ ra ở hai dạng — `không thấy mục 'Force'` (hụt giữa chặng, ném `MidasError`) và hộp thoại không hiện (trả `None`). Vòng thử lại bản đầu chỉ xử dạng sau, nên dạng trước thoát thẳng ra ngoài và cơ chế thử lại thành vô dụng đúng lúc cần nó nhất. Nhật ký thật: `menu bấm hụt (không thấy mục 'Force'…) — dọn rồi đi lại từ ribbon` rồi chạy tiếp bình thường.
 
+**Bấm hụt ribbon là chuyện NHỊ PHÂN, không phải chuyện chậm** (đo 21/8, 8 lượt mở
+bảng Beam Force): bấm trúng thì submenu hiện trong **0,0–0,2 s**; bấm trượt thì
+**15 s cũng không hiện**; đi lại từ ribbon là qua ngay (0,1 s). Tôi đã vá sai một
+lượt — nới hạn chờ 6→15 s và 10→30 s — rồi chính phép đo bác thẳng: lượt trượt
+vẫn trượt, chỉ tốn thêm 9 s vô ích. Ngân sách chờ nay đặt **sát** trị đo được
+(`CHO_MUC_MENU = 5 s`, `CHO_HOP_CHON_TAI = 10 s`) và dồn phần tiết kiệm sang **số
+lượt đi lại** (`LAN_DI_LAI_RIBBON` 3 → 5) — thứ duy nhất đã chứng minh gỡ được.
+
+Kèm theo: `mo_bang()` ghi **độ trễ thật của từng chặng** ra nhật ký kể cả khi
+thành công (`mở bảng: Beam 0.1s · Force 0.0s · hộp thoại 0.0s`). Không có nó thì
+nhật ký chỉ nói "hụt" mà không nói hụt bao xa, và không cách nào biết hạn chờ
+đang đặt sát hay còn xa — đúng chỗ khiến tôi vá nhầm chiều lần đầu. Thông điệp
+lỗi cũng kê **cả năm lượt** thay vì chỉ lượt cuối: ba lượt hụt ở ba chỗ khác nhau
+là dấu hiệu khác hẳn ba lượt cùng hụt một chỗ.
+
 **Đừng thêm phép lọc cho một giả thuyết chưa kiểm chứng.** Tôi từng đòi mục menu phải có `rectangle()` khác rỗng, với giả thuyết "mục của menu cũ có khung rỗng nên bấm hụt". Giả thuyết sai: nó loại nhầm mục hợp lệ và **làm gãy đúng chặng vốn đang chạy được**. Thứ thật sự gỡ được bấm hụt là thử lại cả chặng — và điều đó chứng minh được trên máy thật.
 
 **Khuôn lỗi lặp lại nhiều nhất: nhìn một lần rồi kết luận.** Ribbon BCGPro, submenu, hộp thoại — tất cả hiện sau *một nhịp*. Đo được: lần 1 thấy `['Quick Access Toolbar','View']`, lần 2 đã có `'Results'`. Mọi bước tìm đều phải thử lại.
