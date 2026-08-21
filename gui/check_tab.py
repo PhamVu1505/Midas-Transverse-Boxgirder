@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 
 from src import section_check as sc
 from src.result_reader import order_points
+from src.security import guard, usage_log
 from .theme import LIGHT
 from .results_tab import point_color, group_color
 
@@ -741,6 +742,13 @@ class CheckTab(QWidget):
         name = self.section_name
         if not name:
             return
+        # Cổng kiểm tra đặt ngay chỗ TÍNH, không phải chỗ mở thẻ: mở thẻ để xem
+        # bố cục thì không hại gì, ra bảng kiểm toán mới là sản phẩm.
+        state = guard.get_runtime_state('check')
+        if not state.ready:
+            self.lb_sum.setText(state.message.replace('\n', ' · '))
+            QMessageBox.warning(self, 'Chưa được phép', state.message)
+            return
         cps = self.results_provider().get(name)
         if not cps:
             self.lb_sum.setText(
@@ -1051,6 +1059,7 @@ class CheckTab(QWidget):
             from src.check_export import export_check_xlsx
             export_check_xlsx(path, name, self._out_points, self._results,
                               getattr(self, '_cps', {}), self._meta())
+            usage_log.record('check')
         except Exception as e:
             QMessageBox.critical(self, 'Không xuất được', str(e))
             self._log(f'[{name}] ERROR xuất Excel: {e}', 'err')

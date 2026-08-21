@@ -1,7 +1,7 @@
 ==============================================================================
   MIDAS TRANSVERSE BOXGIRDER — HƯỚNG DẪN SỬ DỤNG
   Phân tích khung ngang dầm hộp bê tông cốt thép dự ứng lực
-  Phiên bản: v1.4.1
+  Phiên bản: v1.5.0
 ==============================================================================
 
 Tài liệu này sinh tự động từ cửa sổ Hướng dẫn trong chương trình
@@ -19,8 +19,10 @@ MỤC LỤC
   8. Đọc kết quả
   9. Kiểm toán mặt cắt
   10. Tùy chọn giao diện
-  11. Phím tắt
-  12. Xử lý sự cố
+  11. Giấy phép
+  12. Tạo MCT từ chuột phải
+  13. Phím tắt
+  14. Xử lý sự cố
 
 ==============================================================================
 1. TỔNG QUAN
@@ -439,7 +441,92 @@ Khôi phục mặc định đưa mọi mục về ban đầu nhưng giữ nguyê
 mục kết quả và template.
 
 ==============================================================================
-11. PHÍM TẮT
+11. GIẤY PHÉP
+==============================================================================
+
+GIẤY PHÉP VÀ DÙNG THỬ
+---------------------
+
+Máy mới cài được dùng thử 7 ngày, đầy đủ tính năng — đủ đi hết một vòng DXF →
+MCT → Midas → kiểm toán. Hết 7 ngày thì phải kích hoạt.
+
+Xin cấp giấy phép
+
+Bước 1 — Mở hộp thoại Trợ giúp → Giấy phép, hoặc Ctrl+Shift+L.
+
+Bước 2 — Điền thông tin Thẻ Xin cấp giấy phép: họ tên, đơn vị, email. Bấm Lưu
+file yêu cầu… để ra file .mtbreq.
+
+Bước 3 — Gửi đi Gửi file đó cho người cấp giấy phép. Trong file chỉ có mã máy
+và thông tin bạn vừa điền, không có gì khác.
+
+Bước 4 — Kích hoạt Nhận lại file .mtblic: thẻ Kích hoạt → Mở file .mtblic… →
+Kiểm tra → Kích hoạt.
+
+LƯU Ý: Giấy phép ràng theo mã máy. Đổi máy là phải xin giấy phép mới — mã máy
+  có sẵn ở thẻ Trạng thái, bấm Chép rồi gửi đi.
+
+Còn bao nhiêu ngày
+
+Góc dưới bên phải cửa sổ luôn ghi trạng thái: còn N ngày khi đã kích hoạt,
+đang dùng thử, hay chưa kích hoạt. Rê chuột lên đó để xem đầy đủ.
+
+Phần mềm ghi lại những gì
+
+Thẻ Sử dụng cho xem đúng những gì đang được ghi: số lần mở, số file MCT đã
+sinh, số lần chạy Midas, số lần xuất kiểm toán, mốc đầu và mốc cuối.
+
+Không ghi tên bản vẽ, đường dẫn, hay bất kỳ số liệu tính toán nào.
+
+Khi gia hạn, người cấp có thể xin file thống kê: bấm Xuất báo cáo sử dụng… rồi
+gửi file .mtbusage.
+
+Giấy phép bị chối
+
+  Không khớp máy này  Giấy phép cấp cho máy khác. Hộp thoại in cả hai mã máy
+                      để đối chiếu.
+  Đã hết hạn          Xin gia hạn; file cũ không dùng lại được.
+  Chưa mở tính năng…  Giấy phép hợp lệ nhưng không bao tính năng đó.
+  Đã bị thu hồi       Người cấp đã thu hồi; lý do hiện ngay trong thông báo.
+
+==============================================================================
+12. TẠO MCT TỪ CHUỘT PHẢI
+==============================================================================
+
+TẠO MCT KHÔNG CẦN MỞ PHẦN MỀM
+-----------------------------
+
+Bấm chuột phải vào file .dxf trong Windows Explorer → chọn Tạo file MCT (Midas
+Transverse). Một cửa sổ nhỏ hiện ra, chạy xong thì báo kết quả — không phải mở
+app, không phải lập project.
+
+Bấm chuột phải vào thư mục thì có mục Tạo MCT cho mọi DXF trong thư mục, chạy
+cả loạt.
+
+Bật / tắt
+
+Khi cài đặt, tích ô Thêm mục "Tạo file MCT" khi bấm chuột phải vào file .dxf.
+Sau này đổi ý thì vào Công cụ → Tùy chọn → Mặc định, mục Menu chuột phải của
+Windows.
+
+Kết quả ghi ở đâu
+
+Ngay cạnh file DXF, trong thư mục con mang tên mặt cắt. Nếu ở Tùy chọn bạn đã
+đặt một thư mục kết quả bằng đường dẫn tuyệt đối thì ghi vào đó. Đường dẫn
+hiện sẵn trên cửa sổ và đổi được trước khi chạy.
+
+Template số liệu
+
+Lấy template mặc định ở Tùy chọn; chưa đặt thì lấy template kèm theo chương
+trình. Đổi được ngay trên cửa sổ đó.
+
+LƯU Ý: Cửa sổ này không tự đóng. Nó còn phải nói cho bạn biết các cảnh báo —
+  thiếu layer, cáp sai quy ước, và nhất là template khai hoạt tải không khớp
+  hình học mặt cắt. Loại sai đó không làm hỏng file, chỉ làm sai tải bánh xe
+  5–15%.
+
+==============================================================================
+13. PHÍM TẮT
 ==============================================================================
 
 PHÍM TẮT
@@ -459,10 +546,11 @@ PHÍM TẮT
   F             Vừa khung nhìn
   Ctrl+L        Xoá nhật ký
   Ctrl+,        Tùy chọn giao diện
+  Ctrl+Shift+L  Giấy phép — trạng thái, kích hoạt, xin cấp
   F1            Mở hướng dẫn này
 
 ==============================================================================
-12. XỬ LÝ SỰ CỐ
+14. XỬ LÝ SỰ CỐ
 ==============================================================================
 
 CÁC LỖI HAY GẶP

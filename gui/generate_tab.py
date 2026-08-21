@@ -12,6 +12,7 @@ import os
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from src.project import Project, NEW
+from src.security import usage_log
 from .worker import GenerateWorker
 
 
@@ -238,6 +239,7 @@ class GenerateController(QObject):
         self.worker.start()
 
     def _on_info(self, name, info):
+        usage_log.record('mct')      # đếm đúng số MCT ra lò, không đếm số lần bấm
         self.project.record_generated(
             name, info['mct'], info['topo'], info['section_type'],
             info['n_nodes'], info['n_elems'], info.get('pt_cables'))

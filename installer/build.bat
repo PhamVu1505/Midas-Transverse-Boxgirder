@@ -37,6 +37,17 @@ pyinstaller --noconfirm --onedir --windowed ^
     --hidden-import "src.result_reader" ^
     --hidden-import "src.section_check" ^
     --hidden-import "src.svg_export" ^
+    --hidden-import "src.shell_integration" ^
+    --hidden-import "src.security" ^
+    --hidden-import "src.security.guard" ^
+    --hidden-import "src.security.license_manager" ^
+    --hidden-import "src.security.checkpoint" ^
+    --hidden-import "src.security.trial" ^
+    --hidden-import "src.security.usage_log" ^
+    --hidden-import "src.security.signing" ^
+    --hidden-import "src.security.hwid" ^
+    --hidden-import "src.security.paths" ^
+    --hidden-import "src.security.keys" ^
     --exclude-module "PyQt5" ^
     --exclude-module "PySide6" ^
     --exclude-module "PySide2" ^
@@ -80,6 +91,24 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+
+echo.
+echo === Step 1b: soat ban dong goi khong mang thu bi mat ===
+REM Khoa ky giay phep, so cap phep va cong cu quan tri KHONG BAO GIO duoc di
+REM theo ban giao cho nguoi dung: ai co khoa rieng thi tu cap giay phep cho
+REM minh. Day la phep soat may, vi "nho khong copy" thi som muon cung quen.
+set "LEAK="
+if exist "dist\MidasTransverseBoxgirder\secrets" set "LEAK=secrets"
+if exist "dist\MidasTransverseBoxgirder\_internal\secrets" set "LEAK=_internal\secrets"
+for /r "dist\MidasTransverseBoxgirder" %%F in (*license_admin* *.mtblic mtb_license_private.json license_admin.sqlite3) do set "LEAK=%%F"
+if defined LEAK (
+    echo.
+    echo *** DUNG LAI: ban dong goi dang mang "%LEAK%"
+    echo *** Xoa no roi build lai. Khong duoc phat hanh ban nay.
+    pause
+    exit /b 1
+)
+echo Sach: khong co khoa rieng, so cap phep hay cong cu quan tri trong dist.
 
 echo.
 echo === Step 2: Inno Setup ===

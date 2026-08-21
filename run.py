@@ -445,13 +445,38 @@ def build_parser():
     return parser
 
 
+def _gate(feature: str) -> bool:
+    """Cổng giấy phép cho dòng lệnh.
+
+    Cùng một cổng với giao diện. Bỏ qua ở đây thì cả hệ thống chỉ còn là một
+    hộp thoại đẹp: ai cũng chạy được run.py.
+    """
+    from src.security import guard, usage_log
+    state = guard.get_runtime_state(feature)
+    if state.ready:
+        usage_log.start_session()
+        if state.source != guard.SOURCE_LICENSE:
+            print(f'[license] {state.message}')
+        return True
+    print('[license] KHÔNG CHẠY ĐƯỢC')
+    for line in state.message.splitlines():
+        print(f'          {line}')
+    print('          Mở giao diện (python run_gui.py) → Trợ giúp → Giấy phép '
+          'để xin cấp.')
+    return False
+
+
 def main():
     parser = build_parser()
     args = parser.parse_args()
 
     if args.command == 'generate':
+        if not _gate('mct'):
+            raise SystemExit(2)
         cmd_generate(args)
     elif args.command == 'results':
+        if not _gate('check'):
+            raise SystemExit(2)
         cmd_results(args)
     else:
         parser.print_help()

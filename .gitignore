@@ -62,3 +62,10 @@ Desktop.ini
 
 # Anh giao dien sinh boi tools/render_ui.py - doi moi lan sua UI, khong version
 docs/ui-snapshots/
+
+# Khoá riêng ký giấy phép — KHÔNG BAO GIỜ đưa vào repo hay installer
+secrets/
+*.mtblic
+*.mtbreq
+*.mtbusage
+license_admin.sqlite3

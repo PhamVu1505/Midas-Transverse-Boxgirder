@@ -14,7 +14,7 @@ DXF mặt cắt ──→ MCT file ──→ Midas/Civil ──→ Beam Force XL
 ## Cài đặt
 
 ### Cách 1: Installer (cho người dùng)
-Chạy `MidasTransverseBoxgirder_Setup_v1.4.1.exe` — không cần cài Python.
+Chạy `MidasTransverseBoxgirder_Setup_v1.5.0.exe` — không cần cài Python.
 
 ### Cách 2: Từ source code (cho developer)
 ```bash
@@ -141,7 +141,7 @@ Yêu cầu:
 - PyInstaller (`pip install pyinstaller`)
 - Inno Setup 6 (https://jrsoftware.org/isdl.php)
 
-Output: `dist\installer\MidasTransverseBoxgirder_Setup_v1.4.1.exe` (43,8 MB)
+Output: `dist\installer\MidasTransverseBoxgirder_Setup_v1.5.0.exe`
 
 Sau khi build, **chạy thật** bản đóng gói và đọc tiêu đề cửa sổ để chắc phiên
 bản đúng.
@@ -164,5 +164,40 @@ bản đúng.
 - Phần mềm: Midas/Civil 2024+
 - File MCT mẫu có PT: `docs/refer/refer_PT/midas/LT-MB-S01.mct`
 
-## Giấy phép
+## Giấy phép phần mềm
+
+Bản phát hành yêu cầu **giấy phép ràng theo máy**. Máy mới cài được **dùng thử
+7 ngày** đầy đủ tính năng.
+
+**Người dùng:** Trợ giúp → *Giấy phép* (`Ctrl+Shift+L`) → thẻ *Xin cấp giấy
+phép* → lưu file `.mtbreq` → gửi cho người cấp → nhận `.mtblic` → thẻ *Kích
+hoạt*.
+
+**Người cấp:**
+
+```bash
+python tools/gen_keypair.py       # một lần: sinh khoá ký, cất ở secrets/
+python tools/license_admin.py     # cấp phép · theo dõi máy đang dùng · thu hồi
+installer\build_admin.bat         # đóng gói công cụ trên, GIỮ NỘI BỘ
+```
+
+Công cụ quản trị theo dõi được **ai đang dùng** (nhịp tim thả vào một thư mục
+dùng chung), và **chặn** được bằng danh sách thu hồi ký số. Chi tiết, giới hạn
+và những gì hệ thống **không** làm được: [`docs/LICENSE-SYSTEM.md`](docs/LICENSE-SYSTEM.md).
+
+> `secrets/` (khoá riêng, sổ cấp phép) không nằm trong repo và không được đóng
+> gói. `installer\build.bat` dừng lại nếu thấy chúng lọt vào `dist`.
+
+## Tạo MCT từ menu chuột phải
+
+Bấm chuột phải vào file `.dxf` trong Explorer → **Tạo file MCT** — không cần mở
+phần mềm. Bấm vào thư mục thì tạo cho mọi DXF bên trong. Bật/tắt khi cài đặt,
+hoặc ở *Công cụ → Tùy chọn → Mặc định*.
+
+```bash
+python run_gui.py --mct duong/dan/S1.dxf     # chạy tay đường đó
+python run_gui.py --dang-ky-chuot-phai       # đăng ký mục menu (chạy từ source)
+```
+
+## Bản quyền
 Dự án nội bộ CITEC - VuPQ

@@ -327,6 +327,21 @@ class PreferencesDialog(QDialog):
         v2.addWidget(self.ck_select)
         v.addWidget(gb2)
 
+        # Ô này KHÔNG phải một trường của Prefs: trạng thái thật nằm trong
+        # registry Windows. Giữ một bản sao trong QSettings thì sớm muộn hai
+        # bên lệch nhau (người dùng gỡ bằng tay, cài lại app, đổi máy…) và ô
+        # tích sẽ nói dối. Đọc thẳng registry, ghi thẳng registry, ngay khi bấm.
+        gb3 = QGroupBox('Menu chuột phải của Windows')
+        v3 = QVBoxLayout(gb3)
+        self.ck_shell = QCheckBox('Thêm mục “Tạo file MCT” khi bấm chuột phải '
+                                  'vào file .dxf')
+        self.ck_shell.toggled.connect(self._toggle_shell)
+        v3.addWidget(self.ck_shell)
+        self.lb_shell = QLabel()
+        self.lb_shell.setWordWrap(True)
+        v3.addWidget(self.lb_shell)
+        v.addWidget(gb3)
+
         note = QLabel('Thư mục và template ở đây chỉ áp cho <b>project mới</b>. '
                       'Project đã lưu giữ thiết lập riêng của nó.')
         note.setWordWrap(True)
@@ -430,9 +445,43 @@ class PreferencesDialog(QDialog):
         """
         return (self.cb_accent, self.cb_density, self.cb_font, self.cb_mode,
                 self.sl_font, self.ck_reopen, self.ck_select,
-                self.ck_midas, self.ck_midas_confirm,
+                self.ck_midas, self.ck_midas_confirm, self.ck_shell,
                 self.ed_out, self.ed_tpl, *self.layer_boxes.values(),
                 *self.grp_theme.buttons())
+
+    # ── mục chuột phải (đọc/ghi thẳng registry) ──
+    def _sync_shell(self):
+        from src import shell_integration as shell
+        on = shell.is_registered()
+        self.ck_shell.setChecked(on)
+        self.ck_shell.setEnabled(shell.available())
+        if not shell.available():
+            self.lb_shell.setText('Chỉ có trên Windows.')
+        elif on:
+            self.lb_shell.setText('Đang bật. Lệnh đã đăng ký:\n'
+                                  + shell.registered_command())
+        else:
+            self.lb_shell.setText(
+                'Đang tắt. Bật lên thì bấm chuột phải vào .dxf là tạo được MCT '
+                'ngay, không cần mở phần mềm; thư mục cũng có mục tạo cho mọi '
+                'DXF bên trong.')
+
+    def _toggle_shell(self, on: bool):
+        from src import shell_integration as shell
+        try:
+            if on:
+                shell.register()
+            else:
+                shell.unregister()
+        except shell.ShellError as exc:
+            self.lb_shell.setText(f'Không đổi được: {exc}')
+        # Đọc LẠI từ registry chứ không tin cú bấm: ghi hỏng thì ô tích phải
+        # bật ngược về đúng hiện trạng, không được để nó nói dối.
+        self.ck_shell.blockSignals(True)
+        try:
+            self._sync_shell()
+        finally:
+            self.ck_shell.blockSignals(False)
 
     def _sync_widgets(self):
         """Đổ giá trị từ `self.p` vào widget mà không kích lại tín hiệu."""
@@ -454,6 +503,7 @@ class PreferencesDialog(QDialog):
             self.ck_midas_confirm.setEnabled(bool(self.p.midas_auto))
             self.ed_out.setText(self.p.output_dir or '')
             self.ed_tpl.setText(self.p.template or '')
+            self._sync_shell()
             for k, c in self.layer_boxes.items():
                 c.setChecked(bool(self.p.layers.get(k, True)))
         finally:

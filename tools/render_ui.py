@@ -137,6 +137,18 @@ def demo_rebars(points):
 # Cửa sổ
 # ─────────────────────────────────────────────────────────────
 
+def _cach_li_du_lieu_giay_phep():
+    """Dồn giấy phép/dùng thử/nhật ký của công cụ vào một thư mục tạm."""
+    import tempfile
+    from src.security.paths import DATA_DIR_ENV
+    if os.environ.get(DATA_DIR_ENV):
+        return
+    sandbox = os.path.join(tempfile.gettempdir(), 'mtb-cong-cu-giao-dien')
+    os.makedirs(sandbox, exist_ok=True)
+    os.environ[DATA_DIR_ENV] = sandbox
+    os.environ.setdefault('MTB_CHECKPOINT', '')
+
+
 def build_window(sections, theme_key):
     """MainWindow đã nạp project và đặt bảng màu, KHÔNG ghi vào QSettings."""
     from src.project import Project, Section, GENERATED
@@ -146,6 +158,12 @@ def build_window(sections, theme_key):
     # Vô hiệu hoá việc lưu thiết lập: công cụ chỉ được đọc, không được sửa
     # bảng màu / project gần đây của người dùng.
     Prefs.save = lambda self, settings: None
+
+    # Cùng lẽ đó với dữ liệu giấy phép: dựng cửa sổ là chạm vào cổng kiểm tra,
+    # mà cổng thì MỞ SỔ DÙNG THỬ nếu máy chưa có gì. Không cách li thì mỗi lần
+    # chạy công cụ lại đốt một ngày dùng thử của chính máy đang phát triển, và
+    # tệ hơn: ghi đè mốc "lần chạy gần nhất" của người dùng thật.
+    _cach_li_du_lieu_giay_phep()
 
     w = MainWindow()
     w.prefs.theme = theme_key
@@ -201,6 +219,14 @@ def _pick(combo, text):
     """Chọn một mục như người dùng bấm chuột: đổi ô RỒI phát `textActivated`."""
     combo.setCurrentText(text)
     combo.textActivated.emit(text)
+
+
+def _slug(text):
+    """Tên thẻ tiếng Việt -> tên file không dấu."""
+    import unicodedata
+    raw = unicodedata.normalize('NFD', text.lower())
+    plain = ''.join(c for c in raw if unicodedata.category(c) != 'Mn')
+    return ''.join(c if c.isalnum() else '_' for c in plain).strip('_')
 
 
 def scenes(app, w, sections, save):
@@ -283,6 +309,28 @@ def scenes(app, w, sections, save):
     w.tabbar.setCurrentIndex(5)
     step()
     save('10_mct_source', w, sec=single)
+
+    # ── hộp thoại Giấy phép ──
+    # Chụp cả bốn thẻ: dải trạng thái, ô mã máy, biểu mẫu xin cấp và bảng số
+    # liệu sử dụng đều là chỗ dễ tràn chữ, mà pytest thì không nhìn thấy.
+    from gui.license_dialog import LicenseDialog
+    lic = LicenseDialog(w, w.t, '0.0.0')
+    lic.resize(680, 540)
+    for i in range(lic.tabs.count()):
+        lic.tabs.setCurrentIndex(i)
+        step()
+        save(f'11_license_{i + 1}_{_slug(lic.tabs.tabText(i))}', lic)
+    lic.close()
+
+    # ── cửa sổ tạo MCT từ chuột phải ──
+    from gui.quick_mct import QuickMctDialog
+    dxf = next((s_[1] for s_ in [(n, os.path.join('input', 'dxf', n + '.dxf'))
+                                 for n in names] if os.path.exists(s_[1])), '')
+    quick = QuickMctDialog([dxf] if dxf else [], w.prefs, w.t)
+    quick.resize(720, 460)
+    step()
+    save('12_quick_mct', quick)
+    quick.close()
 
 
 def main():

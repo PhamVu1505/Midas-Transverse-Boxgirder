@@ -15,7 +15,7 @@ Tự động hóa toàn bộ quy trình phân tích khung ngang tại các mặt
 
 Kiến trúc chi tiết: xem `docs/ARCHITECTURE.md`.
 
-## Trạng thái hiện tại (v1.4.1)
+## Trạng thái hiện tại (v1.5.0)
 
 Toàn bộ pipeline đã hoàn thiện. **Tested**: S1, S7, S12, S16, S20, SLT, S1_V2 (Twin Box).
 
@@ -301,13 +301,18 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 ## Lệnh thường dùng
 ```bash
 python run_gui.py
-python -m pytest tests -q                        # 113 bài: MCT, kiểm toán, số liệu, driver, NX
-python tools/check_gui.py                        # 28 phép kiểm, bấm thật (skill kiem-gui)
-python tools/audit_gui.py                        # soát ĐỘ PHỦ: bấm hết 56 điều khiển
+python run_gui.py --mct duong/dan/S1.dxf         # tạo MCT ngay, không mở app
+python run_gui.py --dang-ky-chuot-phai           # thêm mục Tạo file MCT vào Explorer
+python tools/gen_keypair.py                      # sinh khoá ký giấy phép (một lần)
+python tools/license_admin.py                    # cấp phép + theo dõi máy đang dùng
+python -m pytest tests -q                        # 149 bài: MCT, kiểm toán, số liệu, driver, NX, giấy phép
+python tools/check_gui.py                        # 34 phép kiểm, bấm thật (skill kiem-gui)
+python tools/audit_gui.py                        # soát ĐỘ PHỦ: bấm hết 57 điều khiển
 python tools/nx_crosscheck.py                    # kiểm chéo nội lực bằng Midas NX API
 python tools/render_ui.py                        # ảnh mọi thẻ → docs/ui-snapshots/
 python tools/make_user_guide.py                  # sinh lại docs/USER-GUIDE.txt
-installer\build.bat
+installer\build.bat                              # bản cho người dùng
+installer\build_admin.bat                        # công cụ cấp phép, CHỈ NỘI BỘ
 ```
 
 ### Bốn công cụ, bốn việc khác nhau
@@ -505,6 +510,82 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
   **Hộp thoại đã hiện lên màn hình VuPQ và phải bấm Cancel bằng tay.** `NX.giai()`
   nay chặn sẵn; `tests/test_midas_nx.py` khoá cả hai chiều.
 
+### Giấy phép, theo dõi sử dụng và chặn (v1.5.0)
+
+`src/security/` phía máy khách · `tools/license_admin.py` + `tools/license_registry.py`
+phía người cấp. Toàn cảnh, quy trình và giới hạn: **`docs/LICENSE-SYSTEM.md`**.
+Lối làm bê từ `H:\VuPQ_Tools\Mcoc_python` (hệ đã chạy thật của cùng tác giả);
+ba thứ Mcoc còn thiếu thì làm mới: nhật ký sử dụng · điểm hẹn theo dõi · danh
+sách chặn **có hiệu lực trên máy khách**.
+
+- **Token `MTB1.<key_id>.<payload>.<chữ ký>`**, RSA-2048 PKCS#1 v1.5 + SHA-256
+  viết bằng `pow()` của Python. Không dùng `cryptography`/`nacl` vì
+  `build.bat` đang loại trừ cả hai — thêm phụ thuộc chỉ để ký một chuỗi JSON là
+  đổi cả bản đóng gói. Ed25519 nay là mặc định của ngành, nhưng ở đây RSA thắng
+  vì **không cần thư viện ngoài**.
+- **Ràng theo Windows `MachineGuid`. Đọc không được thì THẤT BẠI ĐÓNG**
+  (`UNBOUND-NO-HWID`). Không bao giờ lui về tên máy/hostname: những trị đó dùng
+  chung hoặc tự đặt được, tức một giấy phép khớp trên **máy khác** — thất bại
+  MỞ, đúng thứ cả hệ thống sinh ra để tránh.
+- **`keys.py`: không bao giờ thay modulus dưới một `key_id` đã phát hành.** Bản
+  đã cài chỉ mang modulus đóng gói cùng nó; đổi ruột mà giữ tên thì mọi giấy
+  phép mới đều bị chối và phải phát lại installer cho từng người (Mcoc đã mắc
+  đúng lỗi này 9/7/2026). Vân tay khoá ghim trong `tests/test_license.py`.
+- **Dùng thử 7 ngày, đầy đủ tính năng** — đủ đi hết một vòng DXF → MCT → Midas →
+  kiểm toán. Ghi hai nơi, ký HMAC gắn mã máy, chống lùi đồng hồ. Sai chữ ký thì
+  **khoá luôn**, không phải "bắt đầu lại". Dùng thử **không cứu** một tính năng
+  chưa mua.
+- **`guard.py` là cổng DUY NHẤT**: dev-bypass (tự vô hiệu khi `sys.frozen`) →
+  giấy phép → danh sách chặn → dùng thử. Cổng đặt ở **chỗ tính**, không phải chỗ
+  mở thẻ: `MainWindow.require_license` (F5/F8), `CheckTab.run_check`,
+  `QuickMctDialog.start`, `run_gui._gate`, `run.py::_gate`.
+- **Nhật ký sử dụng đếm số lần, không ghi nội dung công việc** — không tên bản
+  vẽ, không đường dẫn, không số liệu. Người dùng **xem được đúng thứ đang bị
+  ghi** ở thẻ *Sử dụng*; giấu đi thì đó là theo dõi lén.
+- **Điểm hẹn là một THƯ MỤC dùng chung** (ổ mạng / OneDrive), đường dẫn nằm
+  trong phần **đã ký** của giấy phép nên không ai đổi hướng được. Ra: nhịp tim
+  `heartbeat/<MÃ MÁY>.json` (mỗi máy một file, ghi bằng `os.replace`). Vào:
+  `blocklist.mtbbl` đã ký, cất bản sao cục bộ, cổng đọc bản sao đó.
+- **Mất điểm hẹn KHÔNG chặn.** Người dùng ở công trường mà app tự khoá vì không
+  thấy ổ mạng thì đó là lỗi của ta. Đồng bộ chạy ở **luồng nền** — UNC hỏng treo
+  vài giây. Hệ quả phải chấp nhận: máy ngoài mạng không chặn được cho tới khi
+  hết hạn, nên **hạn mặc định 6 tháng** mới là đòn bẩy chặn thật.
+- **`MTB_DATA_DIR` ra đời từ một lỗi test bắt được**: ba biến `*_FILE` chỉ trỏ
+  được một file, nên `blocklist.cache` vẫn rơi vào `%ProgramData%` thật — một
+  bài test cất bản sao ở đó, bài sau đọc trúng và kết luận sai. Ba công cụ giao
+  diện (`render_ui`/`check_gui`/`audit_gui`) nay dùng biến này để khỏi **đốt mất
+  ngày dùng thử của chính máy đang phát triển**.
+- **Nói thẳng về mức bảo vệ**: đây là app Python đóng gói, `.pyc` gỡ ngược được.
+  Hệ này ngăn chép nguyên thư mục sang máy khác và cho biết ai đang dùng; nó
+  **không** chống được người cố tình bẻ khoá (muốn thế phải thêm PyArmor).
+- `installer/build.bat` có **bước 1b soát máy**: thấy `secrets/`, `*.mtblic` hay
+  `license_admin` trong `dist` là dừng build. Công cụ quản trị đóng gói riêng
+  bằng `installer/build_admin.bat` (giữ `sqlite3`, bản khách vẫn loại trừ).
+
+### Tạo MCT từ menu chuột phải (v1.5.0)
+
+`src/shell_integration.py` (đăng ký registry) + `gui/quick_mct.py` (cửa sổ nhỏ)
++ `run_gui.py --mct <đường dẫn>`. Bấm chuột phải vào `.dxf` → **Tạo file MCT**;
+bấm vào thư mục → tạo cho mọi DXF bên trong.
+
+- **HKCU + `SystemFileAssociations\.dxf`, không phải ProgID của .dxf.** Đuôi
+  `.dxf` gần như luôn thuộc AutoCAD/BricsCAD: treo vào ProgID của họ thì cài lại
+  CAD là mất, mà đổi ProgID thì ta cướp mất phần mở mặc định của người ta.
+- **Vẫn có cửa sổ, và nó không tự đóng.** Sinh MCT có thể cảnh báo thiếu layer,
+  cáp sai quy ước, và nhất là **template khai hoạt tải không khớp hình học** —
+  loại sai không làm hỏng file, chỉ làm sai tải bánh 5–15%. Chạy im lặng thì mọi
+  cảnh báo ấy rơi vào hư không, đúng lỗi dự án đã mất công vá.
+- **Dùng lại y nguyên `GenerateWorker`**, không viết đường sinh MCT thứ hai: hai
+  đường thì sớm muộn cũng lệch nhau, và lệch ở chỗ không ai soi.
+- **Thư mục kết quả không bao giờ được tương đối.** `Prefs.output_dir` mặc định
+  là `output` — mở từ Explorer thì thư mục làm việc là chỗ nào cũng có thể, nên
+  chỉ nhận đường dẫn **tuyệt đối**; còn lại ghi ngay cạnh bản vẽ.
+- Chạy từ mã nguồn thì đăng ký `pythonw.exe`, không phải `python.exe`: nếu không
+  mỗi lần bấm menu lại nháy một cửa sổ console đen.
+- Ô bật/tắt ở **Tùy chọn → Mặc định** đọc/ghi **thẳng registry**, không giữ bản
+  sao trong `QSettings` — bản sao sẽ nói dối sau khi người dùng gỡ mục bằng tay.
+  Installer có ô tích riêng (`Tasks: dxfmenu`), mặc định do người dùng chọn.
+
 ### Đóng gói (v1.4.1)
 `installer\build.bat` → `dist/installer/MidasTransverseBoxgirder_Setup_v1.4.1.exe`.
 
@@ -551,7 +632,7 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 ## Current Sprint
 **Goal:** phát hành **V1 = sinh MCT cho Midas Civil 2022**. Thẻ Midas NX để sau (VuPQ chốt 2026-08-20).
 
-**Trạng thái:** `pytest tests -q` **113/113** · `tools/check_gui.py` **28/28** · `tools/audit_gui.py` **53 đạt · 0 hỏng** · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ. **`master` = `4bf929c`**, đã gồm cả `feature/t13-twin-box` lẫn `feature/v1-release-qa` (bộ kiểm thử `audit_gui` + tài liệu kiểm thử · `*VERSION` · ba bản vá driver), đã đẩy remote. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
+**Trạng thái:** `pytest tests -q` **149/149** · `tools/check_gui.py` **34/34** · `tools/audit_gui.py` **54 đạt · 0 hỏng** (57 điều khiển) · kiểm chéo NX **4/4 đạt**. Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `4bf929c` (V1 QA, đã đẩy remote); phần giấy phép + chuột phải đang ở nhánh làm việc, **chưa merge**. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
@@ -585,26 +666,30 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 `S1 8.140` · `S10 6.050` · `S16 7.260` · `S1_V2 12.430` · `S20 4.680` · `SLT 9.180` bản ghi. Cả 6 đủ 4 chuỗi `str_all`/`ser_all` và tập phần tử khớp topo. **Không** ghi vào `output/` — muốn dùng số này cho tab Kiểm toán thì phải sinh lại vào `output/<tên>/`.
 
 **Next Action cụ thể:**
-1. ~~`installer\build.bat` cho v1.4.1~~ — **XONG**. `dist/installer/
-   MidasTransverseBoxgirder_Setup_v1.4.1.exe` **43,8 MB**, bản đóng gói chạy
-   thật (tiêu đề cửa sổ `… v1.4.1`). Xem mục *Đóng gói*.
-2. ~~Merge `feature/v1-release-qa` → `master`~~ — **XONG** (2026-08-21, tua nhanh
-   tới `4bf929c`, đã đẩy remote). Cả hai nhánh tính năng nay đều nằm trong
-   `master`; việc v1.5 nên mở nhánh mới.
-3. **Hoạt tải template S10 / S20** — VuPQ chốt **không sửa hộ**, app đã báo rõ
-   trên dock Properties. Việc sửa file Excel là của người dùng. Không còn là
-   việc chặn phát hành.
-4. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
+1. **Đóng gói v1.5.0** — `installer\build.bat` (bản khách) rồi
+   `installer\build_admin.bat` (công cụ cấp phép, giữ nội bộ). Chạy thật bản
+   đóng gói: mở app xem cổng giấy phép có chạy trong `sys.frozen` không, và
+   bấm chuột phải vào một `.dxf` xem mục menu trỏ đúng exe.
+2. **Sinh khoá phát hành thật** nếu khoá hiện tại chỉ là khoá thử —
+   `python tools/gen_keypair.py --force` **đổi luôn `key_id`**, đừng giữ
+   `mtb-v1` (xem luật trong `src/security/keys.py`). Cất khoá riêng ngoài máy
+   phát triển và sao lưu: mất khoá = không cấp thêm được giấy phép nào.
+3. **Chọn thư mục điểm hẹn thật** (ổ mạng CITEC hoặc OneDrive dùng chung) rồi
+   điền vào ô *Điểm hẹn* khi cấp giấy phép. Không có điểm hẹn thì vẫn cấp được,
+   chỉ mất phần theo dõi và chặn nhanh.
+4. **Hoạt tải template S10 / S20** — VuPQ chốt **không sửa hộ**, app đã báo rõ
+   trên dock Properties. Không chặn phát hành.
+5. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
 
 **Sau V1 — hướng Midas NX** (VuPQ chốt thứ tự 2026-08-20):
-5. **Khối `*VERSION` — XONG, không còn việc gì cho V1.** `write_mct(...,
+6. **Khối `*VERSION` — XONG, không còn việc gì cho V1.** `write_mct(...,
    mct_version=...)` + `run.py generate --nx`; mặc định **TẮT**, VuPQ đã chốt
    giữ vậy cho V1. Phép đo A/B trên Civil 2022 thật: **6/6 trùng khít, 44.940
-   bản ghi, Δ = 0,0000**. Việc còn lại của **v1.5**: bật mặc định (một dòng)
-   cùng lúc với thẻ Kiểm chéo NX. Xem mục *Phương ngữ MCT*.
-6. **Thẻ Kiểm chéo NX trong app** — chặng 1: nhận `.mcb` đã có, giải lại bằng
+   bản ghi, Δ = 0,0000**. Việc còn lại: bật mặc định (một dòng) cùng lúc với thẻ
+   Kiểm chéo NX. Xem mục *Phương ngữ MCT*.
+7. **Thẻ Kiểm chéo NX trong app** — chặng 1: nhận `.mcb` đã có, giải lại bằng
    NX, hiện bảng đạt/hỏng. Lõi đã xong ở `tools/nx_crosscheck.py`.
-7. **Plugin NX** — chặng 2, sau khi có phương ngữ MCT.
+8. **Plugin NX** — chặng 2, sau khi có phương ngữ MCT.
 
 **S20 — VuPQ chốt CHƯA tạo lại** (2026-07-29). Đã sinh thử ra thư mục tạm rồi so với `output/S20`: số hiệu node/phần tử **không đổi**, nhưng 8 node bản mặt đổi toạ độ (−5.75 → −5.8…), 32 dòng chiều dày tiết diện lệch (0.2686 → 0.2663), và ràng buộc gối cũ là `101000`/`001000` — tức bản S20 đang lưu **có trước cả bản sửa khoá Dy**. Tạo lại thì `Beam Force_S20.xls` hiện có hết khớp mô hình, phải chạy lại Midas. Hệ quả để nguyên: ô mặt cắt ở Results table của S20 trống (topo thiếu khối `geometry`), biểu đồ bao vẫn vẽ.
 
@@ -617,6 +702,7 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-08-21: **Giấy phép + theo dõi sử dụng + chặn, và mục chuột phải tạo MCT (v1.5.0).** Bê lối làm của `Mcoc_python` (token RSA ký bằng `pow()`, ràng `MachineGuid`, một cổng duy nhất) rồi làm thêm ba thứ Mcoc thiếu: **nhật ký sử dụng** (đếm số lần, không ghi nội dung công việc; người dùng xem được đúng thứ đang bị ghi), **điểm hẹn là một thư mục dùng chung** (nhịp tim ra, danh sách chặn ký số vào), và **thu hồi có hiệu lực trên máy khách** — Mcoc chỉ đánh dấu `Revoked` trong sổ, máy khách không bao giờ biết. Dùng thử **7 ngày** thay vì 3: một vòng DXF → MCT → Midas → kiểm toán của dự án này dài hơn. Công cụ quản trị `tools/license_admin.py` (4 thẻ: yêu cầu · giấy phép · máy đang dùng · điểm hẹn) chạy trên sổ SQLite, xuất CSV. Thêm mục **chuột phải vào .dxf → Tạo file MCT** (`SystemFileAssociations`, HKCU) mở một cửa sổ nhỏ dùng lại chính `GenerateWorker` — không viết đường sinh MCT thứ hai. Test bắt được một lỗi thật ngay trong lúc viết: ba biến `MTB_*_FILE` chỉ trỏ được một file nên `blocklist.cache` vẫn rơi vào `%ProgramData%` thật, một bài test cất bản sao ở đó rồi bài sau đọc trúng → thêm `MTB_DATA_DIR`, và ba công cụ giao diện nay cũng dùng nó để khỏi đốt mất ngày dùng thử của máy đang phát triển. `pytest` **149/149** · `check_gui` **34/34** · `audit_gui` **54/57 đạt, 0 hỏng**. Bump **v1.5.0**.
 - 2026-08-21: **Phương ngữ MCT — đo xong, hoá ra chỉ cần MỘT file.** VuPQ đề xuất sinh hai bản MCT (2022 / NX) theo lẽ "bản cao đọc được bản thấp". Lẽ đúng, nhưng bằng chứng bác chính phương án hai file: `9.1.0` là tag **chính Civil 2022 ghi ra khi export** (`output/TP_BL_test/S1/S1.mct` nằm cạnh `S1.mcb` + `S1.CA*` cùng lượt giải), tức ta ghi tag **thấp** và NX đọc xuống — hai file sẽ khác nhau đúng 0 dòng. Cài thành tham số `mct_version` mặc định TẮT, rồi **chạy A/B 12 lượt trên Civil 2022 thật**: 6/6 trùng khít, 44.940 bản ghi, `ΔMy = ΔVz = 0,0000`. VuPQ chốt V1 vẫn để TẮT, bật ở v1.5. Vá 3 lỗi lộ ra dọc đường: `nargs='?'` nuốt mất DXF đầu tiên · Midas **cắt tiêu đề cửa sổ ở 159 ký tự** làm driver từ chối chính sản phẩm của nó (hỏng dây chuyền cả loạt 6 mặt cắt) · NX và Civil 2022 **dùng chung lớp cửa sổ** nên driver đếm 2 rồi từ chối, mà nếu chỉ NX mở thì bám nhầm vào NX. `pytest` 113/113.
 - 2026-08-20: **Cảnh báo hoạt tải lên giao diện · dọn mã chết · kiểm chéo bằng Midas NX API.** VuPQ chốt không sửa template hộ mà báo rõ để người dùng tự sửa → khối *Dải tương đương* ở dock Properties, tra được bất cứ lúc nào. Dọn 13 chỗ mã chết (khối `__main__` hỏng của `material_reader`, khối "API công khai" viết hai lần trong `results_tab`, `PT_LAYER_RE` chặt hơn quy tắc thật…) — **MCT trùng khít từng byte cho cả 15 mặt cắt**. Xoá `tests/_check_web_logic.py` (script in ra màn hình, kỳ vọng đã lạc hậu) thay bằng bất biến bề dày bụng. **Dò xong API của MIDAS CIVIL NX** và kiểm chéo 4/4 đạt trên ~35.000 bản ghi; truy ra lệch 133% của S1_V2 là `mv2` — tải làn có sáu dòng `VL, lane` chồng nhau, chỗ đã biết từ trước. Bump **v1.4.1**.
 - 2026-07-30: **Sửa vách giữa mặt cắt hai hộp** — `center_top` nội suy tại tim thay vì tìm đỉnh có sẵn (mặt cầu dốc một chiều không có đỉnh nào ở tim), đỉnh vách giữa đọc từ đỉnh mặt void thay vì `deck − gap_width` (trừ kích thước ngang vào cao độ). SLT lần đầu chạy được trên Midas; S1_V2 mất một phần tử dày 8 mm; sáu mặt cắt một hộp trùng khít từng byte. Thêm `_kiem_hinh_hoc()` + SLT vào `CASES`. **Chạy loạt 6/6 đạt.**

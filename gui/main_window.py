@@ -11,6 +11,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QTabBar, QStackedWidget,
                              QDialog, QHBoxLayout, QPushButton, QToolButton)
 
 from src.project import Project, FILE_EXT, CHECKED, ERROR
+from src.security import guard, usage_log
+from .license_dialog import LicenseDialog
 from .generate_tab import GenerateController
 from .results_tab import ResultsTab
 from .check_tab import CheckTab
@@ -25,7 +27,7 @@ from .prefs import Prefs, PreferencesDialog
 from .widgets import StepBar, IDLE, ACTIVE, DONE
 from . import assets
 
-VERSION = 'v1.4.1'
+VERSION = 'v1.5.0'
 APP_NAME = 'Midas Transverse Boxgirder'
 ORG, APP = 'TEDI', 'MidasTransverseBoxgirder'
 MAX_RECENT = 8
@@ -94,6 +96,7 @@ class MainWindow(QMainWindow):
         self.panel.set_layer_states(self.prefs.layers)
         self.panel.select_on_add = self.prefs.select_on_add
         self._sync_midas_action()
+        self.refresh_license_label()
         self._select_start_mode()
         self._restore_settings()
         self._update_title()
@@ -271,6 +274,13 @@ class MainWindow(QMainWindow):
         self.status.addPermanentWidget(self._sep())
         self.status.addPermanentWidget(self.lb_units)
 
+        # Trạng thái giấy phép đứng cạnh phiên bản: hai thứ người dùng phải
+        # đọc được mà không cần mở menu nào.
+        self.lb_lic = QLabel('')
+        self.lb_lic.setToolTip('Mở Trợ giúp → Giấy phép để xem chi tiết')
+        self.status.addPermanentWidget(self._sep())
+        self.status.addPermanentWidget(self.lb_lic)
+
         self.status.addPermanentWidget(self._sep())
         self.lb_ver = QLabel(VERSION)
         self.lb_ver.setStyleSheet(
@@ -392,6 +402,8 @@ class MainWindow(QMainWindow):
 
         m = mb.addMenu('Trợ &giúp')
         m.addAction(self._act('&Hướng dẫn sử dụng', self.open_guide, 'F1'))
+        m.addAction(self._act('&Giấy phép…', self.open_license, 'Ctrl+Shift+L',
+                              'info', 'Trạng thái, kích hoạt, xin cấp giấy phép'))
         m.addAction(self._act('&Giới thiệu', self.about))
 
         self._refresh_recent()
@@ -684,6 +696,8 @@ class MainWindow(QMainWindow):
             lb.setStyleSheet(f'font-family: {FONT_MONO}; color: {t["ink_3"]};')
         for f in self._seps:
             f.setStyleSheet(f'color: {t["border"]};')
+        if hasattr(self, 'lb_lic'):
+            self.refresh_license_label()
         self.status_msg(self.lb_msg.text(), self._msg_level)
 
         for a, ic in self._act_icons:
@@ -790,10 +804,51 @@ class MainWindow(QMainWindow):
     def pick_template(self):
         self.panel._pick_tpl()
 
+    # ─────────────────────────────────────────
+    # Giấy phép
+    # ─────────────────────────────────────────
+    def open_license(self):
+        """Mở hộp thoại Giấy phép rồi cập nhật lại thanh trạng thái."""
+        LicenseDialog(self, self.t, VERSION.lstrip('v')).exec()
+        self.refresh_license_label()
+
+    def refresh_license_label(self):
+        """Một dòng ngắn ở status bar: còn bao nhiêu ngày, hay chưa kích hoạt."""
+        state = guard.get_runtime_state()
+        if state.ready and state.source == guard.SOURCE_LICENSE:
+            colour = self.t['ok']
+        elif state.ready:
+            colour = self.t['warn']
+        else:
+            colour = self.t['err']
+        self.lb_lic.setText(state.headline())
+        self.lb_lic.setStyleSheet(f'color: {colour}; font-weight: 600;')
+        self.lb_lic.setToolTip(
+            state.message + '\n\nCtrl+Shift+L để mở hộp thoại Giấy phép.')
+
+    def require_license(self, feature: str) -> bool:
+        """Cổng chặn cho một việc cụ thể. Bị chặn thì mở luôn hộp thoại.
+
+        Trả True nếu được chạy tiếp. Mọi việc nặng — sinh MCT, kiểm toán, chạy
+        Midas — đều phải đi qua đây; đặt cổng ở một chỗ rồi tin là đủ thì lối
+        chuột phải hay CLI sẽ lọt.
+        """
+        state = guard.get_runtime_state(feature)
+        if state.ready:
+            return True
+        self.log.error(state.message.replace('\n', ' · '))
+        QMessageBox.warning(self, 'Chưa được phép', state.message)
+        self.open_license()
+        return guard.get_runtime_state(feature).ready
+
     def generate_all(self):
+        if not self.require_license('mct'):
+            return
         self.gen_tab.generate()
 
     def generate_selected(self):
+        if not self.require_license('mct'):
+            return
         names = self.panel.selected_names()
         self.gen_tab.generate(names or None)
 
@@ -823,6 +878,8 @@ class MainWindow(QMainWindow):
     def run_midas(self):
         """Chạy Midas cho các mặt cắt ĐÃ CÓ MCT."""
         if getattr(self, 'midas_worker', None) is not None:
+            return
+        if not self.require_license('midas'):
             return
         if not getattr(self.prefs, 'midas_auto', False):
             QMessageBox.information(
@@ -892,6 +949,7 @@ class MainWindow(QMainWindow):
         return box.clickedButton() is go
 
     def _on_midas_done(self, name, xls, stats):
+        usage_log.record('midas')
         self._midas_done += 1
         self.prog.setValue(self._midas_done)
         # Gán luôn Beam Force vào project — driver vừa ghi ra đúng chỗ tab Kết

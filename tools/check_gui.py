@@ -451,6 +451,111 @@ def kiem_moi_the_ve_duoc(c):
     return 'vẽ được: ' + ' · '.join(ten)
 
 
+def kiem_cong_giay_phep_chan_dung_cho(c):
+    """Không có quyền thì KHÔNG được sinh MCT, và phải nói rõ vì sao.
+
+    Cổng kiểm tra chỉ có nghĩa nếu nó nằm trên đường đi thật. Bản đầu của tính
+    năng này đặt cổng ở chỗ mở thẻ chứ không phải chỗ tính, nên bấm F5 vẫn chạy
+    tuốt. Phép kiểm bấm đúng đường người dùng đi: gọi require_license rồi xem
+    generate có bị chặn không.
+    """
+    import PyQt6.QtWidgets as QtW
+    from src.security import guard
+
+    w = c.w
+    goc_warning = QtW.QMessageBox.warning
+    goc_open = w.open_license
+    da_mo = []
+    da_goi_generate = []
+    goc_generate = w.gen_tab.generate
+
+    def gia_generate(*a, **k):
+        da_goi_generate.append(a)
+
+    class TrangThai:
+        ready = False
+        message = 'Giấy phép đã bị thu hồi.\nLý do: kiểm thử'
+        source = guard.SOURCE_LICENSE
+        block = None
+        license = None
+        trial = None
+        path = ''
+        def headline(self):
+            return 'Chưa kích hoạt'
+
+    try:
+        QtW.QMessageBox.warning = staticmethod(lambda *a, **k: None)
+        w.open_license = lambda: da_mo.append(1)
+        w.gen_tab.generate = gia_generate
+
+        # ── đang dùng thử / có giấy phép: phải cho qua ──
+        assert w.require_license('mct') is True,             'đang chạy hợp lệ mà cổng vẫn chặn'
+        w.generate_all()
+        assert da_goi_generate, 'cổng mở mà generate không được gọi'
+
+        # ── bị chặn: không được sinh MCT ──
+        da_goi_generate.clear()
+        goc_state = guard.get_runtime_state
+        guard.get_runtime_state = lambda feature=None: TrangThai()
+        try:
+            assert w.require_license('mct') is False,                 'trạng thái không chạy được mà cổng vẫn cho qua'
+            w.generate_all()
+            assert not da_goi_generate,                 'bị chặn mà generate VẪN chạy — cổng đặt sai chỗ'
+            assert da_mo, 'bị chặn mà không mở hộp thoại Giấy phép chỉ đường'
+        finally:
+            guard.get_runtime_state = goc_state
+    finally:
+        QtW.QMessageBox.warning = goc_warning
+        w.open_license = goc_open
+        w.gen_tab.generate = goc_generate
+    return 'hợp lệ thì qua · bị chặn thì dừng và mở hộp thoại'
+
+
+def kiem_nhan_giay_phep_doi_mau_theo_bang_mau(c):
+    """Nhãn giấy phép ở thanh trạng thái phải lấy màu từ token.
+
+    Đây là khuôn lỗi đã gặp nhiều lần trong dự án: mã màu cứng đứng yên khi đổi
+    bảng màu, và chỉ lộ ra khi đã sang bản Tối.
+    """
+    w = c.w
+    assert w.lb_lic.text().strip(), 'thanh trạng thái không nói gì về giấy phép'
+    qss = w.lb_lic.styleSheet()
+    hop_le = {w.t['ok'], w.t['warn'], w.t['err']}
+    assert any(mau.lower() in qss.lower() for mau in hop_le),         f'màu nhãn giấy phép không nằm trong token của bảng màu hiện tại: {qss!r}'
+    return f'{w.lb_lic.text()} · màu lấy từ token'
+
+
+def kiem_o_chuot_phai_khong_noi_doi(c):
+    """Ô "menu chuột phải" phải đọc registry thật, không giữ bản sao riêng.
+
+    Giữ trạng thái trong QSettings thì người dùng gỡ mục bằng tay (hoặc cài lại
+    máy) là ô tích nói dối. Phép kiểm bật ô, đọc lại registry, rồi trả về đúng
+    hiện trạng ban đầu.
+    """
+    from PyQt6.QtCore import QSettings
+    from gui.prefs import Prefs, PreferencesDialog
+    from src import shell_integration as shell
+
+    if not shell.available():
+        return 'bỏ qua — không phải Windows'
+
+    ban_dau = shell.is_registered()
+    dlg = PreferencesDialog(Prefs.load(QSettings('TEDI', 'MidasTransverseBoxgirder')), c.w)
+    try:
+        assert dlg.ck_shell.isChecked() == ban_dau,             'ô tích không khớp hiện trạng registry lúc mở hộp thoại'
+        dlg.ck_shell.setChecked(not ban_dau)
+        c.step()
+        assert shell.is_registered() == (not ban_dau),             'bấm ô mà registry không đổi theo'
+        assert dlg.ck_shell.isChecked() == shell.is_registered(),             'ô tích và registry lệch nhau ngay sau khi bấm'
+        assert '--mct' in dlg.lb_shell.text() or not shell.is_registered(),             'đang bật mà chú thích không cho xem lệnh đã đăng ký'
+    finally:
+        dlg.ck_shell.setChecked(ban_dau)
+        dlg.deleteLater()
+        if shell.is_registered() != ban_dau:
+            shell.register() if ban_dau else shell.unregister()
+    return f'đọc/ghi thẳng registry (hiện trạng giữ nguyên: {ban_dau})'
+
+
 CHECKS = [
     kiem_moi_the_ve_duoc,
     kiem_dong_bo_mat_cat_tu_results,
@@ -466,6 +571,9 @@ CHECKS = [
     kiem_thanh_trang_thai_khong_chong_chu,
     kiem_huy_hieu_nhat_ky,
     kiem_mui_ten_o_xoay_va_o_xo,
+    kiem_cong_giay_phep_chan_dung_cho,
+    kiem_nhan_giay_phep_doi_mau_theo_bang_mau,
+    kiem_o_chuot_phai_khong_noi_doi,
 ]
 
 

@@ -421,6 +421,76 @@ nhất khi khởi động và việc tự chọn mặt cắt vừa thêm.</p>
 <i>giữ nguyên</i> hai đường dẫn thư mục kết quả và template.</p>
 '''),
 
+        ('Giấy phép', f'''
+<h2 style="color:{ink}">Giấy phép và dùng thử</h2>
+<p>Máy mới cài được <b>dùng thử 7 ngày</b>, đầy đủ tính năng — đủ đi hết một
+vòng DXF → MCT → Midas → kiểm toán. Hết 7 ngày thì phải kích hoạt.</p>
+
+<h3 style="color:{ink}">Xin cấp giấy phép</h3>
+{step(1, 'Mở hộp thoại', 'Trợ giúp → <b>Giấy phép</b>, hoặc <code>Ctrl+Shift+L</code>.')}
+{step(2, 'Điền thông tin', 'Thẻ <b>Xin cấp giấy phép</b>: họ tên, đơn vị, email. '
+        'Bấm <b>Lưu file yêu cầu…</b> để ra file <code>.mtbreq</code>.')}
+{step(3, 'Gửi đi', 'Gửi file đó cho người cấp giấy phép. Trong file chỉ có mã máy '
+        'và thông tin bạn vừa điền, không có gì khác.')}
+{step(4, 'Kích hoạt', 'Nhận lại file <code>.mtblic</code>: thẻ <b>Kích hoạt</b> → '
+        '<b>Mở file .mtblic…</b> → <b>Kiểm tra</b> → <b>Kích hoạt</b>.')}
+
+{note('Giấy phép ràng theo <b>mã máy</b>. Đổi máy là phải xin giấy phép mới — '
+      'mã máy có sẵn ở thẻ Trạng thái, bấm <b>Chép</b> rồi gửi đi.')}
+
+<h3 style="color:{ink}">Còn bao nhiêu ngày</h3>
+<p>Góc dưới bên phải cửa sổ luôn ghi trạng thái: <span style="color:{ok}">còn N
+ngày</span> khi đã kích hoạt, <span style="color:{warn}">đang dùng thử</span>,
+hay <span style="color:{t["err"]}">chưa kích hoạt</span>. Rê chuột lên đó để
+xem đầy đủ.</p>
+
+<h3 style="color:{ink}">Phần mềm ghi lại những gì</h3>
+<p>Thẻ <b>Sử dụng</b> cho xem đúng những gì đang được ghi: số lần mở, số file
+MCT đã sinh, số lần chạy Midas, số lần xuất kiểm toán, mốc đầu và mốc cuối.</p>
+<p><b>Không</b> ghi tên bản vẽ, đường dẫn, hay bất kỳ số liệu tính toán nào.</p>
+<p>Khi gia hạn, người cấp có thể xin file thống kê: bấm <b>Xuất báo cáo sử
+dụng…</b> rồi gửi file <code>.mtbusage</code>.</p>
+
+<h3 style="color:{ink}">Giấy phép bị chối</h3>
+<table cellpadding="6" cellspacing="0" width="100%">
+<tr style="background:{soft}"><td width="190"><b>Không khớp máy này</b></td>
+    <td>Giấy phép cấp cho máy khác. Hộp thoại in cả hai mã máy để đối chiếu.</td></tr>
+<tr><td><b>Đã hết hạn</b></td><td>Xin gia hạn; file cũ không dùng lại được.</td></tr>
+<tr style="background:{soft}"><td><b>Chưa mở tính năng…</b></td>
+    <td>Giấy phép hợp lệ nhưng không bao tính năng đó.</td></tr>
+<tr><td><b>Đã bị thu hồi</b></td>
+    <td>Người cấp đã thu hồi; lý do hiện ngay trong thông báo.</td></tr>
+</table>
+'''),
+
+        ('Tạo MCT từ chuột phải', f'''
+<h2 style="color:{ink}">Tạo MCT không cần mở phần mềm</h2>
+<p>Bấm chuột phải vào file <code>.dxf</code> trong Windows Explorer → chọn
+<b>Tạo file MCT (Midas Transverse)</b>. Một cửa sổ nhỏ hiện ra, chạy xong thì
+báo kết quả — không phải mở app, không phải lập project.</p>
+<p>Bấm chuột phải vào <b>thư mục</b> thì có mục <b>Tạo MCT cho mọi DXF trong
+thư mục</b>, chạy cả loạt.</p>
+
+<h3 style="color:{ink}">Bật / tắt</h3>
+<p>Khi cài đặt, tích ô <i>Thêm mục "Tạo file MCT" khi bấm chuột phải vào file
+.dxf</i>. Sau này đổi ý thì vào <b>Công cụ → Tùy chọn → Mặc định</b>, mục
+<i>Menu chuột phải của Windows</i>.</p>
+
+<h3 style="color:{ink}">Kết quả ghi ở đâu</h3>
+<p>Ngay <b>cạnh file DXF</b>, trong thư mục con mang tên mặt cắt. Nếu ở Tùy chọn
+bạn đã đặt một thư mục kết quả bằng <b>đường dẫn tuyệt đối</b> thì ghi vào đó.
+Đường dẫn hiện sẵn trên cửa sổ và đổi được trước khi chạy.</p>
+
+<h3 style="color:{ink}">Template số liệu</h3>
+<p>Lấy template mặc định ở Tùy chọn; chưa đặt thì lấy template kèm theo chương
+trình. Đổi được ngay trên cửa sổ đó.</p>
+
+{note('Cửa sổ này <b>không tự đóng</b>. Nó còn phải nói cho bạn biết các cảnh '
+      'báo — thiếu layer, cáp sai quy ước, và nhất là <b>template khai hoạt tải '
+      'không khớp hình học mặt cắt</b>. Loại sai đó không làm hỏng file, chỉ '
+      'làm sai tải bánh xe 5–15%.', warn)}
+'''),
+
         ('Phím tắt', f'''
 <h2 style="color:{ink}">Phím tắt</h2>
 <table cellpadding="7" cellspacing="0" width="100%" >
@@ -443,6 +513,8 @@ nhất khi khởi động và việc tự chọn mặt cắt vừa thêm.</p>
 <tr><td><code>F</code></td><td>Vừa khung nhìn</td></tr>
 <tr style="background:{soft}"><td><code>Ctrl+L</code></td><td>Xoá nhật ký</td></tr>
 <tr><td><code>Ctrl+,</code></td><td>Tùy chọn giao diện</td></tr>
+<tr style="background:{soft}"><td><code>Ctrl+Shift+L</code></td>
+    <td>Giấy phép — trạng thái, kích hoạt, xin cấp</td></tr>
 <tr><td><code>F1</code></td><td>Mở hướng dẫn này</td></tr>
 </table>
 '''),
