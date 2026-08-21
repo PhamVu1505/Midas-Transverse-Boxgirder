@@ -141,9 +141,26 @@ Khuôn lỗi chung: **menu của giao diện không phải bản kê khả năng
 ngược lại.** Kho tham chiếu Long Thành mắc đúng khuôn ấy theo chiều ngược —
 họ kết luận *"JSON không import ngược được"*, đúng với giao diện, sai với API.
 
-`mct_frame_writer` hiện **không ghi** `*VERSION`; file MCT tham chiếu của chính
-dự án (`docs/refer/refer_PT/midas/LT-MB-S01.mct`) thì có `*VERSION 9.1.0`. Thêm
-khối đó là đủ để khép chuỗi DXF → MCT → NX bằng API, không chạm giao diện.
+**`9.1.0` là phương ngữ của chính Civil 2022, không phải của NX.** Chỗ này ban
+đầu tưởng là hai phương ngữ phải sinh hai file. Không phải: `output/TP_BL_test/
+S1/S1.mct` mang header `MIDAS/Civil Text(MCT) File` đề 22/5/2026, nằm cạnh
+`S1.mcb` + `S1.CA*` của cùng lượt giải — tức **Civil 2022 của VuPQ tự ghi ra tag
+`9.1.0` khi export**. Cả 8 file tham chiếu trong `docs/refer/` và
+`input/reference/` cũng vậy. Nên `*VERSION 9.1.0` là tag **thấp**, và NX (bản
+cao hơn) đọc xuống được — đúng chiều tương thích, một file phục vụ cả hai bản.
+
+`mct_frame_writer` nay có tham số `mct_version`, **mặc định `None` = không ghi**
+để MCT của V1 trùng khít từng byte với 6/6 mặt cắt đã chạy thật trên Civil 2022.
+Bật bằng `write_mct(..., mct_version=MCT_VERSION)` hoặc `run.py generate
+--mct-version`. `tests/test_regression.py::test_mct_version_block` khoá cả hai
+chiều: tắt thì không có khối nào, bật thì đúng ba dòng trước `*UNIT` và **không
+đổi gì khác** trong file.
+
+**Phép đo đã chạy (2026-08-21): 6/6 trùng khít.** A/B trên cùng một phiên Civil
+2022 — A = MCT như V1, B = A + đúng 3 dòng `*VERSION`. Cả 12 lượt giải xong, so
+từng bản ghi Beam Force: ghép 100% (44.940 bản ghi), `max|ΔMy| = max|ΔVz| =
+0,0000`. Bản 2022 đọc file có `*VERSION` **y hệt** bản không có, nên một file
+phục vụ được cả hai bản Midas.
 
 **c. Tài liệu nạp từ JSON CHƯA CÓ TÊN FILE → giải xong không có kết quả nào.**
 `doc/ANAL` chạy **57 s** rồi trả *command complete*, nhưng `post/table` báo

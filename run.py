@@ -20,7 +20,7 @@ from src.dxf_reader import (_get_polyline_vertices, read_inpolys, read_pt_cables
 from src.frame_builder import build_frame
 from src.load_reader import read_loads
 from src.input_reader import source_line
-from src.mct_frame_writer import write_mct
+from src.mct_frame_writer import write_mct, MCT_VERSION
 from src.pt_property_reader import read_pt_properties
 from src.result_reader import (parse_beam_force, _build_element_thickness,
                                classify_check_elements, extract_check_points,
@@ -36,11 +36,14 @@ EXCEL_PATH = os.path.join(os.path.dirname(__file__),
 # ─────────────────────────────────────────────
 
 def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
-                  pt_jacking: str = 'begin'):
+                  pt_jacking: str = 'begin',
+                  mct_version: str = None):
     """Generate MCT + SVG for one DXF file into output_dir/name/.
 
     include_pt: True/False/None (None = auto-detect from DXF layers).
     pt_jacking: 'begin' căng một đầu · 'both' căng hai đầu.
+    mct_version: ghi khối *VERSION (vd '9.1.0'). None = không ghi, MCT trùng
+        khít bản đã kiểm trên Civil 2022. Xem MCT_VERSION ở mct_frame_writer.
     """
     name = os.path.splitext(os.path.basename(dxf_path))[0]
     section_dir = os.path.join(output_dir, name)
@@ -80,7 +83,8 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
     print(f'[{name}] Writing MCT...')
     mct_text, topo = write_mct(frame, name, excel,
                                pt_cables=pt_cables, pt_props=pt_props,
-                               include_pt=include_pt, pt_jacking=pt_jacking)
+                               include_pt=include_pt, pt_jacking=pt_jacking,
+                               mct_version=mct_version)
 
     for w in topo.get('pt_warnings', []):
         print(f'[{name}] WARNING: {w}')
@@ -146,7 +150,8 @@ def cmd_generate(args):
     for dxf_path in dxf_files:
         try:
             _generate_one(dxf_path, output_dir, include_pt=include_pt,
-                          pt_jacking=getattr(args, 'pt_jacking', 'begin'))
+                          pt_jacking=getattr(args, 'pt_jacking', 'begin'),
+                          mct_version=getattr(args, 'mct_version', None))
         except Exception as e:
             print(f'  [ERROR] {dxf_path}: {e}')
             import traceback
@@ -402,7 +407,7 @@ def cmd_results(args):
 # Main
 # ─────────────────────────────────────────────
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(
         description='Transverse Frame Analysis Pipeline',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -422,6 +427,12 @@ def main():
                            help='Output root directory (default: output)')
     gen_parser.add_argument('--no-pt', action='store_true',
                            help='Skip PT tendon detection even if DXF has PT-* layers')
+    gen_parser.add_argument('--mct-version', metavar='X.Y.Z', default=None,
+                            help='ghi khối *VERSION với số hiệu này')
+    gen_parser.add_argument('--nx', action='store_const', const=MCT_VERSION,
+                            dest='mct_version',
+                            help=f'lối tắt của --mct-version {MCT_VERSION} — '
+                                 f'cần cho Midas NX nạp qua /doc/IMPORTMXT')
     gen_parser.add_argument('--pt-jacking', choices=('begin', 'both'),
                            default='begin',
                            help='Căng cáp một đầu (begin, mặc định) hay hai đầu (both)')
@@ -431,6 +442,11 @@ def main():
     res_parser.add_argument('input', nargs='+',
                            help='Section output folder(s) or parent directory')
 
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
 
     if args.command == 'generate':

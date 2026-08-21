@@ -46,6 +46,8 @@ CASES = [
     ('input/dxf/SLT.dxf',   'twin_box', 101, 102, 3, []),
 ]
 
+from src.mct_frame_writer import MCT_VERSION as MCT_VERSION_CONST
+
 MIN_ELEM_LEN = 1e-3   # 1 mm — dưới ngưỡng này coi là phần tử suy biến
 DUP_TOL = 1e-4        # 0.1 mm — dưới ngưỡng này coi là node trùng
 
@@ -54,8 +56,12 @@ DUP_TOL = 1e-4        # 0.1 mm — dưới ngưỡng này coi là node trùng
 # Helpers
 # ─────────────────────────────────────────────
 
-def generate(dxf_rel):
-    """Chạy pipeline generate, trả (mct_text, topo, section_type)."""
+def _frame_for(dxf_rel):
+    """Dựng frame + cáp + tên từ DXF, trả (frame, pt_cables, pt_props, name, stype).
+
+    Tách khỏi `generate()` để test nào cần gọi `write_mct` NHIỀU LẦN trên cùng
+    một hình học (so hai bộ tham số) khỏi phải dựng lại frame mỗi lượt.
+    """
     dxf_path = os.path.join(ROOT, dxf_rel)
     doc = ezdxf.readfile(dxf_path)
     msp = doc.modelspace()
@@ -71,6 +77,12 @@ def generate(dxf_rel):
 
     pt_props = read_pt_properties(EXCEL) if pt_cables else None
     name = os.path.splitext(os.path.basename(dxf_path))[0]
+    return frame, pt_cables, pt_props, name, stype
+
+
+def generate(dxf_rel):
+    """Chạy pipeline generate, trả (mct_text, topo, section_type)."""
+    frame, pt_cables, pt_props, name, stype = _frame_for(dxf_rel)
     mct_text, topo = write_mct(frame, name, EXCEL,
                                pt_cables=pt_cables, pt_props=pt_props)
     return mct_text, topo, stype
@@ -202,6 +214,80 @@ def test_web_thickness_stays_physical(dxf_rel, stype, n_node, n_elem,
                 f'{key}: bề dày {t:.3f} m tại x={n["x"]:.3f} lớn hơn cả nhịp '
                 f'ngắn nhất {nhip_ngan:.3f} m — hình học bất khả, dấu hiệu điển '
                 f'hình của việc đo sang mặt void phía xa')
+
+
+def test_cli_version_flag_does_not_eat_a_dxf():
+    """Cờ `--mct-version` không được nuốt mất file DXF đầu tiên.
+
+    Đã xảy ra thật: bản đầu khai `nargs='?', const='9.1.0'` cho tiện gõ cờ trơn.
+    Nhưng `--mct-version input/dxf/S1.dxf data/RBD/S10.dxf …` thì argparse lấy
+    **đường dẫn đầu tiên làm giá trị của cờ** — S1 biến mất khỏi danh sách, và
+    5 mặt cắt còn lại nhận `*VERSION` mang nội dung `input/dxf/S1.dxf`. Không có
+    lỗi, không có cảnh báo; chỉ lộ ra vì đếm lại thư mục thấy thiếu một mặt cắt.
+
+    Nay `--mct-version` bắt buộc có giá trị, còn cờ trơn là `--nx`.
+    """
+    import run as cli
+    parser = cli.build_parser()
+    dxfs = ['input/dxf/S1.dxf', 'data/RBD/S10.dxf', 'input/dxf/SLT.dxf']
+
+    a = parser.parse_args(['generate', '--nx'] + dxfs)
+    assert a.input == dxfs, f'--nx nuốt mất DXF: còn {a.input}'
+    assert a.mct_version == MCT_VERSION_CONST, a.mct_version
+
+    a = parser.parse_args(['generate', '--mct-version', '9.1.0'] + dxfs)
+    assert a.input == dxfs, f'--mct-version nuốt mất DXF: còn {a.input}'
+    assert a.mct_version == '9.1.0'
+
+    a = parser.parse_args(['generate'] + dxfs)
+    assert a.mct_version is None, 'mặc định phải là None (không ghi *VERSION)'
+
+
+def test_mct_version_block():
+    """Khối `*VERSION`: mặc định KHÔNG ghi, bật lên thì đúng chỗ NX cần.
+
+    Bối cảnh: NX chỉ nạp được MCT qua `/doc/IMPORTMXT` **và** khi file có khối
+    `*VERSION` — thiếu nó thì NX trả *command complete* rồi nạp về 0 nút (đo đủ
+    bốn tổ hợp trên S16, xem `docs/MIDAS-NX-API.md` mục 4b).
+
+    Nhưng V1 đã chạy thật 6/6 mặt cắt trên Civil 2022 với MCT **không** có khối
+    này, nên mặc định phải cho ra file trùng khít TỪNG BYTE — thêm một dòng vào
+    mọi file MCT là phải chạy lại cả 6 mặt cắt mới dám phát hành. Khoá cả hai
+    chiều: quên `if mct_version:` thì chiều thứ nhất bắt, còn đặt khối sai chỗ
+    hoặc kèm theo thay đổi khác thì chiều thứ hai bắt.
+
+    Kiểm trên CẢ single lẫn twin box — hai writer có hai khối header riêng, sửa
+    một quên một là đúng khuôn lỗi `_COMBOS` từng mắc.
+    """
+    from src.mct_frame_writer import write_mct, MCT_VERSION
+
+    for dxf_rel, stype, *_ in CASES:
+        frame, cables, props, name, _ = _frame_for(dxf_rel)
+        kw = dict(pt_cables=cables, pt_props=props)
+
+        mac_dinh, _ = write_mct(frame, name, EXCEL, **kw)
+        assert '*VERSION' not in mac_dinh, (
+            f'{name}: mặc định KHÔNG được ghi *VERSION — MCT của V1 phải trùng '
+            f'khít bản đã chạy thật trên Civil 2022')
+
+        co, _ = write_mct(frame, name, EXCEL, mct_version=MCT_VERSION, **kw)
+        assert co != mac_dinh, f'{name}: bật mct_version mà file không đổi'
+
+        dong = co.splitlines()
+        i = dong.index('*VERSION')
+        assert dong[i + 1].strip() == MCT_VERSION, (
+            f'{name}: dòng sau *VERSION là {dong[i + 1]!r}, chờ {MCT_VERSION!r}')
+        assert dong[i + 2] == '', f'{name}: thiếu dòng trống sau khối *VERSION'
+
+        # Bỏ đúng ba dòng đó ra thì phải còn lại y hệt bản mặc định — chứng minh
+        # cờ này KHÔNG đụng vào bất cứ thứ gì khác trong file.
+        assert dong[:i] + dong[i + 3:] == mac_dinh.splitlines(), (
+            f'{name}: bật *VERSION làm đổi cả chỗ khác trong MCT')
+
+        # NX đọc khối này để chọn bộ đọc tương thích ngược, nên nó phải đứng
+        # TRƯỚC mọi khối dữ liệu — file tham chiếu của Midas đặt ngay sau header.
+        assert i < dong.index('*UNIT    ; Unit System'), (
+            f'{name}: *VERSION phải đứng trước *UNIT')
 
 
 def test_custom_supports():
@@ -912,7 +998,11 @@ if __name__ == '__main__':
                       (test_pt_detected_only_where_cables_exist,
                        'nhận diện cáp đúng bộ phận'),
                       (test_geometry_guard_catches_zero_length_element,
-                       'bộ kiểm bắt được phần tử dài 0')):
+                       'bộ kiểm bắt được phần tử dài 0'),
+                      (test_mct_version_block,
+                       'khối *VERSION mặc định tắt, bật đúng chỗ'),
+                      (test_cli_version_flag_does_not_eat_a_dxf,
+                       'cờ --nx/--mct-version không nuốt DXF')):
         try:
             fn()
             print(f'PASS  {label}')
