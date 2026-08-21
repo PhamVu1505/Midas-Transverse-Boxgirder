@@ -551,7 +551,7 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 ## Current Sprint
 **Goal:** phát hành **V1 = sinh MCT cho Midas Civil 2022**. Thẻ Midas NX để sau (VuPQ chốt 2026-08-20).
 
-**Trạng thái:** `pytest tests -q` **113/113** · `tools/check_gui.py` **28/28** · `tools/audit_gui.py` **53 đạt · 0 hỏng** · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ; `master` đã mang bản phát hành v1.4.1 (`45b2ec6`, gồm cả `feature/t13-twin-box`). Nhánh **`feature/v1-release-qa`** đang đi trước `master` **5 commit** (bộ kiểm thử + `*VERSION` + ba bản vá driver). Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
+**Trạng thái:** `pytest tests -q` **113/113** · `tools/check_gui.py` **28/28** · `tools/audit_gui.py` **53 đạt · 0 hỏng** · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ. **`master` = `4bf929c`**, đã gồm cả `feature/t13-twin-box` lẫn `feature/v1-release-qa` (bộ kiểm thử `audit_gui` + tài liệu kiểm thử · `*VERSION` · ba bản vá driver), đã đẩy remote. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
@@ -588,8 +588,9 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 1. ~~`installer\build.bat` cho v1.4.1~~ — **XONG**. `dist/installer/
    MidasTransverseBoxgirder_Setup_v1.4.1.exe` **43,8 MB**, bản đóng gói chạy
    thật (tiêu đề cửa sổ `… v1.4.1`). Xem mục *Đóng gói*.
-2. **Merge `feature/v1-release-qa` → `master`** — 5 commit, chưa mở PR (3 commit
-   cuối chưa đẩy remote). `feature/t13-twin-box` **đã** nằm trong `master`.
+2. ~~Merge `feature/v1-release-qa` → `master`~~ — **XONG** (2026-08-21, tua nhanh
+   tới `4bf929c`, đã đẩy remote). Cả hai nhánh tính năng nay đều nằm trong
+   `master`; việc v1.5 nên mở nhánh mới.
 3. **Hoạt tải template S10 / S20** — VuPQ chốt **không sửa hộ**, app đã báo rõ
    trên dock Properties. Việc sửa file Excel là của người dùng. Không còn là
    việc chặn phát hành.
