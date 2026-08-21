@@ -97,3 +97,96 @@ def test_so_sanh_khong_phan_biet_hoa_thuong_va_dau_gach():
     """Windows không phân biệt hoa thường; tiêu đề Midas có thể khác vỏ chữ."""
     td = _tieu_de(MCB_TRONG_OUTPUT.replace('.mcb', '').upper())
     assert la_cua_driver(td, [MCB_TRONG_OUTPUT]) is True
+
+
+# ── chọn đúng phiên khi có nhiều cửa sổ Midas ──────────────────────────────
+#
+# Từ khi NX vào quy trình, mở đồng thời NX 2026 và Civil 2022 là chuyện thường.
+# Hai bản dùng CHUNG lớp cửa sổ `MidasGenMainFrmClass`, nên bản cũ đếm theo lớp
+# rồi báo "có 2 cửa sổ Midas — đóng bớt", tức bắt người dùng tắt NX vì một lý do
+# không có thật. Nguy hơn: nếu chỉ NX đang mở thì bản cũ **bám luôn vào NX** và
+# lái nó bằng bản đồ điều khiển của Civil 2022.
+
+CIVIL = 'Civil 2022 - [Untitled] - [MIDAS/Civil]'
+NX = r'MIDAS CIVIL NX 2026 - [C:\Temp\S16_tu_mct] - [MIDAS CIVIL NX]'
+
+
+def test_bo_qua_cua_so_NX_khi_ca_hai_cung_mo():
+    from src.midas_driver import MidasSession
+    chon = MidasSession._chon_civil([(1, NX), (2, CIVIL)])
+    assert [h for h, _ in chon] == [2], 'phải lấy đúng cửa sổ Civil 2022'
+
+
+def test_chi_co_NX_thi_khong_nhan_nham():
+    """Chỉ NX đang mở → KHÔNG được trả về gì. Lái NX bằng bản đồ của bản 2022
+    là mọi toạ độ menu đều sai, mà lỗi thì hiện ra ở tận bước bấm."""
+    from src.midas_driver import MidasSession
+    assert MidasSession._chon_civil([(1, NX)]) == []
+
+
+def test_hai_cua_so_civil_van_la_nhap_nhang():
+    """Nới cho NX không được nới luôn cho trường hợp thật sự nhập nhằng."""
+    from src.midas_driver import MidasSession
+    chon = MidasSession._chon_civil([(1, CIVIL), (2, CIVIL.replace('Untitled', 'S16'))])
+    assert len(chon) == 2, 'hai phiên Civil thì phải để attach() báo lỗi'
+CIVIL = 'Civil 2022 - [Untitled] - [MIDAS/Civil]'
+NX = r'MIDAS CIVIL NX 2026 - [C:\Temp\S16_tu_mct] - [MIDAS CIVIL NX]'
+
+# Tiêu đề THẬT lấy từ máy VuPQ khi tài liệu nằm sâu trong thư mục tạm. Midas cắt
+# tiêu đề ở 159 ký tự: mất `]` đóng, mất luôn hậu tố ' - [MIDAS/Civil]', và bản
+# thân đường dẫn cũng cụt.
+CIVIL_CUT = r'Civil 2022 - [C:\Users\vupq.CITEC\AppData\Local\Temp\claude\H--VuPQ-Tools-Midas-Transverse-Boxgirder\scratchpad\ab\base\S1'
+MCB_CUT = r'C:\Users\vupq.CITEC\AppData\Local\Temp\claude\H--VuPQ-Tools-Midas-Transverse-Boxgirder\scratchpad\ab\base\S1\S1_frame.mcb'
+
+
+def test_bo_qua_cua_so_NX_khi_ca_hai_cung_mo():
+    from src.midas_driver import MidasSession
+    chon = MidasSession._chon_civil([(1, NX), (2, CIVIL)])
+    assert [h for h, _ in chon] == [2], 'phải lấy đúng cửa sổ Civil 2022'
+
+
+def test_chi_co_NX_thi_khong_nhan_nham():
+    """Chỉ NX đang mở → KHÔNG được trả về gì. Lái NX bằng bản đồ điều khiển của
+    bản 2022 là mọi toạ độ menu đều sai, mà lỗi hiện ra tận bước bấm."""
+    from src.midas_driver import MidasSession
+    assert MidasSession._chon_civil([(1, NX)]) == []
+
+
+def test_hai_cua_so_civil_van_la_nhap_nhang():
+    """Nới cho NX không được nới luôn cho trường hợp thật sự nhập nhằng."""
+    from src.midas_driver import MidasSession
+    chon = MidasSession._chon_civil([(1, CIVIL), (2, CIVIL.replace('Untitled', 'S16'))])
+    assert len(chon) == 2, 'hai phiên Civil thì phải để attach() báo lỗi'
+
+
+def test_nhan_cua_so_civil_khi_tieu_de_bi_cat():
+    """Lọc phải theo phần ĐẦU tiêu đề, không phải hậu tố.
+
+    Bản đầu của phép lọc này dùng `endswith('[MIDAS/Civil]')` — đúng với tiêu đề
+    ngắn, nhưng tài liệu đặt sâu thì Midas cắt mất hậu tố và attach() báo "không
+    có cửa sổ Civil 2022 nào" trong khi nó đang mở ngay đó.
+    """
+    from src.midas_driver import MidasSession
+    assert len(MidasSession._chon_civil([(1, CIVIL_CUT)])) == 1
+    assert MidasSession._chon_civil([(1, CIVIL_CUT), (2, NX)])[0][0] == 1
+
+
+def test_tieu_de_bi_cat_van_nhan_ra_tai_lieu_cua_driver():
+    """Tiêu đề cụt vẫn phải nhận ra tài liệu do chính driver ghi ra.
+
+    Đã hỏng thật: `re.search` cũ đòi có `]` đóng nên trả False, driver **từ chối
+    chính sản phẩm của nó**. Hệ quả là cả loạt 6 mặt cắt hỏng — S1 để lại tài
+    liệu, 5 mặt cắt sau đều trượt cổng an toàn kèm câu "hãy lưu rồi File › New",
+    trong khi thứ đang mở là file driver vừa ghi ra một phút trước.
+    """
+    assert la_cua_driver(CIVIL_CUT, [MCB_CUT])
+
+
+def test_tieu_de_bi_cat_khong_nhan_bua_mo_hinh_nguoi_dung():
+    """Nới cho tiêu đề cụt không được nới thành nhận bừa.
+
+    Chỉ khớp khi đường dẫn cụt là **tiền tố** của đúng `.mcb` mà lượt chạy này
+    sắp ghi đè — mô hình thật của người dùng vẫn phải bị từ chối.
+    """
+    assert not la_cua_driver(r'Civil 2022 - [D:\Cong trinh\Lach Tray',
+                             [MCB_CUT])

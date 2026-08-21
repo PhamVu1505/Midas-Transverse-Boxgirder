@@ -348,6 +348,34 @@ Không có COM, không có API HTTP, kết quả nằm trong `.CA*` nhị phân 
 - **Không phím thật ở bước tick trường hợp tải.** `LB_SETSEL(1,-1)` + `PostMessage(VK_SPACE)` thẳng vào hwnd của ListBox. Windows không cho tiến trình nền chiếm tiền cảnh nên `set_focus()` thất bại **âm thầm**, và 24 cái Tab rơi vào khung nhìn mô hình thành lệnh bất kỳ — đã mở ra `Auto-Mesh Planar Area`, và một phím lạc trong menu Application còn **đóng Midas của người dùng hai lần**.
 - **`analyze()` chờ HAI chặng**: `.OUT` phải *xuất hiện* trong 60 s (không có → kết luận ngay là phân tích không khởi động), rồi phải *lớn thêm* trong mỗi 300 s. Một thời hạn 1800 s cho cả quá trình thì SLT lưu được `.mcb` mà không hề giải, driver vẫn đợi đủ nửa tiếng rồi báo sai chỗ.
 
+**Midas cắt tiêu đề cửa sổ ở đúng 159 ký tự** (2026-08-21). Tài liệu nằm sâu thì
+tiêu đề cụt giữa chừng: mất `]` đóng, mất luôn hậu tố ` - [MIDAS/Civil]`, và bản
+thân đường dẫn cũng bị cắt. Hai hệ quả đã xảy ra thật trong cùng một lượt chạy:
+
+- `_la_tai_lieu_cua_driver()` dùng regex đòi có `]` đóng → trả `False` → **driver
+  từ chối chính sản phẩm của nó**. Cả loạt 6 mặt cắt hỏng: S1 để lại tài liệu, 5
+  mặt cắt sau đều trượt cổng an toàn kèm câu *"hãy lưu rồi File › New"* trong khi
+  thứ đang mở là file driver vừa ghi ra một phút trước. Nay `]` là **tuỳ chọn**,
+  và tiêu đề cụt thì so bằng **tiền tố** — chỉ nới cho trường hợp đã biết là bị
+  cắt, tiêu đề đầy đủ vẫn phải trùng đúng.
+- Phép lọc cửa sổ Civil (bên dưới) nếu viết theo **hậu tố** thì gãy y hệt. Phải
+  đọc phần **đầu** tiêu đề — phần đầu không bao giờ bị cắt.
+
+**NX và Civil 2022 dùng CHUNG lớp cửa sổ `MidasGenMainFrmClass`.** Từ khi NX vào
+quy trình, mở đồng thời hai bản là chuyện bình thường, nhưng `attach()` đếm theo
+lớp nên báo *"có 2 cửa sổ Midas — đóng bớt"*, tức bắt người dùng tắt NX vì một lý
+do không có thật. Nguy hơn: chỉ NX đang mở thì bản cũ **bám luôn vào NX** rồi lái
+bằng bản đồ điều khiển của bản 2022. `MidasSession._chon_civil()` lọc theo phần
+đầu tiêu đề (`Civil 2022` nhận · `MIDAS CIVIL NX 2026` loại); hai cửa sổ Civil
+thì vẫn báo nhập nhằng như cũ. NX đi đường REST ở `src/midas_nx.py`, **không**
+được lái qua GUI.
+
+**Phiên Windows khoá thì không di được chuột** — `RuntimeError: There is no
+active desktop required for moving mouse cursor!`. Không phải lỗi của driver và
+không vá được từ trong mã: phải mở khoá máy rồi chạy lại. `attach(khoi_phuc=True)`
+bung được cửa sổ đang thu nhỏ (mặc định **không** bung — cửa sổ thu nhỏ thường
+nghĩa là người dùng đang làm việc khác).
+
 **Không ghim cứng toạ độ chuột — lấy từ chính control đích.** Menu ngữ cảnh của bảng kết quả nay mở bằng `PostMessage(GXWND, WM_CONTEXTMENU, …)`, **không đụng con trỏ chuột**; đường lui là chuột thật vào tâm chính ô lưới. Ba số ghim cứng `(900,300)/(700,350)/(900,500)` của bản đầu nằm trọn trên **màn hình trái** trong khi Midas phóng to trên **màn hình phải** — cú bấm chưa lần nào chạm Midas, mà rơi vào cửa sổ VuPQ đang mở, còn driver thì báo "không mở được menu chuột phải" trong lúc bảng đang mở ngay đó. Bản vá suy điểm theo *tỉ lệ khung cửa sổ chính* vẫn là phỏng đoán bố cục: kéo Message Window cao lên là trượt.
 
 **`_len_truoc()` phải kiểm lại tiền cảnh, không được tin `set_focus()`.** Windows cấm tiến trình nền cướp tiền cảnh và pywinauto **nuốt thất bại đó**. Chính lỗ hổng này cho phím lạc mở `Auto-Mesh Planar Area` và **đóng Midas của VuPQ hai lần**. Nay đọc lại `GetForegroundWindow()` rồi dừng có tên.
@@ -366,6 +394,45 @@ Không có COM, không có API HTTP, kết quả nằm trong `.CA*` nhị phân 
 - Tìm mục menu thì soi **mọi cửa sổ nổi**, không chỉ cửa sổ vừa mọc: cửa sổ menu của Midas không bị huỷ khi đóng, chỉ bị **ẩn** rồi hiện lại. **Bỏ cửa sổ chính** khỏi phạm vi duyệt UIA — ribbon BCGPro mất 30–60 s một lượt.
 - `'TOTAL ELAPSED TIME'` là dấu hiệu giải xong, **không phải** `'OVERALL TIME LOG'` (Midas in chuỗi đó giãn ký tự). Chỗ này chính tài liệu Giai đoạn 0 tôi viết đã sai.
 - `chay_mot_mat_cat` tự dọn tài liệu **chỉ khi** tài liệu đang mở là của driver (đường dẫn dưới thư mục tạm) — `moi_tai_lieu()` trả lời **No** cho hộp hỏi lưu. Nhận biết phải `realpath` chứ không `abspath`: `gettempdir()` trả dạng 8.3 (`VUPQ~1.CIT`) còn tiêu đề Midas luôn là đường dẫn dài.
+
+### Phương ngữ MCT: một file, không phải hai (2026-08-21)
+
+VuPQ đề xuất sinh **hai** bản MCT — một cho Civil 2022, một cho NX — theo lẽ
+"bản cao đọc được bản thấp, bản thấp không đọc được bản cao". Lẽ đó đúng, nhưng
+áp vào đây thì nó **bác** chính phương án hai file.
+
+- **`9.1.0` là tag của Civil 2022, không phải của NX.** `output/TP_BL_test/S1/
+  S1.mct` mang header `MIDAS/Civil Text(MCT) File` đề 22/5/2026, nằm cạnh
+  `S1.mcb` + `S1.CA*` của cùng lượt giải — Civil 2022 của VuPQ **tự ghi ra tag
+  ấy khi export**. Cả 8 file tham chiếu ở `docs/refer/` + `input/reference/`
+  cũng `9.1.0`.
+- Nên thứ ta ghi là tag **thấp**, và NX là bản **cao đọc xuống** — đúng chiều
+  VuPQ nói. Hai file sẽ mang **cùng một tag** và khác nhau **đúng 0 dòng**.
+- Rủi ro thật không nằm ở phương ngữ mà ở **kỷ luật phát hành**: V1 đã chạy thật
+  6/6 mặt cắt với MCT không có khối này. Nên tham số `mct_version` **mặc định
+  `None`** — MCT trùng khít từng byte, V1 không phải chạy lại gì.
+- **ĐÃ ĐO XONG (2026-08-21): 6/6 trùng khít.** Chạy A/B trên **cùng một phiên
+  Civil 2022**, cùng lượt: A = MCT như V1, B = A + đúng 3 dòng `*VERSION`. Cả
+  hai giải hết 6 mặt cắt, rồi so **từng bản ghi** Beam Force: ghép 100%
+  (**44.940 bản ghi**), `max|ΔMy| = max|ΔVz| = 0,0000`. Không phải "sai số nhỏ"
+  — là **cùng từng con số**.
+
+  | | S1 | S10 | S16 | S1_V2 | S20 | SLT |
+  |---|---|---|---|---|---|---|
+  | bản ghi (A = B) | 6.660 | 6.050 | 5.940 | 12.430 | 4.680 | 9.180 |
+
+  (S10 · S20 · SLT · S1_V2 khớp đúng loạt 30/7; S1 và S16 lệch vì loạt cũ chạy
+  bản DXF **có cáp** — 55 trường hợp tải thay vì 45. Không ảnh hưởng phép A/B:
+  hai biến thể dùng chung một DXF.)
+- `tests/test_regression.py::test_mct_version_block` khoá hai chiều trên cả
+  single lẫn twin box: tắt thì không có khối nào; bật thì đúng ba dòng, đứng
+  trước `*UNIT`, và bỏ ba dòng đó ra phải còn lại y hệt bản mặc định.
+- **VuPQ chốt (2026-08-21): V1 giữ mặc định TẮT, bật ở v1.5 cùng thẻ Kiểm chéo
+  NX.** Rủi ro kỹ thuật đã bằng không, nhưng V1 phát hành đúng file đã đi trọn
+  chu trình QA của nhánh `feature/v1-release-qa`; V1 vốn là bản cho Civil 2022,
+  chưa có thẻ NX nên chưa cần khối này. Ai cần NX ngay thì dùng `--nx`.
+  **Đừng bật mặc định trong v1.4.1** — đây là quyết định đã cân nhắc, không
+  phải việc còn bỏ ngỏ.
 
 ### Kiểm chéo bằng MIDAS CIVIL NX API (v1.4.1)
 `src/midas_nx.py` + `tools/nx_crosscheck.py`. Chi tiết: `docs/MIDAS-NX-API.md`.
@@ -513,13 +580,11 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 4. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
 
 **Sau V1 — hướng Midas NX** (VuPQ chốt thứ tự 2026-08-20):
-5. **Thêm khối `*VERSION` vào `mct_frame_writer`** — một dòng, và nó khép được
-   chuỗi DXF → MCT → NX **hoàn toàn bằng API**. Đã đo trên S16: `IMPORTMXT` +
-   `*VERSION 9.1.0` nạp đủ 66 nút, giải xong cho 7.656 bản ghi trùng khít đường
-   mở `.mcb` (tải cơ bản 0,0100 kN·m · bao 1,10%). **Nhưng nó đổi mọi file MCT**
-   nên phải chạy lại 6/6 mặt cắt trên Civil 2022 để chắc bản 2022 vẫn đọc được
-   (file MCT tham chiếu của chính dự án có `*VERSION 9.1.0`, nên nhiều khả năng
-   là được). Đây là việc của v1.5, không phải vá vào V1 đã tag.
+5. **Khối `*VERSION` — XONG, không còn việc gì cho V1.** `write_mct(...,
+   mct_version=...)` + `run.py generate --nx`; mặc định **TẮT**, VuPQ đã chốt
+   giữ vậy cho V1. Phép đo A/B trên Civil 2022 thật: **6/6 trùng khít, 44.940
+   bản ghi, Δ = 0,0000**. Việc còn lại của **v1.5**: bật mặc định (một dòng)
+   cùng lúc với thẻ Kiểm chéo NX. Xem mục *Phương ngữ MCT*.
 6. **Thẻ Kiểm chéo NX trong app** — chặng 1: nhận `.mcb` đã có, giải lại bằng
    NX, hiện bảng đạt/hỏng. Lõi đã xong ở `tools/nx_crosscheck.py`.
 7. **Plugin NX** — chặng 2, sau khi có phương ngữ MCT.
@@ -535,6 +600,7 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-08-21: **Phương ngữ MCT — đo xong, hoá ra chỉ cần MỘT file.** VuPQ đề xuất sinh hai bản MCT (2022 / NX) theo lẽ "bản cao đọc được bản thấp". Lẽ đúng, nhưng bằng chứng bác chính phương án hai file: `9.1.0` là tag **chính Civil 2022 ghi ra khi export** (`output/TP_BL_test/S1/S1.mct` nằm cạnh `S1.mcb` + `S1.CA*` cùng lượt giải), tức ta ghi tag **thấp** và NX đọc xuống — hai file sẽ khác nhau đúng 0 dòng. Cài thành tham số `mct_version` mặc định TẮT, rồi **chạy A/B 12 lượt trên Civil 2022 thật**: 6/6 trùng khít, 44.940 bản ghi, `ΔMy = ΔVz = 0,0000`. VuPQ chốt V1 vẫn để TẮT, bật ở v1.5. Vá 3 lỗi lộ ra dọc đường: `nargs='?'` nuốt mất DXF đầu tiên · Midas **cắt tiêu đề cửa sổ ở 159 ký tự** làm driver từ chối chính sản phẩm của nó (hỏng dây chuyền cả loạt 6 mặt cắt) · NX và Civil 2022 **dùng chung lớp cửa sổ** nên driver đếm 2 rồi từ chối, mà nếu chỉ NX mở thì bám nhầm vào NX. `pytest` 113/113.
 - 2026-08-20: **Cảnh báo hoạt tải lên giao diện · dọn mã chết · kiểm chéo bằng Midas NX API.** VuPQ chốt không sửa template hộ mà báo rõ để người dùng tự sửa → khối *Dải tương đương* ở dock Properties, tra được bất cứ lúc nào. Dọn 13 chỗ mã chết (khối `__main__` hỏng của `material_reader`, khối "API công khai" viết hai lần trong `results_tab`, `PT_LAYER_RE` chặt hơn quy tắc thật…) — **MCT trùng khít từng byte cho cả 15 mặt cắt**. Xoá `tests/_check_web_logic.py` (script in ra màn hình, kỳ vọng đã lạc hậu) thay bằng bất biến bề dày bụng. **Dò xong API của MIDAS CIVIL NX** và kiểm chéo 4/4 đạt trên ~35.000 bản ghi; truy ra lệch 133% của S1_V2 là `mv2` — tải làn có sáu dòng `VL, lane` chồng nhau, chỗ đã biết từ trước. Bump **v1.4.1**.
 - 2026-07-30: **Sửa vách giữa mặt cắt hai hộp** — `center_top` nội suy tại tim thay vì tìm đỉnh có sẵn (mặt cầu dốc một chiều không có đỉnh nào ở tim), đỉnh vách giữa đọc từ đỉnh mặt void thay vì `deck − gap_width` (trừ kích thước ngang vào cao độ). SLT lần đầu chạy được trên Midas; S1_V2 mất một phần tử dày 8 mm; sáu mặt cắt một hộp trùng khít từng byte. Thêm `_kiem_hinh_hoc()` + SLT vào `CASES`. **Chạy loạt 6/6 đạt.**
 - 2026-07-30: **Tự động hoá Midas Civil 2022** — Giai đoạn 0 (`tools/midas_probe.py`, `docs/MIDAS-AUTOMATION.md`, `tools/midas_map.json`) → Giai đoạn 2 (`src/midas_driver.py`, chạy loạt, cách li lỗi từng mặt cắt). Xuất Beam Force **trùng md5 với bản làm tay**. Bỏ hết phím thật ở bước tick trường hợp tải sau khi khối phím lạc đóng Midas của VuPQ hai lần. Xem mục *Chạy Midas tự động*.

@@ -48,6 +48,18 @@ import time
 from ctypes import wintypes
 
 LOP_CHINH = 'MidasGenMainFrmClass'
+# MIDAS CIVIL NX 2026 dùng CHUNG lớp cửa sổ với Civil 2022, nên đếm theo lớp là
+# đếm cả hai. Phân biệt bằng hậu tố tên ứng dụng ở cuối tiêu đề:
+#     'Civil 2022 - [Untitled] - [MIDAS/Civil]'
+#     'MIDAS CIVIL NX 2026 - [S16_tu_mct] - [MIDAS CIVIL NX]'
+# Driver này lái Civil 2022 qua GUI; NX đi đường REST ở `src/midas_nx.py` và
+# **không được** lái bằng bản đồ điều khiển của bản 2022.
+# Phân biệt bằng phần ĐẦU tiêu đề, không phải phần đuôi: Midas **cắt tiêu đề ở
+# 159 ký tự**, nên tài liệu có đường dẫn dài thì mất cả `]` đóng lẫn hậu tố tên
+# ứng dụng. Đo trên máy VuPQ: tiêu đề dài đúng 159, kết thúc giữa chừng ở
+# `…base\S1`. Lọc theo hậu tố là hễ đường dẫn dài thì không nhận ra cửa sổ
+# Civil nào cả — mà phần đầu thì không bao giờ bị cắt.
+SW_RESTORE = 9
 DAU_NHAC = '>>'
 # Mốc "đã giải xong" trong file .OUT.
 #
@@ -200,27 +212,71 @@ class MidasSession:
         self.log = print
 
     # ── vòng đời ──
+    @staticmethod
+    def _chon_civil(cua_so):
+        """Lọc lấy đúng cửa sổ Civil 2022 trong danh sách [(hwnd, tiêu đề)].
+
+        Tách khỏi `attach()` để kiểm được mà không cần Midas thật.
+
+        Từ khi NX vào quy trình, "có 2 cửa sổ Midas" là chuyện **bình thường**,
+        không phải sai sót của người dùng — bản cũ bắt đóng bớt một cái là bắt
+        nhầm. Mà lọc ở đây còn CHẶT hơn: driver này mang bản đồ điều khiển của
+        Civil 2022, lái nhầm sang NX thì mọi toạ độ menu đều sai.
+        """
+        def la_civil(t):
+            dau = t.split(' - [', 1)[0].strip().lower()
+            # 'Civil 2022' · 'midas Civil 2023' → nhận; 'MIDAS CIVIL NX 2026' → loại.
+            return 'civil' in dau and 'nx' not in dau.split()
+
+        civil = [(h, t) for h, t in cua_so if la_civil(t)]
+        if civil:
+            return civil
+        return []
+
     @classmethod
-    def attach(cls) -> 'MidasSession':
-        """Bám vào phiên Midas đang mở. Không tự mở app."""
+    def attach(cls, khoi_phuc=False) -> 'MidasSession':
+        """Bám vào phiên Civil 2022 đang mở. Không tự mở app.
+
+        `khoi_phuc=True` cho phép bung cửa sổ đang thu nhỏ. Mặc định **không**:
+        cửa sổ thu nhỏ thường nghĩa là người dùng đang làm việc khác, và tự bung
+        lên là giành màn hình của họ. Chỉ bật khi người dùng vừa yêu cầu chạy.
+        """
         chinh = []
 
         def _t(h, _l):
             if u32.IsWindowVisible(h) and _lop(h) == LOP_CHINH:
-                chinh.append(h)
+                chinh.append((h, _doc(h) or ''))
             return True
 
         u32.EnumWindows(_EnumProc(_t), 0)
         if not chinh:
             raise MidasError('Không thấy Midas Civil 2022 nào đang mở. '
                              'Hãy mở Midas rồi chạy lại.')
-        if len(chinh) > 1:
-            raise MidasError(f'Có {len(chinh)} cửa sổ Midas đang mở — đóng bớt '
-                             f'để khỏi lái nhầm phiên.')
-        h = chinh[0]
+
+        civil = cls._chon_civil(chinh)
+        if not civil:
+            ten = ' · '.join(t or f'hwnd {h}' for h, t in chinh)
+            raise MidasError(
+                f'Có {len(chinh)} cửa sổ Midas nhưng không cái nào là Civil 2022: '
+                f'{ten}. Driver này lái bản 2022; NX đi qua src/midas_nx.py.')
+        if len(civil) > 1:
+            ten = ' · '.join(t for _, t in civil)
+            raise MidasError(f'Có {len(civil)} cửa sổ Civil 2022 đang mở ({ten}) '
+                             f'— đóng bớt để khỏi lái nhầm phiên.')
+        h = civil[0][0]
+
         if u32.IsIconic(h):
-            raise MidasError('Cửa sổ Midas đang thu nhỏ. Lúc đó mọi toạ độ đều '
-                             'là −32000 nên không lái được — khôi phục rồi chạy lại.')
+            if not khoi_phuc:
+                raise MidasError('Cửa sổ Midas đang thu nhỏ. Lúc đó mọi toạ độ đều '
+                                 'là −32000 nên không lái được — khôi phục rồi chạy lại.')
+            u32.ShowWindow(h, SW_RESTORE)
+            for _ in range(20):
+                if not u32.IsIconic(h):
+                    break
+                time.sleep(0.1)
+            if u32.IsIconic(h):
+                raise MidasError('Không bung được cửa sổ Midas đang thu nhỏ '
+                                 '(ShowWindow không ăn) — khôi phục tay rồi chạy lại.')
         if not _ranh(h, 2000):
             raise MidasError('Midas đang bận (không phản hồi trong 2 s) — đợi rồi chạy lại.')
 
@@ -1061,14 +1117,28 @@ def _la_tai_lieu_cua_driver(tieu_de: str, cua_minh=()) -> bool:
        thì đằng nào file đó cũng bị ghi đè ở bước `analyze()`, nên mở lại nó không
        làm mất thêm gì.
     """
-    m = re.search(r'\[([A-Za-z]:\\[^\]]+)\]', tieu_de)
+    # `]` đóng là TUỲ CHỌN: Midas cắt tiêu đề ở 159 ký tự, nên tài liệu có đường
+    # dẫn dài cho ra tiêu đề cụt — không `]`, không hậu tố ứng dụng, và bản thân
+    # đường dẫn cũng bị cắt giữa chừng. Bản cũ đòi `]` nên trả False, tức driver
+    # **từ chối chính sản phẩm của nó**; đã làm hỏng cả loạt 6 mặt cắt: S1 để lại
+    # tài liệu, 5 mặt cắt sau đều trượt cổng an toàn với câu "hãy lưu rồi File ›
+    # New" — trong khi thứ đang mở là file driver vừa ghi ra một phút trước.
+    m = re.search(r'\[([A-Za-z]:\\[^\]]*)', tieu_de)
     if not m:
         return False
+    cut = ']' not in tieu_de[m.start():]
     try:
-        p = _chuan(m.group(1))
+        p = _chuan(m.group(1).rstrip())
         # Tiêu đề Midas không mang đuôi file; `cua_minh` là các đường dẫn `.mcb`.
-        if any(p == _chuan(os.path.splitext(q)[0]) for q in cua_minh):
-            return True
+        for q in cua_minh:
+            goc = _chuan(os.path.splitext(q)[0])
+            if p == goc:
+                return True
+            # Tiêu đề cụt thì so được tới đâu hay tới đó. Chỉ nới cho trường hợp
+            # ĐÃ BIẾT là bị cắt — tiêu đề đầy đủ vẫn phải trùng đúng, để không
+            # nhận nhầm mô hình người dùng đặt ở thư mục cha của hộp cát.
+            if cut and goc.startswith(p + os.sep):
+                return True
         tam = _chuan(tempfile.gettempdir())
         return os.path.commonpath([p, tam]) == tam
     except (ValueError, OSError):
