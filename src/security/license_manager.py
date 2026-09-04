@@ -36,6 +36,15 @@ LICENSE_FILENAME = 'mtb.runtime'
 LICENSE_FILE_ENV = 'MTB_LICENSE_FILE'
 SCHEMA = 1
 
+#: Hạn của giấy phép vĩnh viễn. Không dùng "không có hạn" vì mọi phép so ngày
+#: trong mã sẽ phải có nhánh riêng; một mốc rất xa thì cả hệ thống không đổi
+#: một dòng nào.
+PERMANENT_EXPIRY = '2099-12-31'
+
+#: Số tháng bày ra cho người dùng chọn. None = vĩnh viễn.
+TERM_CHOICES = [(3, '3 tháng'), (6, '6 tháng'), (12, '12 tháng'),
+                (None, 'Vĩnh viễn')]
+
 #: Hạn mặc định khi cấp: 6 tháng. Hạn ngắn là đòn bẩy chặn mạnh nhất mà không
 #: cần hạ tầng, và mỗi lần gia hạn là một lần đếm được ai còn dùng thật.
 DEFAULT_TERM_DAYS = 183
@@ -119,6 +128,32 @@ def normalize_features(features: Iterable[str] | None) -> tuple[str, ...]:
 
 def default_expiry(days: int = DEFAULT_TERM_DAYS, today: date | None = None) -> str:
     return ((today or date.today()) + timedelta(days=days)).strftime('%Y-%m-%d')
+
+
+def add_months(start: date, months: int) -> date:
+    """Cộng THÁNG theo lịch, không phải theo 30 ngày.
+
+    Người dùng chọn "6 tháng" thì hạn phải rơi đúng ngày ấy sáu tháng sau, chứ
+    không phải 180 ngày sau — hai trị lệch nhau tới 3 ngày và người ta sẽ đếm.
+    Ngày 31 rơi vào tháng ngắn thì lùi về ngày cuối tháng.
+    """
+    thang = start.month - 1 + months
+    nam = start.year + thang // 12
+    thang = thang % 12 + 1
+    ngay_cuoi = [31, 29 if (nam % 4 == 0 and nam % 100 != 0) or nam % 400 == 0 else 28,
+                 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][thang - 1]
+    return date(nam, thang, min(start.day, ngay_cuoi))
+
+
+def expiry_after_months(months: int | None, today: date | None = None) -> str:
+    """Hạn sau N tháng; `months=None` nghĩa là VĨNH VIỄN."""
+    if months is None:
+        return PERMANENT_EXPIRY
+    return add_months(today or date.today(), int(months)).strftime('%Y-%m-%d')
+
+
+def is_permanent(expires_at: str) -> bool:
+    return str(expires_at).strip() == PERMANENT_EXPIRY
 
 
 # ── phía máy khách: đọc và kiểm ───────────────────────────────────────────
@@ -233,7 +268,9 @@ def get_license_status(token: str | None = None, *, feature: str | None = None,
             if not path.exists():
                 continue
             candidate = path.read_text(encoding='utf-8').strip()
-        except OSError:
+        # Xem chú thích ở `paths.read_first`: file giấy phép không phải UTF-8
+        # thì phải bỏ qua như mọi file hỏng khác, không được ném ra ngoài.
+        except (OSError, ValueError):
             continue
         st = inspect_license_token(candidate, feature=feature,
                                    machine_id=machine_id, now=now)
@@ -271,7 +308,7 @@ def remove_license() -> list[Path]:
 # ── phía máy khách: file yêu cầu cấp phép ─────────────────────────────────
 
 def build_request(user_name: str = '', email: str = '', company: str = '',
-                  note: str = '', requested_days: int = DEFAULT_TERM_DAYS,
+                  note: str = '', requested_months: int | None = 6,
                   app_version: str = '') -> dict:
     """Nội dung file .mtbreq gửi cho người cấp.
 
@@ -288,7 +325,9 @@ def build_request(user_name: str = '', email: str = '', company: str = '',
         'email': str(email).strip(),
         'company': str(company).strip(),
         'note': str(note).strip(),
-        'requested_expires_at': default_expiry(requested_days),
+        'requested_expires_at': expiry_after_months(requested_months),
+        'requested_term': ('vĩnh viễn' if requested_months is None
+                           else f'{requested_months} tháng'),
         'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'app_version': str(app_version or os.environ.get('MTB_APP_VERSION', '')),
     }

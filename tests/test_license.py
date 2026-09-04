@@ -20,6 +20,7 @@ thật hay sổ dùng thử thật của máy đang chạy test.
 
 import json
 import os
+import pathlib
 import sys
 from datetime import date, timedelta
 
@@ -338,6 +339,75 @@ def test_cua_dev_khong_lot_vao_ban_dong_goi(sandbox, monkeypatch):
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
     assert not guard.dev_bypass_active()
     monkeypatch.delattr(sys, 'frozen', raising=False)
+
+
+def test_file_du_lieu_hong_khong_lam_app_chet(sandbox, key):
+    """`get_runtime_state()` phải KHÔNG BAO GIỜ ném — kể cả khi file rác.
+
+    Docstring của nó ghi "Không bao giờ ném — dùng để hiển thị", nhưng hai chỗ
+    đọc file chỉ bọc `except OSError`. `UnicodeDecodeError` là `ValueError`,
+    nên một `mtb.runtime` hoặc `blocklist.cache` ghi dở giữa chừng là đủ để
+    ngoại lệ xuyên qua cổng và giết `run_gui._gate` ngay dòng đầu: app không
+    mở được nữa, không có lối chữa nào trong giao diện.
+    """
+    rac = bytes(range(256))          # chac chan khong phai UTF-8 hop le
+
+    for ten in ('mtb.runtime', 'blocklist.cache', 'checkpoint.json',
+                'trial.runtime', 'usage.json'):
+        (sandbox / ten).write_bytes(rac)
+
+    # Bat bien DUY NHAT o day la KHONG NEM. Ket luan ready/khong ready thi tuy
+    # trang thai dung thu — giay phep hong ma lui ve dung thu la dung, khong
+    # phai loi. Truoc ban va, chinh dong duoi day nem UnicodeDecodeError.
+    for feature in (None, 'mct', 'check'):
+        state = guard.get_runtime_state(feature)
+        assert isinstance(state.message, str) and state.message
+        assert isinstance(state.ready, bool)
+
+    # Va cong that su cung khong duoc nem.
+    try:
+        guard.require_app_ready('mct')
+    except guard.RuntimeGateError:
+        pass                          # tu choi thi duoc, nem kieu khac thi khong
+
+    # Truong hop NGUY HIEM THAT: giay phep TOT, nhung ban sao danh sach chan
+    # va moc dong bo hong. Giay phep hong thi cong dung som va khong bao gio
+    # doc toi hai file kia — nen neu chi thu voi giay phep hong thi
+    # `paths.read_first` khong he duoc cham toi, va bai test thanh vo nghia.
+    token, _info = make(key, checkpoint=str(sandbox / 'diemhen'))
+    lm.save_license(token)
+    for ten in ('blocklist.cache', 'checkpoint.json'):
+        (sandbox / ten).write_bytes(rac)
+
+    for feature in (None, 'mct'):
+        state = guard.get_runtime_state(feature)
+        assert isinstance(state.message, str) and state.message
+    assert guard.get_runtime_state().ready is True   # chan hong != bi chan
+
+
+def test_diem_hen_khong_doi_huong_duoc_o_ban_dong_goi(sandbox, monkeypatch):
+    """`MTB_CHECKPOINT` chỉ được có tác dụng khi chạy từ mã nguồn.
+
+    Nếu không thì máy bị thu hồi tự gỡ chặn bằng đúng hai bước: trỏ biến sang
+    một thư mục rỗng, chạy một lần để nhánh "không có danh sách chặn" xoá bản
+    sao cục bộ, thế là thoát vĩnh viễn. Cùng lẽ với cửa dev.
+    """
+    class Info:
+        checkpoint = str(sandbox / 'diemhen-da-ky')
+
+    ngoai = sandbox / 'diemhen'          # sandbox da dat MTB_CHECKPOINT vao day
+
+    # Chay tu ma nguon: bien moi truong thang, dung de dev khoi ky lai.
+    assert checkpoint.resolve(Info()) == ngoai
+
+    # Ban dong goi: bien bi bo qua, chi duong dan DA KY moi tinh.
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    try:
+        assert checkpoint.resolve(Info()) == pathlib.Path(Info.checkpoint)
+        # Khong co giay phep thi khong co diem hen nao ca — khong lui ve bien.
+        assert checkpoint.resolve(None) is None
+    finally:
+        monkeypatch.delattr(sys, 'frozen', raising=False)
 
 
 def test_ma_may_chuan_hoa_giong_nhau(sandbox):

@@ -75,6 +75,11 @@ def read_first(paths: list[Path]) -> tuple[str | None, Path | None]:
         try:
             if path.exists():
                 return path.read_text(encoding='utf-8'), path
-        except OSError:
+        # `UnicodeDecodeError` là `ValueError`, không phải `OSError`. Một file
+        # ghi dở giữa chừng, đĩa lỗi, hay người dùng chép nhầm là đủ để ngoại
+        # lệ xuyên qua `guard.get_runtime_state()` — hàm mà tài liệu ghi rõ
+        # "không bao giờ ném" — rồi giết `run_gui._gate` ngay dòng đầu. App
+        # không mở được nữa và không có lối chữa nào trong giao diện.
+        except (OSError, ValueError):
             continue
     return None, None

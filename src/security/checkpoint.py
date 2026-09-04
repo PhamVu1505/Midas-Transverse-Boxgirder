@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -68,9 +69,18 @@ class BlockDecision:
 def resolve(license_info=None) -> Path | None:
     """Thư mục điểm hẹn, hoặc None nếu không cấu hình.
 
-    Biến môi trường thắng — để dev và test khỏi phải ký lại giấy phép.
+    Biến môi trường thắng, **nhưng chỉ khi chạy từ mã nguồn** — để dev và test
+    khỏi phải ký lại giấy phép.
+
+    Bản đóng gói bỏ qua biến này. Nếu không thì bất kỳ máy nào bị thu hồi cũng
+    tự gỡ chặn được bằng đúng hai bước: trỏ `MTB_CHECKPOINT` sang một thư mục
+    rỗng, chạy một lần để nhánh "không có danh sách chặn" xoá bản sao cục bộ,
+    thế là thoát vĩnh viễn. Cùng lẽ với `guard.dev_bypass_active()`: cửa dành
+    cho người phát triển không được đi theo ra bản phát hành.
     """
-    raw = os.environ.get(CHECKPOINT_ENV, '').strip()
+    raw = ''
+    if not getattr(sys, 'frozen', False):
+        raw = os.environ.get(CHECKPOINT_ENV, '').strip()
     if not raw and license_info is not None:
         raw = str(getattr(license_info, 'checkpoint', '') or '').strip()
     return Path(raw) if raw else None

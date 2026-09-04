@@ -353,9 +353,16 @@ class LicenseRegistry:
     def record_machine(self, payload: dict, *, source: str = 'nhịp tim') -> None:
         """Gộp một nhịp tim hoặc một báo cáo sử dụng vào sổ.
 
-        Lấy mốc **muộn nhất** cho last_seen và **sớm nhất** cho first_seen: hai
-        nguồn (điểm hẹn và file gửi tay) có thể cùng nói về một máy, và không
-        nguồn nào được phép làm mất lịch sử của nguồn kia.
+        Ba luật gộp, cả ba đều để **sổ không bao giờ mất lịch sử**:
+
+        * `first_seen` lấy mốc **sớm nhất**, `last_seen` lấy mốc **muộn nhất** —
+          hai nguồn (thư mục đồng bộ và tệp gửi tay) có thể cùng nói về một máy.
+        * Các con số đếm lấy **giá trị lớn hơn** từng khoá một. Chúng chỉ tăng
+          theo bản chất, nên số nhỏ hơn nghĩa là bản ghi phía máy khách đã bị
+          xoá hoặc dựng lại — sổ giữ con số đã biết, không hạ xuống theo.
+        * Thấy số **giảm** thì đánh dấu máy đó là có can thiệp, để còn nhìn ra.
+          Không có luật này thì chỉ cần xoá `usage.json` một lần là toàn bộ
+          lịch sử đã thu về bị ghi đè bằng số 0 ở lần đồng bộ kế tiếp.
         """
         machine_id = normalize_machine_id(str(payload.get('machine_id', '')))
         if not machine_id:
@@ -363,6 +370,9 @@ class LicenseRegistry:
         counters = payload.get('counters') or {}
         if not isinstance(counters, dict):
             counters = {}
+        counters = {k: int(v) for k, v in counters.items()
+                    if isinstance(v, (int, float))}
+        bi_can_thiep = bool(payload.get('usage_tampered') or payload.get('tampered'))
         with self._connect() as con:
             old = con.execute('SELECT * FROM machines WHERE machine_id=?',
                               (machine_id,)).fetchone()
@@ -373,7 +383,17 @@ class LicenseRegistry:
                     first_seen = old['first_seen']
                 if old['last_seen'] and old['last_seen'] > last_seen:
                     last_seen = old['last_seen']
-                    counters = json.loads(old['counters_json'] or '{}') or counters
+                try:
+                    cu = json.loads(old['counters_json'] or '{}')
+                except ValueError:
+                    cu = {}
+                for khoa, tri in cu.items():
+                    if not isinstance(tri, (int, float)):
+                        continue
+                    if int(tri) > counters.get(khoa, 0):
+                        bi_can_thiep = bi_can_thiep or khoa in counters
+                        counters[khoa] = int(tri)
+                bi_can_thiep = bi_can_thiep or bool(old['tampered'])
             con.execute("""
                 INSERT OR REPLACE INTO machines (
                     machine_id, machine_label, customer, license_id, expires_at,
@@ -383,7 +403,7 @@ class LicenseRegistry:
                       str(payload.get('customer', '')), str(payload.get('license_id', '')),
                       str(payload.get('expires_at', '')), str(payload.get('app_version', '')),
                       first_seen, last_seen, json.dumps(counters), source,
-                      1 if payload.get('usage_tampered') or payload.get('tampered') else 0))
+                      1 if bi_can_thiep else 0))
 
     def import_heartbeats(self, root: str | Path) -> int:
         from src.security.checkpoint import read_heartbeats

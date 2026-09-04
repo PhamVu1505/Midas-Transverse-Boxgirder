@@ -450,36 +450,25 @@ GIẤY PHÉP VÀ DÙNG THỬ
 Máy mới cài được dùng thử 7 ngày, đầy đủ tính năng — đủ đi hết một vòng DXF →
 MCT → Midas → kiểm toán. Hết 7 ngày thì phải kích hoạt.
 
-Xin cấp giấy phép
+Đăng ký rồi kích hoạt
 
-Bước 1 — Mở hộp thoại Trợ giúp → Giấy phép, hoặc Ctrl+Shift+L.
+Bước 1 — Mở hộp thoại Trợ giúp → Giấy phép, hoặc Ctrl+Shift+L. Ba thẻ đi từ
+trái sang phải đúng thứ tự phải làm.
 
-Bước 2 — Điền thông tin Thẻ Xin cấp giấy phép: họ tên, đơn vị, email. Bấm Lưu
-file yêu cầu… để ra file .mtbreq.
+Bước 2 — Đăng ký Thẻ ① Đăng ký giấy phép: điền họ tên, đơn vị, chọn Thời hạn
+đăng ký (3 · 6 · 12 tháng hoặc vĩnh viễn), bấm Lưu tệp đăng ký… rồi gửi tệp
+.mtbreq cho người cấp.
 
-Bước 3 — Gửi đi Gửi file đó cho người cấp giấy phép. Trong file chỉ có mã máy
-và thông tin bạn vừa điền, không có gì khác.
+Bước 3 — Kích hoạt Nhận mã về: thẻ ② Kích hoạt → dán mã vào ô (hoặc Nhập từ
+tệp… nếu nhận được tệp .mtblic) → Kiểm tra → Kích hoạt.
 
-Bước 4 — Kích hoạt Nhận lại file .mtblic: thẻ Kích hoạt → Mở file .mtblic… →
-Kiểm tra → Kích hoạt.
-
-LƯU Ý: Giấy phép ràng theo mã máy. Đổi máy là phải xin giấy phép mới — mã máy
-  có sẵn ở thẻ Trạng thái, bấm Chép rồi gửi đi.
+LƯU Ý: Giấy phép ràng theo mã máy. Đổi máy là phải đăng ký lại — mã máy nằm ở
+  thẻ ① Đăng ký giấy phép, bấm Chép rồi gửi đi.
 
 Còn bao nhiêu ngày
 
 Góc dưới bên phải cửa sổ luôn ghi trạng thái: còn N ngày khi đã kích hoạt,
 đang dùng thử, hay chưa kích hoạt. Rê chuột lên đó để xem đầy đủ.
-
-Phần mềm ghi lại những gì
-
-Thẻ Sử dụng cho xem đúng những gì đang được ghi: số lần mở, số file MCT đã
-sinh, số lần chạy Midas, số lần xuất kiểm toán, mốc đầu và mốc cuối.
-
-Không ghi tên bản vẽ, đường dẫn, hay bất kỳ số liệu tính toán nào.
-
-Khi gia hạn, người cấp có thể xin file thống kê: bấm Xuất báo cáo sử dụng… rồi
-gửi file .mtbusage.
 
 Giấy phép bị chối
 

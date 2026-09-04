@@ -7,7 +7,7 @@ Bốn thẻ, đi đúng theo trình tự công việc:
     Yêu cầu     nạp file .mtbreq khách gửi → cấp giấy phép .mtblic
     Giấy phép   ai đang giữ giấy phép nào, còn bao nhiêu ngày, thu hồi ở đâu
     Máy đang dùng  ai thật sự đang chạy phần mềm, lần cuối khi nào, làm bao nhiêu
-    Điểm hẹn    công bố danh sách chặn, nạp nhịp tim
+    Thư mục đồng bộ  công bố danh sách chặn, nạp nhịp tim
 
 KHÔNG BAO GIỜ gửi công cụ này — hay thư mục secrets/ — cho người dùng cuối. Nó
 ký được giấy phép, tức ai có nó thì tự cấp cho mình được.
@@ -86,7 +86,7 @@ class AdminWindow(QMainWindow):
         self.tabs.addTab(self._tab_requests(), 'Yêu cầu')
         self.tabs.addTab(self._tab_licenses(), 'Giấy phép')
         self.tabs.addTab(self._tab_machines(), 'Máy đang dùng')
-        self.tabs.addTab(self._tab_checkpoint(), 'Điểm hẹn')
+        self.tabs.addTab(self._tab_checkpoint(), 'Thư mục đồng bộ')
         lay.addWidget(self.tabs, 1)
 
         self.refresh()
@@ -127,14 +127,14 @@ class AdminWindow(QMainWindow):
         self.de_expiry.setDisplayFormat('yyyy-MM-dd')
         self.de_expiry.setDate(QDate.currentDate().addDays(lm.DEFAULT_TERM_DAYS))
         self.ed_checkpoint = QLineEdit()
-        self.ed_checkpoint.setPlaceholderText(r'\\máy-chủ\chia-se\mtb  (để trống nếu không theo dõi)')
+        self.ed_checkpoint.setPlaceholderText('Để trống nếu không cần theo dõi và thu hồi từ xa')
 
         form.addRow('Mã máy:', self.ed_machine)
         form.addRow('Người dùng:', self.ed_customer)
         form.addRow('Đơn vị:', self.ed_company)
         form.addRow('Email:', self.ed_email)
         form.addRow('Hết hạn:', self.de_expiry)
-        form.addRow('Điểm hẹn:', self.ed_checkpoint)
+        form.addRow('Thư mục đồng bộ:', self.ed_checkpoint)
         form.addRow('Ghi chú:', self.ed_note)
 
         self.ck_features = {}
@@ -157,13 +157,16 @@ class AdminWindow(QMainWindow):
         b_issue.clicked.connect(self._issue)
         form.addRow(b_issue)
 
+        # Cộng theo THÁNG chứ không theo 30 ngày: khách chọn 6 tháng thì hạn
+        # phải rơi đúng ngày ấy sáu tháng sau. Vĩnh viễn = mốc rất xa, không
+        # phải một nhánh riêng trong mã.
         quick = QHBoxLayout()
-        for days, label in ((90, '3 tháng'), (183, '6 tháng'), (365, '1 năm')):
+        for months, label in lm.TERM_CHOICES:
             b = QPushButton(label)
-            b.clicked.connect(lambda _=False, d=days: self.de_expiry.setDate(
-                QDate.currentDate().addDays(d)))
+            b.clicked.connect(lambda _=False, m=months: self.de_expiry.setDate(
+                QDate.fromString(lm.expiry_after_months(m), 'yyyy-MM-dd')))
             quick.addWidget(b)
-        form.addRow('Hạn nhanh:', self._wrap(quick))
+        form.addRow('Thời hạn:', self._wrap(quick))
 
         lay.addWidget(box, 2)
         return page
@@ -315,7 +318,7 @@ class AdminWindow(QMainWindow):
         QMessageBox.information(
             self, 'Đã ghi vào sổ',
             'Đã đánh dấu thu hồi.\n\nMáy đó CHƯA bị chặn cho tới khi bạn sang '
-            'thẻ "Điểm hẹn" và bấm Công bố danh sách chặn.')
+            'thẻ "Thư mục đồng bộ" và bấm Công bố danh sách chặn.')
 
     def _unrevoke(self) -> None:
         row = self._current_license()
@@ -354,7 +357,7 @@ class AdminWindow(QMainWindow):
         lay = QVBoxLayout(page)
 
         bar = QHBoxLayout()
-        for label, slot in (('Nạp nhịp tim từ điểm hẹn', self._pull_heartbeats),
+        for label, slot in (('Nạp nhịp tim từ thư mục đồng bộ', self._pull_heartbeats),
                             ('Nạp file .mtbusage…', self._import_usage),
                             ('Chặn máy này…', self._block_machine),
                             ('Bỏ chặn', self._unblock_machine),
@@ -377,8 +380,8 @@ class AdminWindow(QMainWindow):
     def _pull_heartbeats(self) -> None:
         root = self.ed_cp.text().strip()
         if not root:
-            QMessageBox.information(self, 'Chưa có điểm hẹn',
-                                    'Điền thư mục điểm hẹn ở thẻ "Điểm hẹn".')
+            QMessageBox.information(self, 'Chưa có thư mục đồng bộ',
+                                    'Điền thư mục ở thẻ "Thư mục đồng bộ".')
             return
         try:
             n = self.reg.import_heartbeats(root)
@@ -436,7 +439,7 @@ class AdminWindow(QMainWindow):
         lay = QVBoxLayout(page)
 
         row = QHBoxLayout()
-        row.addWidget(QLabel('Thư mục điểm hẹn:'))
+        row.addWidget(QLabel('Thư mục đồng bộ:'))
         self.ed_cp = QLineEdit(os.environ.get('MTB_CHECKPOINT', ''))
         row.addWidget(self.ed_cp, 1)
         b_pick = QPushButton('Chọn…')
@@ -445,10 +448,14 @@ class AdminWindow(QMainWindow):
         lay.addLayout(row)
 
         note = QLabel(
-            'Đây là thư mục dùng chung giữa bạn và người dùng: ổ mạng nội bộ, '
-            'OneDrive/Google Drive đồng bộ, đều được.\n'
-            'Đường dẫn này phải được ghi vào giấy phép lúc cấp (ô "Điểm hẹn" ở '
-            'thẻ Yêu cầu) thì máy khách mới biết đường tìm.')
+            'Thư mục dùng chung giữa bạn và người dùng: ổ mạng nội bộ, OneDrive '
+            'hay Google Drive đồng bộ, đều được.\n\n'
+            'Máy người dùng lặng lẽ thả vào đây một tệp nhỏ báo còn đang chạy, và '
+            'đọc ngược về danh sách máy bị thu hồi. Người dùng không thấy và không '
+            'chọn được: đường dẫn do bạn điền lúc cấp (ô "Thư mục đồng bộ" ở thẻ '
+            'Yêu cầu) và nằm trong phần đã ký của giấy phép.\n\n'
+            'ĐỂ TRỐNG CŨNG ĐƯỢC — phần mềm vẫn chạy bình thường, chỉ mất phần theo '
+            'dõi từ xa và chặn nhanh; vẫn cắt được bằng cách không gia hạn.')
         note.setWordWrap(True)
         lay.addWidget(note)
 
@@ -456,7 +463,7 @@ class AdminWindow(QMainWindow):
         b_pub = QPushButton('Công bố danh sách chặn')
         b_pub.clicked.connect(self._publish)
         bar.addWidget(b_pub)
-        b_clear = QPushButton('Xoá danh sách chặn khỏi điểm hẹn')
+        b_clear = QPushButton('Xoá danh sách chặn khỏi thư mục đồng bộ')
         b_clear.clicked.connect(self._clear_blocklist)
         bar.addWidget(b_clear)
         bar.addStretch(1)
@@ -470,7 +477,7 @@ class AdminWindow(QMainWindow):
         return page
 
     def _pick_checkpoint(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, 'Chọn thư mục điểm hẹn',
+        path = QFileDialog.getExistingDirectory(self, 'Chọn thư mục đồng bộ',
                                                 self.ed_cp.text())
         if path:
             self.ed_cp.setText(path)
@@ -479,7 +486,7 @@ class AdminWindow(QMainWindow):
     def _publish(self) -> None:
         root = self.ed_cp.text().strip()
         if not root:
-            QMessageBox.information(self, 'Chưa có điểm hẹn', 'Chọn thư mục trước.')
+            QMessageBox.information(self, 'Chưa có thư mục đồng bộ', 'Chọn thư mục trước.')
             return
         entries = self.reg.blocklist_entries()
         try:
@@ -492,17 +499,17 @@ class AdminWindow(QMainWindow):
         QMessageBox.information(
             self, 'Đã công bố',
             f'{target}\n\n{len(entries)} mục chặn.\n\nMáy khách nhận được ở lần '
-            'chạy sau, khi nó đồng bộ điểm hẹn.')
+            'chạy sau, khi nó đồng bộ với thư mục này.')
 
     def _clear_blocklist(self) -> None:
         root = self.ed_cp.text().strip()
         target = Path(root) / checkpoint.BLOCKLIST_NAME if root else None
         if not target or not target.exists():
-            QMessageBox.information(self, 'Không có gì để xoá', 'Điểm hẹn chưa có '
+            QMessageBox.information(self, 'Không có gì để xoá', 'Thư mục đồng bộ chưa có '
                                                                 'danh sách chặn.')
             return
         if QMessageBox.question(self, 'Xoá danh sách chặn',
-                                'Xoá file danh sách chặn khỏi điểm hẹn?\n'
+                                'Xoá file danh sách chặn khỏi thư mục đồng bộ?\n'
                                 'Mọi máy đang bị chặn sẽ chạy lại được sau lần '
                                 'đồng bộ tới.') == QMessageBox.StandardButton.Yes:
             target.unlink()
@@ -564,13 +571,13 @@ class AdminWindow(QMainWindow):
         lines = []
         if root:
             target = Path(root) / checkpoint.BLOCKLIST_NAME
-            lines.append(f'Danh sách chặn ở điểm hẹn: '
+            lines.append(f'Danh sách chặn ở thư mục đồng bộ: '
                          + (str(target) if target.exists() else 'chưa công bố'))
             beat_dir = Path(root) / checkpoint.HEARTBEAT_DIR
             n = len(list(beat_dir.glob('*.json'))) if beat_dir.exists() else 0
-            lines.append(f'Nhịp tim ở điểm hẹn: {n} máy')
+            lines.append(f'Nhịp tim ở thư mục đồng bộ: {n} máy')
         else:
-            lines.append('Chưa chọn thư mục điểm hẹn.')
+            lines.append('Chưa chọn thư mục đồng bộ.')
         if hasattr(self, 'lb_cp'):
             self.lb_cp.setText('\n'.join(lines))
 

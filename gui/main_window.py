@@ -461,7 +461,7 @@ class MainWindow(QMainWindow):
         self.panel.section_selected.connect(self._on_section_selected)
         self.panel.layer_toggled.connect(self.viewer.view.set_layer)
         self.panel.settings_changed.connect(self._on_project_changed)
-        self.panel.generate_requested.connect(self.gen_tab.generate)
+        self.panel.generate_requested.connect(self._generate_requested)
         self.panel.project_changed.connect(self._on_project_changed)
         self.viewer.view.node_hovered.connect(self.props.show_node)
         self.props.sup_editor.set_view(self.viewer.view)
@@ -850,6 +850,18 @@ class MainWindow(QMainWindow):
         if not self.require_license('mct'):
             return
         names = self.panel.selected_names()
+        self.gen_tab.generate(names or None)
+
+    def _generate_requested(self, names):
+        """Lối chuột phải trong cây mặt cắt — PHẢI qua cổng như F5.
+
+        Trước đây tín hiệu này nối thẳng vào `gen_tab.generate`, nên bấm chuột
+        phải một mặt cắt rồi chọn *Tạo MCT* là sinh được file với giấy phép đã
+        hết hạn hoặc đã bị thu hồi. Đúng thứ docstring của `require_license`
+        cảnh báo: đặt cổng ở một chỗ rồi tin là đủ thì lối chuột phải sẽ lọt.
+        """
+        if not self.require_license('mct'):
+            return
         self.gen_tab.generate(names or None)
 
     def clear_log(self):

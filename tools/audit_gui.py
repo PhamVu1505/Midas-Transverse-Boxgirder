@@ -50,6 +50,10 @@ CAM = [
     ('thoát', 'đóng chương trình'),
     ('midas/civil', 'chiếm chuột và bàn phím của người dùng'),
     ('xóa danh sách', 'xoá thiết lập thật của người dùng'),
+    # Mục giữ chỗ trong menu "Project gần đây" khi danh sách rỗng. Nó vốn phải
+    # bị khoá, nên đừng để nó nằm mãi ở cột XEM LẠI — một dòng cần-xem-lại giả
+    # sẽ làm người ta thôi đọc cả cột đó.
+    ('(trống)', 'chỗ giữ chỗ khi chưa có project gần đây — khoá là đúng'),
 ]
 
 
@@ -213,12 +217,16 @@ def soat(app, w, chi_tiet=False) -> list:
         if not m['noi_day']:
             kq['ket'] = 'HỎNG'
             kq['vi_sao'] = 'không nối tay xử lý — bấm không có tác dụng'
+        elif cam:
+            # Xét "cấm bấm" TRƯỚC "đang bị khoá": mục đã biết là cố ý khoá
+            # (Chạy Midas khi tắt tuỳ chọn, mục giữ chỗ của menu project gần
+            # đây) mà nằm ở cột XEM LẠI thì cột ấy lúc nào cũng có dòng, và
+            # một cột lúc nào cũng có dòng là cột không ai đọc.
+            kq['ket'] = 'BỎ QUA'
+            kq['vi_sao'] = cam + ('' if m['bat'] else ' · đang khoá')
         elif not m['bat']:
             kq['ket'] = 'XEM LẠI'
             kq['vi_sao'] = 'đang bị khoá'
-        elif cam:
-            kq['ket'] = 'BỎ QUA'
-            kq['vi_sao'] = cam
         else:
             try:
                 m['bam']()

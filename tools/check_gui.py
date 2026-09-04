@@ -511,6 +511,124 @@ def kiem_cong_giay_phep_chan_dung_cho(c):
     return 'hợp lệ thì qua · bị chặn thì dừng và mở hộp thoại'
 
 
+def kiem_moi_loi_vao_tao_mct_deu_qua_cong(c):
+    """MỌI đường tới việc sinh MCT phải qua cổng, không riêng F5.
+
+    Lỗi đã xảy ra thật: `generate_requested` của cây mặt cắt nối THẲNG vào
+    `gen_tab.generate`, nên bấm chuột phải một mặt cắt rồi chọn *Tạo MCT* là
+    sinh được file với giấy phép đã hết hạn hoặc đã bị thu hồi — trong khi F5
+    ngay cạnh đó thì bị chặn đúng. Docstring của `require_license` đã cảnh báo
+    trước: đặt cổng ở một chỗ rồi tin là đủ thì lối chuột phải sẽ lọt.
+    """
+    import PyQt6.QtWidgets as QtW
+    from src.security import guard
+
+    w = c.w
+    ten = c.single or c.twin
+    goc_warning = QtW.QMessageBox.warning
+    goc_open = w.open_license
+    goc_preflight = w.gen_tab.preflight
+    goc_state = guard.get_runtime_state
+    da_goi = []
+
+    class BiChan:
+        ready = False
+        message = 'Giấy phép đã bị thu hồi.\nLý do: kiểm thử'
+        source = guard.SOURCE_LICENSE
+        block = None
+        license = None
+        trial = None
+        path = ''
+        def headline(self):
+            return 'Chưa kích hoạt'
+
+    try:
+        QtW.QMessageBox.warning = staticmethod(lambda *a, **k: None)
+        w.open_license = lambda: None
+
+        # Do o CHO BAT DAU LAM VIEC THAT, khong o cho nhan tin hieu. Neu thay
+        # `gen_tab.generate` bang ham gia thi phep kiem chi do duoc CACH NOI
+        # day: mot ket noi Qt toi bound method da chup ham that luc connect,
+        # nen ham gia khong bao gio duoc goi va phep kiem hong vi ly do khac.
+        # `preflight` thi ca hai loi noi deu goi toi, va goi qua `self` nen
+        # thay duoc luc chay.
+        w.gen_tab.preflight = lambda *a, **k: (da_goi.append(a), False)[1]
+
+        # Cong dong: MOI loi vao deu phai dung truoc khi cham toi viec that
+        guard.get_runtime_state = lambda feature=None: BiChan()
+        try:
+            w.generate_all()
+            w.panel.generate_requested.emit([ten])
+            c.step()
+            assert not da_goi, (
+                'bị chặn mà việc sinh MCT VẪN khởi động — có lối vào không '
+                'qua cổng (F5 hoặc chuột phải trong cây)')
+        finally:
+            guard.get_runtime_state = goc_state
+
+        # Cong mo: ca hai loi vao phai chay binh thuong, khong bi chan oan
+        da_goi.clear()
+        w.generate_all()
+        c.step()
+        assert da_goi, 'cổng mở mà F5 lại không chạy'
+
+        da_goi.clear()
+        w.panel.generate_requested.emit([ten])
+        c.step()
+        assert da_goi, 'cổng mở mà lối chuột phải lại không chạy'
+    finally:
+        QtW.QMessageBox.warning = goc_warning
+        w.open_license = goc_open
+        w.gen_tab.preflight = goc_preflight
+        guard.get_runtime_state = goc_state
+    return 'F5 và lối chuột phải đều qua cổng · mở thì cả hai chạy'
+
+
+def kiem_chon_nham_tep_khong_giet_app(c):
+    """Chọn nhầm một tệp không phải văn bản thì báo lỗi, KHÔNG được abort.
+
+    Bộ lọc của hộp *Nhập từ tệp…* có mục "Tất cả (*.*)", nên chọn nhầm PDF hay
+    DOCX là chuyện thường. `UnicodeDecodeError` là `ValueError` chứ không phải
+    `OSError`; bắt hụt nó thì PyQt6 không có excepthook và **cả tiến trình bị
+    abort** — mà người dùng chưa kích hoạt đang kẹt đúng ở màn hình này, tức
+    họ mất luôn đường vào phần mềm.
+    """
+    import os
+    import tempfile
+    import PyQt6.QtWidgets as QtW
+    from gui.license_dialog import LicenseDialog
+
+    goc_warning = QtW.QMessageBox.warning
+    goc_getopen = QtW.QFileDialog.getOpenFileName
+    da_bao = []
+    tam = os.path.join(tempfile.gettempdir(), 'mtb_tep_nhi_phan.bin')
+    with open(tam, 'wb') as f:
+        f.write(bytes(range(256)))          # chắc chắn không phải UTF-8
+
+    dlg = LicenseDialog(c.w)
+    try:
+        QtW.QMessageBox.warning = staticmethod(
+            lambda *a, **k: da_bao.append(a[2] if len(a) > 2 else ''))
+        QtW.QFileDialog.getOpenFileName = staticmethod(
+            lambda *a, **k: (tam, ''))
+
+        dlg._import_license_file()          # trước bản vá: abort cả tiến trình
+        c.step()
+
+        assert da_bao, 'chọn nhầm tệp nhị phân mà không báo gì'
+        assert dlg.ed_key.text().strip() == '', (
+            'tệp rác lại được đổ vào ô mã giấy phép')
+    finally:
+        QtW.QMessageBox.warning = goc_warning
+        QtW.QFileDialog.getOpenFileName = goc_getopen
+        dlg.deleteLater()
+        try:
+            os.remove(tam)
+        except OSError:
+            pass
+    return 'tệp nhị phân → báo lỗi, app còn sống, ô mã vẫn trống'
+
+
 def kiem_nhan_giay_phep_doi_mau_theo_bang_mau(c):
     """Nhãn giấy phép ở thanh trạng thái phải lấy màu từ token.
 
@@ -572,6 +690,8 @@ CHECKS = [
     kiem_huy_hieu_nhat_ky,
     kiem_mui_ten_o_xoay_va_o_xo,
     kiem_cong_giay_phep_chan_dung_cho,
+    kiem_moi_loi_vao_tao_mct_deu_qua_cong,
+    kiem_chon_nham_tep_khong_giet_app,
     kiem_nhan_giay_phep_doi_mau_theo_bang_mau,
     kiem_o_chuot_phai_khong_noi_doi,
 ]

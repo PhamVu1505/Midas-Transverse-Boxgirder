@@ -58,7 +58,7 @@ def _gate(app, prefs, parent=None) -> bool:
 
 
 def _parse_args(argv: list[str]) -> dict:
-    out = {'mct': [], 'register': False, 'unregister': False}
+    out = {'mct': [], 'register': False, 'unregister': False, 'usage': ''}
     i = 0
     while i < len(argv):
         arg = argv[i]
@@ -68,7 +68,14 @@ def _parse_args(argv: list[str]) -> dict:
                 out['mct'].append(argv[i])
                 i += 1
             continue
-        if arg in ('--dang-ky-chuot-phai', '--register-shell'):
+        if arg in ('--xuat-su-dung', '--export-usage'):
+            # Đường lấy số liệu cho máy KHÔNG nối được thư mục đồng bộ. Không
+            # có nút trên giao diện: người dùng không cần biết, người cấp phép
+            # chỉ việc bảo họ chạy một dòng lệnh khi gia hạn.
+            i += 1
+            if i < len(argv):
+                out['usage'] = argv[i]
+        elif arg in ('--dang-ky-chuot-phai', '--register-shell'):
             out['register'] = True
         elif arg in ('--go-chuot-phai', '--unregister-shell'):
             out['unregister'] = True
@@ -90,6 +97,11 @@ def _expand_targets(targets: list[str]) -> list[str]:
 
 
 def main():
+    # Console Windows mac dinh cp1252 -> moi print co dau se nem
+    # UnicodeEncodeError va giet tien trinh. Phai goi TRUOC moi print.
+    from src.console import enable_utf8
+    enable_utf8()
+
     args = _parse_args(sys.argv[1:])
 
     if args['register'] or args['unregister']:
@@ -99,6 +111,15 @@ def main():
             print('Đã gỡ mục chuột phải.')
         else:
             print('Đã đăng ký:', shell_integration.register())
+        return
+
+    if args['usage']:
+        # KHÔNG nhập lại `guard` ở đây: nhập trong hàm biến nó thành biến cục
+        # bộ cho CẢ hàm, và mọi chỗ dùng `guard` phía dưới sẽ ném
+        # UnboundLocalError — đúng lỗi đã làm app không mở được một lượt.
+        out = usage_log.export_report(args['usage'],
+                                      guard.get_runtime_state().license)
+        print('Đã xuất số liệu sử dụng:', out)
         return
 
     app = QApplication(sys.argv)

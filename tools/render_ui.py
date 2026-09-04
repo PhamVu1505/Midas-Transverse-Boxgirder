@@ -137,16 +137,51 @@ def demo_rebars(points):
 # Cửa sổ
 # ─────────────────────────────────────────────────────────────
 
+def _hop_cat():
+    """Thư mục tạm dùng chung cho cả ba công cụ giao diện."""
+    import tempfile
+    sandbox = os.path.join(tempfile.gettempdir(), 'mtb-cong-cu-giao-dien')
+    os.makedirs(sandbox, exist_ok=True)
+    return sandbox
+
+
 def _cach_li_du_lieu_giay_phep():
     """Dồn giấy phép/dùng thử/nhật ký của công cụ vào một thư mục tạm."""
-    import tempfile
     from src.security.paths import DATA_DIR_ENV
     if os.environ.get(DATA_DIR_ENV):
         return
-    sandbox = os.path.join(tempfile.gettempdir(), 'mtb-cong-cu-giao-dien')
-    os.makedirs(sandbox, exist_ok=True)
-    os.environ[DATA_DIR_ENV] = sandbox
+    os.environ[DATA_DIR_ENV] = _hop_cat()
     os.environ.setdefault('MTB_CHECKPOINT', '')
+
+
+_lan_dung_cua_so = 0
+
+
+def _cach_li_qsettings():
+    """Dựng cửa sổ từ thiết lập TRẮNG, không đọc thiết lập của người dùng.
+
+    Không có phép cách li này thì công cụ nhìn thấy một cửa sổ khác hẳn cửa sổ
+    mặc định: MainWindow._restore_settings() khôi phục layout đã lưu, nên nếu
+    người dùng vừa đóng dock Project và dock Properties thì MỌI nút trong hai
+    dock đó biến mất khỏi bộ soát — tools/audit_gui.py tụt từ 62 xuống 42 điều
+    khiển mà không có gì hỏng, và ảnh chụp thì ra một bố cục không ai thiết kế.
+    Chuyện này đã xảy ra thật: chạy thử app một lượt là ba công cụ dev nói sai
+    từ đó trở đi. Vô hiệu Prefs.save (đã có từ trước) chỉ chặn chiều GHI.
+
+    Mỗi lượt dựng dùng một FILE INI KHÁC, không phải xoá rồi dùng lại: Qt giữ
+    cache trong bộ nhớ theo đường dẫn, nên xoá file trên đĩa xong thì cửa sổ
+    thứ hai vẫn đọc lại đúng layout mà cửa sổ thứ nhất vừa lưu — đo được:
+    bảng màu Sáng 62 điều khiển, bảng màu Tối còn 41.
+    """
+    global _lan_dung_cua_so
+    from PyQt6.QtCore import QSettings
+    from gui import main_window as MW
+
+    _lan_dung_cua_so += 1
+    ini = os.path.join(_hop_cat(), f'giao-dien-{_lan_dung_cua_so}.ini')
+    if os.path.exists(ini):
+        os.remove(ini)
+    MW.QSettings = lambda *_a, **_k: QSettings(ini, QSettings.Format.IniFormat)
 
 
 def build_window(sections, theme_key):
@@ -164,6 +199,7 @@ def build_window(sections, theme_key):
     # chạy công cụ lại đốt một ngày dùng thử của chính máy đang phát triển, và
     # tệ hơn: ghi đè mốc "lần chạy gần nhất" của người dùng thật.
     _cach_li_du_lieu_giay_phep()
+    _cach_li_qsettings()
 
     w = MainWindow()
     w.prefs.theme = theme_key

@@ -426,30 +426,24 @@ nhất khi khởi động và việc tự chọn mặt cắt vừa thêm.</p>
 <p>Máy mới cài được <b>dùng thử 7 ngày</b>, đầy đủ tính năng — đủ đi hết một
 vòng DXF → MCT → Midas → kiểm toán. Hết 7 ngày thì phải kích hoạt.</p>
 
-<h3 style="color:{ink}">Xin cấp giấy phép</h3>
-{step(1, 'Mở hộp thoại', 'Trợ giúp → <b>Giấy phép</b>, hoặc <code>Ctrl+Shift+L</code>.')}
-{step(2, 'Điền thông tin', 'Thẻ <b>Xin cấp giấy phép</b>: họ tên, đơn vị, email. '
-        'Bấm <b>Lưu file yêu cầu…</b> để ra file <code>.mtbreq</code>.')}
-{step(3, 'Gửi đi', 'Gửi file đó cho người cấp giấy phép. Trong file chỉ có mã máy '
-        'và thông tin bạn vừa điền, không có gì khác.')}
-{step(4, 'Kích hoạt', 'Nhận lại file <code>.mtblic</code>: thẻ <b>Kích hoạt</b> → '
-        '<b>Mở file .mtblic…</b> → <b>Kiểm tra</b> → <b>Kích hoạt</b>.')}
+<h3 style="color:{ink}">Đăng ký rồi kích hoạt</h3>
+{step(1, 'Mở hộp thoại', 'Trợ giúp → <b>Giấy phép</b>, hoặc <code>Ctrl+Shift+L</code>. '
+        'Ba thẻ đi từ trái sang phải đúng thứ tự phải làm.')}
+{step(2, 'Đăng ký', 'Thẻ <b>① Đăng ký giấy phép</b>: điền họ tên, đơn vị, chọn '
+        '<b>Thời hạn đăng ký</b> (3 · 6 · 12 tháng hoặc vĩnh viễn), bấm '
+        '<b>Lưu tệp đăng ký…</b> rồi gửi tệp <code>.mtbreq</code> cho người cấp.')}
+{step(3, 'Kích hoạt', 'Nhận mã về: thẻ <b>② Kích hoạt</b> → dán mã vào ô (hoặc '
+        '<b>Nhập từ tệp…</b> nếu nhận được tệp <code>.mtblic</code>) → '
+        '<b>Kiểm tra</b> → <b>Kích hoạt</b>.')}
 
-{note('Giấy phép ràng theo <b>mã máy</b>. Đổi máy là phải xin giấy phép mới — '
-      'mã máy có sẵn ở thẻ Trạng thái, bấm <b>Chép</b> rồi gửi đi.')}
+{note('Giấy phép ràng theo <b>mã máy</b>. Đổi máy là phải đăng ký lại — mã máy '
+      'nằm ở thẻ <b>① Đăng ký giấy phép</b>, bấm <b>Chép</b> rồi gửi đi.')}
 
 <h3 style="color:{ink}">Còn bao nhiêu ngày</h3>
 <p>Góc dưới bên phải cửa sổ luôn ghi trạng thái: <span style="color:{ok}">còn N
 ngày</span> khi đã kích hoạt, <span style="color:{warn}">đang dùng thử</span>,
 hay <span style="color:{t["err"]}">chưa kích hoạt</span>. Rê chuột lên đó để
 xem đầy đủ.</p>
-
-<h3 style="color:{ink}">Phần mềm ghi lại những gì</h3>
-<p>Thẻ <b>Sử dụng</b> cho xem đúng những gì đang được ghi: số lần mở, số file
-MCT đã sinh, số lần chạy Midas, số lần xuất kiểm toán, mốc đầu và mốc cuối.</p>
-<p><b>Không</b> ghi tên bản vẽ, đường dẫn, hay bất kỳ số liệu tính toán nào.</p>
-<p>Khi gia hạn, người cấp có thể xin file thống kê: bấm <b>Xuất báo cáo sử
-dụng…</b> rồi gửi file <code>.mtbusage</code>.</p>
 
 <h3 style="color:{ink}">Giấy phép bị chối</h3>
 <table cellpadding="6" cellspacing="0" width="100%">
