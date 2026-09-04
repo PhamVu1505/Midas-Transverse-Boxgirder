@@ -465,6 +465,18 @@ tệp… nếu nhận được tệp .mtblic) → Kiểm tra → Kích hoạt.
 LƯU Ý: Giấy phép ràng theo mã máy. Đổi máy là phải đăng ký lại — mã máy nằm ở
   thẻ ① Đăng ký giấy phép, bấm Chép rồi gửi đi.
 
+Phần mềm ghi lại những gì
+
+Thẻ Trạng thái trong hộp thoại Giấy phép cho xem đúng những gì đang được ghi:
+số lần mở, số file MCT đã sinh, số lần chạy Midas, số lần xuất kiểm toán, mốc
+đầu và mốc cuối. Những con số đó được gửi kèm mã máy về cho người cấp giấy
+phép.
+
+Không ghi tên bản vẽ, đường dẫn, hay bất kỳ số liệu tính toán nào.
+
+Khi gia hạn, người cấp có thể xin file thống kê: run_gui.py --xuat-su-dung
+<đường dẫn>.
+
 Còn bao nhiêu ngày
 
 Góc dưới bên phải cửa sổ luôn ghi trạng thái: còn N ngày khi đã kích hoạt,

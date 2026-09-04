@@ -370,8 +370,11 @@ class LicenseRegistry:
         counters = payload.get('counters') or {}
         if not isinstance(counters, dict):
             counters = {}
+        # `NaN` la JSON hop le voi nhieu bo ghi, ma `int(nan)` nem ValueError.
+        # Mot nhip tim hong khong duoc lam do ca luot `import_heartbeats`.
         counters = {k: int(v) for k, v in counters.items()
-                    if isinstance(v, (int, float))}
+                    if isinstance(v, (int, float)) and v == v
+                    and float('-inf') < v < float('inf')}
         bi_can_thiep = bool(payload.get('usage_tampered') or payload.get('tampered'))
         with self._connect() as con:
             old = con.execute('SELECT * FROM machines WHERE machine_id=?',
@@ -388,20 +391,37 @@ class LicenseRegistry:
                 except ValueError:
                     cu = {}
                 for khoa, tri in cu.items():
-                    if not isinstance(tri, (int, float)):
-                        continue
+                    if not isinstance(tri, (int, float)) or tri != tri:
+                        continue                      # bo qua ca NaN
                     if int(tri) > counters.get(khoa, 0):
-                        bi_can_thiep = bi_can_thiep or khoa in counters
+                        # So dem chi tang theo ban chat. Nho di la co can
+                        # thiep — KE CA khi khoa bien mat han khoi nhip tim,
+                        # vi xoa `usage.json` cho ra dung dau vet do. Ban dau
+                        # con `and khoa in counters` nen nhanh bien mat lot
+                        # luoi, va chi bi bat nho `sessions` luon >= 1.
+                        bi_can_thiep = True
                         counters[khoa] = int(tri)
                 bi_can_thiep = bi_can_thiep or bool(old['tampered'])
+            def giu(khoa: str) -> str:
+                """Tri moi neu co, khong thi giu tri cu.
+
+                `INSERT OR REPLACE` ghi de ca hang. May da go giay phep roi van
+                tha nhip tim tiep se gui ve chuoi rong, va bon cot danh tinh bi
+                XOA TRANG — dung nhung may can truy nhat. Cac con so da co luat
+                "chi tang"; bon cot nay can luat "khong tu mat".
+                """
+                moi = str(payload.get(khoa, '') or '')
+                if moi:
+                    return moi
+                return str(old[khoa] or '') if old else ''
+
             con.execute("""
                 INSERT OR REPLACE INTO machines (
                     machine_id, machine_label, customer, license_id, expires_at,
                     app_version, first_seen, last_seen, counters_json, source, tampered)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                """, (machine_id, str(payload.get('machine_label', '')),
-                      str(payload.get('customer', '')), str(payload.get('license_id', '')),
-                      str(payload.get('expires_at', '')), str(payload.get('app_version', '')),
+                """, (machine_id, giu('machine_label'), giu('customer'),
+                      giu('license_id'), giu('expires_at'), giu('app_version'),
                       first_seen, last_seen, json.dumps(counters), source,
                       1 if bi_can_thiep else 0))
 

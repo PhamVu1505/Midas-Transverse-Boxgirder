@@ -629,6 +629,90 @@ def kiem_chon_nham_tep_khong_giet_app(c):
     return 'tệp nhị phân → báo lỗi, app còn sống, ô mã vẫn trống'
 
 
+def kiem_f6_xuat_bang_kiem_toan_qua_cong(c):
+    """F6 ghi ra bảng kiểm toán, nên phải qua cổng tính năng 'check'.
+
+    Lỗi đã xảy ra thật: `run.py` gác lệnh tương đương bằng `_gate('check')`,
+    còn F6 trong giao diện thì không gác gì. Một giấy phép chỉ mua 'mct' vẫn
+    xuất được `<tên>_check.txt` và `<tên>_check.xlsx`, chỉ cần bấm F6 thay vì
+    mở thẻ Kiểm toán ngay cạnh — mà thẻ đó thì gác đúng.
+    """
+    import PyQt6.QtWidgets as QtW
+    from src.security import guard
+
+    w = c.w
+    goc_warning = QtW.QMessageBox.warning
+    goc_open = w.open_license
+    goc_process = w.res_tab.process
+    goc_state = guard.get_runtime_state
+    da_chay = []
+
+    class ThieuTinhNang:
+        ready = False
+        message = 'Giấy phép này không có tính năng: Kiểm toán tiết diện'
+        source = guard.SOURCE_LICENSE
+        block = None
+        license = None
+        trial = None
+        path = ''
+        def headline(self):
+            return 'Thiếu tính năng'
+
+    try:
+        QtW.QMessageBox.warning = staticmethod(lambda *a, **k: None)
+        w.open_license = lambda: None
+        w.res_tab.process = lambda *a, **k: da_chay.append(1)
+
+        guard.get_runtime_state = lambda feature=None: (
+            ThieuTinhNang() if feature == 'check' else goc_state(feature))
+        try:
+            w.process_results()
+            c.step()
+            assert not da_chay, (
+                "thiếu tính năng 'check' mà F6 VẪN xuất bảng kiểm toán")
+        finally:
+            guard.get_runtime_state = goc_state
+
+        da_chay.clear()
+        w.process_results()
+        c.step()
+        assert da_chay, 'có quyền mà F6 lại không chạy'
+    finally:
+        QtW.QMessageBox.warning = goc_warning
+        w.open_license = goc_open
+        w.res_tab.process = goc_process
+        guard.get_runtime_state = goc_state
+    return "thiếu tính năng thì F6 dừng · có quyền thì chạy"
+
+
+def kiem_noi_ro_dang_ghi_lai_nhung_gi(c):
+    """Người dùng phải xem được ĐÚNG những gì đang bị ghi và gửi đi.
+
+    Phần mềm thả nhịp tim mang mã máy và các con số đếm về cho người cấp phép.
+    Đợt gọn giao diện đã bỏ thẻ *Sử dụng* và bỏ luôn phần công bố, khiến
+    `usage_log.summary_lines()` thành mã chết và người dùng không còn đường nào
+    xem — giấu đi thì đó là theo dõi lén.
+    """
+    from gui.license_dialog import LicenseDialog
+    from src.security import usage_log
+
+    dlg = LicenseDialog(c.w)
+    try:
+        c.step()
+        chu = dlg.lb_su_dung.text()
+        assert chu.strip(), 'thẻ Trạng thái không nói gì về số liệu đang ghi'
+        assert 'mã máy' in chu, 'không nói rằng mã máy được gửi kèm'
+        assert 'Không ghi tên bản vẽ' in chu, (
+            'không nói rõ thứ KHÔNG bị ghi — đó mới là điều người dùng lo')
+        # Phai lay tu nguon that, khong duoc viet lai thanh van: van xuoi se
+        # troi khoi thuc te, con con so thi khong.
+        for dong in usage_log.summary_lines():
+            assert dong in chu, f'thiếu dòng số liệu thật: {dong!r}'
+    finally:
+        dlg.deleteLater()
+    return 'thẻ Trạng thái công bố đúng số liệu đang được ghi'
+
+
 def kiem_nhan_giay_phep_doi_mau_theo_bang_mau(c):
     """Nhãn giấy phép ở thanh trạng thái phải lấy màu từ token.
 
@@ -692,6 +776,8 @@ CHECKS = [
     kiem_cong_giay_phep_chan_dung_cho,
     kiem_moi_loi_vao_tao_mct_deu_qua_cong,
     kiem_chon_nham_tep_khong_giet_app,
+    kiem_f6_xuat_bang_kiem_toan_qua_cong,
+    kiem_noi_ro_dang_ghi_lai_nhung_gi,
     kiem_nhan_giay_phep_doi_mau_theo_bang_mau,
     kiem_o_chuot_phai_khong_noi_doi,
 ]

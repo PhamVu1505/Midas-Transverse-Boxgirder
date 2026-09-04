@@ -36,7 +36,7 @@ from PyQt6.QtWidgets import (QComboBox, QDialog, QFileDialog, QFormLayout,
                              QHBoxLayout, QLabel, QLineEdit, QMessageBox,
                              QPushButton, QVBoxLayout, QWidget)
 
-from src.security import guard, license_manager as lm, trial
+from src.security import guard, license_manager as lm, trial, usage_log
 from src.security.hwid import get_machine_id, machine_label
 
 _OK, _WARN, _BAD = 'ok', 'warn', 'bad'
@@ -109,6 +109,16 @@ class LicenseDialog(QDialog):
         self.lb_huong_dan = QLabel()
         self.lb_huong_dan.setWordWrap(True)
         lay.addWidget(self.lb_huong_dan)
+
+        # Phần mềm có thả nhịp tim mang mã máy và các con số đếm về cho người
+        # cấp phép. Người dùng phải xem được ĐÚNG những gì đang bị ghi — giấu
+        # đi thì đó là theo dõi lén. Thẻ "Sử dụng" riêng đã bỏ để luồng ①②
+        # gọn lại, nên phần công bố về đây, ngay dưới trạng thái.
+        self.lb_su_dung = QLabel()
+        self.lb_su_dung.setWordWrap(True)
+        self.lb_su_dung.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        lay.addWidget(self.lb_su_dung)
 
         lay.addStretch(1)
         row = QHBoxLayout()
@@ -251,6 +261,16 @@ class LicenseDialog(QDialog):
                 'Để dùng tiếp: sang thẻ ① Đăng ký giấy phép, lưu tệp đăng ký và '
                 'gửi cho người cấp; nhận mã về thì nhập ở thẻ ② Kích hoạt.')
         self.lb_detail.setText('\n'.join(lines))
+
+        # Công bố đúng những gì đang được ghi và gửi đi. Lấy thẳng từ
+        # `usage_log.summary_lines()` chứ không viết lại thành văn: văn xuôi sẽ
+        # trôi khỏi thực tế, còn con số thì không.
+        self.lb_su_dung.setText(
+            'Phần mềm ghi lại số lần dùng, và gửi kèm mã máy về cho người cấp '
+            'giấy phép:\n  · '
+            + '\n  · '.join(usage_log.summary_lines())
+            + '\n\nKhông ghi tên bản vẽ, đường dẫn, hay bất kỳ số liệu tính '
+              'toán nào.')
         # Chưa có giấy phép thì không có gì để gỡ. Để nút mở thì bấm vào chỉ
         # nhận được một hộp thoại nói "không có file nào" — vô ích.
         self.b_remove.setEnabled(info is not None)

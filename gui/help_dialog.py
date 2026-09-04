@@ -439,6 +439,15 @@ vòng DXF → MCT → Midas → kiểm toán. Hết 7 ngày thì phải kích ho
 {note('Giấy phép ràng theo <b>mã máy</b>. Đổi máy là phải đăng ký lại — mã máy '
       'nằm ở thẻ <b>① Đăng ký giấy phép</b>, bấm <b>Chép</b> rồi gửi đi.')}
 
+<h3 style="color:{ink}">Phần mềm ghi lại những gì</h3>
+<p>Thẻ <b>Trạng thái</b> trong hộp thoại Giấy phép cho xem đúng những gì đang
+được ghi: số lần mở, số file MCT đã sinh, số lần chạy Midas, số lần xuất kiểm
+toán, mốc đầu và mốc cuối. Những con số đó được gửi kèm mã máy về cho người cấp
+giấy phép.</p>
+<p><b>Không</b> ghi tên bản vẽ, đường dẫn, hay bất kỳ số liệu tính toán nào.</p>
+<p>Khi gia hạn, người cấp có thể xin file thống kê:
+<code>run_gui.py --xuat-su-dung &lt;đường dẫn&gt;</code>.</p>
+
 <h3 style="color:{ink}">Còn bao nhiêu ngày</h3>
 <p>Góc dưới bên phải cửa sổ luôn ghi trạng thái: <span style="color:{ok}">còn N
 ngày</span> khi đã kích hoạt, <span style="color:{warn}">đang dùng thử</span>,

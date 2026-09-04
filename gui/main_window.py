@@ -992,6 +992,12 @@ class MainWindow(QMainWindow):
         self.res_tab._assign_bf_selected()
 
     def process_results(self):
+        # F6 ghi ra <ten>_check.txt va <ten>_check.xlsx — dung san pham ma
+        # `run.py` bat phai co tinh nang 'check'. Thieu cong o day thi mot
+        # giay phep chi mua 'mct' van xuat duoc bang kiem toan, chi can bam
+        # F6 thay vi mo the Kiem toan.
+        if not self.require_license('check'):
+            return
         self.tabbar.setCurrentIndex(3)
         self.res_tab.process()
 
