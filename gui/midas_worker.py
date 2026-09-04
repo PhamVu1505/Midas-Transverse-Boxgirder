@@ -41,6 +41,22 @@ class MidasWorker(QThread):
         # chính nó sinh ra nên nói ra, thay vì để driver phải đoán.
         self.cua_minh_them = list(cua_minh_them)
 
+    def xin_dung(self):
+        """Xin dừng tác vụ này.
+
+        Không dùng `requestInterruption()` một mình được: Qt bỏ qua nó khi
+        luồng CHƯA chạy, mà cơ chế dừng thì không nên phụ thuộc trạng thái
+        luồng — nhất là khi test gọi thẳng `run()`. Cờ riêng luôn đúng, cờ
+        Qt giữ lại cho các đường khác của Qt.
+        """
+        self._xin_dung = True
+        self.requestInterruption()
+
+    def _nen_dung(self) -> bool:
+        if getattr(self, "_xin_dung", False):
+            return True
+        return self.isInterruptionRequested()
+
     def run(self):
         try:
             from src.midas_driver import chay_nhieu_mat_cat
@@ -60,7 +76,8 @@ class MidasWorker(QThread):
             kq = chay_nhieu_mat_cat([j['mct'] for j in self.jobs],
                                     log=self.log.emit,
                                     on_xong=_xong, on_loi=_loi,
-                                    cua_minh_them=self.cua_minh_them)
+                                    cua_minh_them=self.cua_minh_them,
+                                    nen_dung=self.isInterruptionRequested)
         except Exception as e:
             # `attach()` ném khi không có Midas, có nhiều cửa sổ, hay tài liệu
             # chưa sạch — đó là thông điệp đã viết sẵn cho người dùng, đưa

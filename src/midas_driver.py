@@ -1200,7 +1200,7 @@ def chay_mot_mat_cat(mct: str, xls: str = None, mcb: str = None, log=print) -> d
 
 
 def chay_nhieu_mat_cat(danh_sach, log=print, on_xong=None, on_loi=None,
-                       cua_minh_them=()) -> dict:
+                       cua_minh_them=(), nen_dung=None) -> dict:
     """Chạy nhiều mặt cắt liên tiếp trên MỘT phiên Midas.
 
     **Một mặt cắt lỗi không được dừng cả loạt** — cùng lối với `GenerateWorker`
@@ -1239,6 +1239,19 @@ def chay_nhieu_mat_cat(danh_sach, log=print, on_xong=None, on_loi=None,
     with MidasSession.attach() as s:
         s.log = log
         for i, mct in enumerate(danh_sach, 1):
+            # Dừng theo yêu cầu chỉ được xét Ở ĐÂY, giữa hai mặt cắt.
+            #
+            # Cắt ngang một mặt cắt đang chạy là không được: lúc đó driver đang
+            # bấm thật vào ribbon Midas, và bỏ dở giữa chừng thì để lại hộp
+            # thoại mở, tài liệu nửa vời, hoặc tệ hơn là một phím lạc rơi vào
+            # khung nhìn mô hình. Mặt cắt mất 1–3 phút nên chờ hết một cái là
+            # chấp nhận được; đổi lại, phiên Midas của người dùng luôn ở trạng
+            # thái sạch khi ta buông tay.
+            if nen_dung is not None and nen_dung():
+                log(f'\n■ Dừng theo yêu cầu — đã xong {len(xong)}/'
+                    f'{len(danh_sach)} mặt cắt, không chạy tiếp.')
+                break
+
             ten = _duong_dan(mct)[0]
             log(f'\n── {i}/{len(danh_sach)}: {ten} ' + '─' * max(0, 44 - len(ten)))
             try:

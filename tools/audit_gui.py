@@ -54,6 +54,10 @@ CAM = [
     # bị khoá, nên đừng để nó nằm mãi ở cột XEM LẠI — một dòng cần-xem-lại giả
     # sẽ làm người ta thôi đọc cả cột đó.
     ('(trống)', 'chỗ giữ chỗ khi chưa có project gần đây — khoá là đúng'),
+    # Chỉ mở khi có tác vụ nền đang chạy. Trong lượt soát thì không có việc
+    # nào, nên khoá mới là đúng — để nó nằm ở cột XEM LẠI thì lại thành một
+    # dòng cần-xem-lại giả, đúng thứ ghi chú ngay trên đang cảnh báo.
+    ('dừng việc đang chạy', 'chỉ mở khi có tác vụ nền — khoá là đúng'),
 ]
 
 

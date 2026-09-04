@@ -222,3 +222,91 @@ def test_go_dung_thi_khong_keu(qt):
     CheckTab._on_input_edited(tab, o)
     assert not noi, f'gõ số hợp lệ mà vẫn kêu: {noi}'
     assert float(o.text()) == 16.0
+
+# ── B-10 ──────────────────────────────────────────────────────────────────
+
+def test_xin_dung_thi_generate_worker_dung_that(qt, tmp_path):
+    """Huỷ hợp tác: dừng GIỮA hai mặt cắt, không cắt ngang một mặt cắt."""
+    from gui.worker import GenerateWorker
+
+    dxf = _dxf_that()
+    jobs = [{'name': f'S{i}', 'dxf': dxf, 'excel': '', 'include_pt': True}
+            for i in range(6)]
+    w = GenerateWorker(jobs, str(tmp_path))
+
+    xong, nhat_ky = [], []
+    w.log.connect(nhat_ky.append)
+
+    # Xin dung ngay sau mat cat dau tien
+    def _sau_moi_mat_cat(name, info):
+        xong.append(name)
+        if len(xong) == 1:
+            w.xin_dung()
+
+    w.section_info.connect(_sau_moi_mat_cat)
+    w.run()
+
+    assert len(xong) == 1, (
+        f'xin dừng sau mặt cắt đầu mà vẫn chạy tiếp {len(xong)}/6 — '
+        f'không có chỗ nào đọc yêu cầu dừng')
+    assert any('dừng theo yêu cầu' in d.lower() for d in nhat_ky),         'dừng mà không nói ra, người dùng không biết vì sao nó ngừng'
+
+
+def test_khong_xin_dung_thi_chay_het(qt, tmp_path):
+    """Chiều ngược lại — thêm chốt dừng mà làm hỏng lượt chạy bình thường."""
+    from gui.worker import GenerateWorker
+
+    dxf = _dxf_that()
+    jobs = [{'name': f'S{i}', 'dxf': dxf, 'excel': '', 'include_pt': True}
+            for i in range(3)]
+    w = GenerateWorker(jobs, str(tmp_path))
+    xong = []
+    w.section_info.connect(lambda n, d: xong.append(n))
+    w.run()
+    assert len(xong) == 3, f'chỉ chạy {len(xong)}/3 dù không ai xin dừng'
+
+
+def test_driver_midas_chi_dung_giua_hai_mat_cat(qt):
+    """Không được cắt ngang: driver đang bấm thật vào ribbon Midas."""
+    import inspect
+    from src import midas_driver
+
+    than = inspect.getsource(midas_driver.chay_nhieu_mat_cat)
+    assert 'nen_dung' in than, 'không có móc để xin dừng loạt Midas'
+    i_kiem = than.index('nen_dung is not None and nen_dung()')
+    i_chay = than.index('_chay(s, mct)')
+    assert i_kiem < i_chay, (
+        'phép kiểm dừng phải nằm TRƯỚC khi bắt đầu một mặt cắt, không phải '
+        'giữa chừng')
+
+
+def test_dong_cua_so_khi_dang_chay_thi_hoi_va_xin_dung(qt):
+    import inspect
+    from gui.main_window import MainWindow
+
+    than = inspect.getsource(MainWindow.closeEvent)
+    assert '_worker_dang_chay' in than, (
+        'closeEvent không hề biết có tác vụ nào đang chạy — cửa sổ biến mất '
+        'trong khi worker ghi tiếp file xuống đĩa')
+    assert 'xin_dung()' in than, 'đóng cửa sổ mà không xin dừng'
+    i_hoi = than.index('_worker_dang_chay')
+    i_luu = than.index('_confirm_discard')
+    assert i_hoi < i_luu, (
+        'phải hỏi về việc đang chạy TRƯỚC câu hỏi lưu project: hai chuyện khác '
+        'nhau, và câu hỏi lưu file không nhắc gì tới tác vụ nền')
+
+
+def test_phim_tat_dung_khong_cuop_esc_cua_khung_xem(qt):
+    """`Esc` là phím bỏ chọn node của khung xem.
+
+    Phím tắt cấp cửa sổ được Qt xử lý TRƯỚC sự kiện phím của widget, nên gán
+    `Esc` cho mục Dừng sẽ lặng lẽ vô hiệu hoá Esc trong khung xem.
+    """
+    import inspect
+    from gui.main_window import MainWindow
+
+    than = inspect.getsource(MainWindow._build_menu)
+    i = than.index('self.a_stop')
+    doan = than[i:i + 400]
+    assert "'Esc'" not in doan, 'mục Dừng đang chiếm phím Esc của khung xem'
+    assert 'Shift+Esc' in doan

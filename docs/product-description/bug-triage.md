@@ -10,7 +10,7 @@ Mức nặng: **cao** = người dùng mất việc hoặc đọc ra kết quả
 | [B-08](#b-08) | Tạo lại MCT xong là mặt cắt tự nhận file nội lực của mô hình cũ | cao | soát tương tác | **ĐÃ SỬA** |
 | [B-09](#b-09) | Template trỏ vào file không còn ⇒ MCT rỗng ruột, trạng thái vẫn xanh | cao | soát tương tác | **ĐÃ SỬA** |
 | [B-03](#b-03) | Sửa gối không đánh dấu kết quả nội lực cũ là đã lạc hậu | cao | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
-| [B-10](#b-10) | Không huỷ được tác vụ nào đang chạy, và đóng cửa sổ cũng không dừng nó | vừa | soát tương tác | sửa |
+| [B-10](#b-10) | Không huỷ được tác vụ nào đang chạy, và đóng cửa sổ cũng không dừng nó | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-11](#b-11) | Nút *Xử lý tất cả* chết vĩnh viễn sau lần chạy đầu | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-12](#b-12) | *Chọn file Beam Force khác* ở hộp lệch phần tử không bao giờ chạy | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-13](#b-13) | Đổi mặt cắt giữa lúc tạo MCT: cây một đằng, khung xem và dock một nẻo | vừa | soát tương tác | sửa |
@@ -244,7 +244,7 @@ Với *Tạo MCT* hậu quả nhẹ vì nó rất nhanh (đo được: **6 mặt
 3. Đóng cửa sổ. Trả lời *Don't Save*. Cửa sổ đóng.
 4. Thư mục kết quả vẫn tiếp tục mọc thêm file.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy, hai bề mặt:
+**Trạng thái.** Đã kiểm chứng bằng cách chạy, hai bề mặt: **ĐÃ SỬA:** huỷ HỢP TÁC cho cả ba worker — `xin_dung()` đặt cờ riêng chứ không chỉ `requestInterruption()`, vì Qt bỏ qua cờ của nó khi luồng chưa chạy. Điểm dừng đặt GIỮA hai mặt cắt: với Midas thì cắt ngang là không được, driver đang bấm thật vào ribbon và bỏ dở sẽ để lại hộp thoại mở hay tài liệu nửa vời. Thêm mục *Dừng việc đang chạy* (Shift+Esc — KHÔNG dùng Esc vì phím tắt cấp cửa sổ sẽ cướp Esc-bỏ-chọn của khung xem). `closeEvent` nay hỏi riêng về việc đang chạy TRƯỚC câu hỏi lưu project, xin dừng rồi chờ có giới hạn. Khoá bởi `tests/test_tuong_tac.py`.
 
 | Bề mặt | Thao tác | Kết quả đo |
 | --- | --- | --- |

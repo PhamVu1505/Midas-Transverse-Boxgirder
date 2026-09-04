@@ -353,6 +353,13 @@ class MainWindow(QMainWindow):
         # lấy chuột — cả hai đều sai. `_sync_midas_action()` lo phần khoá/mở.
         self.a_midas = self._act('Chạy &Midas/Civil', self.run_midas, 'F8', 'run')
         m.addAction(self.a_midas)
+        # KHÔNG dùng `Esc`: phím tắt cấp cửa sổ được xử lý TRƯỚC sự kiện phím
+        # của widget, nên nó sẽ cướp mất Esc-bỏ-chọn-node của khung xem.
+        self.a_stop = self._act('&Dừng việc đang chạy', self.stop_running,
+                                'Shift+Esc', None,
+                                'Dừng tác vụ nền đang chạy sau mặt cắt hiện tại')
+        self.a_stop.setEnabled(False)
+        m.addAction(self.a_stop)
         m.addSeparator()
         m.addAction(self._act('&Xóa nhật ký', self.clear_log, 'Ctrl+L', 'clear'))
 
@@ -870,6 +877,43 @@ class MainWindow(QMainWindow):
     # ─────────────────────────────────────────
     # Bước ③ — chạy Midas/Civil
     # ─────────────────────────────────────────
+    def _worker_dang_chay(self):
+        """Worker nền đang chạy, kèm tên việc — hoặc (None, '').
+
+        Ba tác vụ nền nằm ở ba chỗ khác nhau (điều phối tạo MCT, thẻ Kết quả,
+        và cửa sổ chính cho Midas). Gom lại một chỗ để nút Dừng và `closeEvent`
+        không phải biết tác vụ nào đang chạy.
+        """
+        ung_vien = [
+            (getattr(self, 'midas_worker', None), 'Chạy Midas/Civil'),
+            (getattr(getattr(self, 'gen_tab', None), 'worker', None), 'Tạo MCT'),
+            (getattr(getattr(self, 'res_tab', None), 'worker', None),
+             'Xử lý Beam Force'),
+        ]
+        for w, ten in ung_vien:
+            if w is not None and w.isRunning():
+                return w, ten
+        return None, ''
+
+    def stop_running(self):
+        """Xin dừng tác vụ nền. Dừng sau mặt cắt hiện tại, không cắt ngang."""
+        w, ten = self._worker_dang_chay()
+        if w is None:
+            return
+        w.xin_dung()
+        self.log.warning(f'Đã xin dừng: {ten} — sẽ dừng sau mặt cắt đang chạy.')
+        self.status_bar.showMessage(f'Đang dừng {ten}…')
+        self._sync_stop_action()
+
+    def _sync_stop_action(self):
+        w, ten = self._worker_dang_chay()
+        a = getattr(self, 'a_stop', None)
+        if a is None:
+            return
+        a.setEnabled(w is not None and not w._nen_dung())
+        a.setToolTip(f'Dừng “{ten}” sau mặt cắt đang chạy' if w is not None
+                     else 'Không có việc nào đang chạy')
+
     def _sync_midas_action(self):
         """Khoá/mở mục chạy Midas theo tùy chọn, và đổi vai bước ③.
 
@@ -938,6 +982,7 @@ class MainWindow(QMainWindow):
         self.midas_worker.section_error.connect(self._on_midas_error)
         self.midas_worker.finished_all.connect(self._on_midas_finished)
         self.midas_worker.start()
+        self._sync_stop_action()
         self._sync_midas_action()
 
     def _confirm_midas(self, jobs) -> bool:
@@ -979,6 +1024,7 @@ class MainWindow(QMainWindow):
     def _on_midas_finished(self, ok, bad):
         self.midas_worker = None
         self.prog.setVisible(False)
+        self._sync_stop_action()
         self.steps.set_state(2, DONE if ok and not bad else IDLE)
         if bad:
             self.log.warning(f'Midas: {ok} đạt · {bad} hỏng')
@@ -1136,6 +1182,7 @@ class MainWindow(QMainWindow):
         self.prog.setValue(done)
 
     def _on_generate_progress(self, done, total):
+        self._sync_stop_action()
         self.set_progress(done, total)
         if not total:
             return
@@ -1149,6 +1196,7 @@ class MainWindow(QMainWindow):
             self.status_msg('Đang tạo mô hình…', 'busy')
 
     def _on_results_progress(self, done, total):
+        self._sync_stop_action()
         self.set_progress(done, total)
         if not total:
             return
@@ -1180,6 +1228,40 @@ class MainWindow(QMainWindow):
                 pass
 
     def closeEvent(self, e):
+        # Hỏi về việc ĐANG CHẠY trước, và hỏi riêng.
+        #
+        # Trước đây chỉ có câu "Project có thay đổi chưa lưu" — một câu về việc
+        # lưu file, không nhắc gì tới tác vụ nền — rồi cửa sổ biến mất trong khi
+        # worker vẫn chạy tiếp, ghi tiếp file xuống đĩa và ghi tiếp vào một
+        # project không còn ai nhìn thấy. Với "Chạy Midas" thì nặng hơn nhiều:
+        # mỗi mặt cắt 1–3 phút và trong lúc đó app bấm thật vào ribbon Midas,
+        # nên đóng cửa sổ nghĩa là chuột vẫn bị chiếm mà không còn giao diện nào
+        # để bảo nó dừng.
+        w, ten = self._worker_dang_chay()
+        if w is not None:
+            hop = QMessageBox(
+                QMessageBox.Icon.Warning, 'Đang chạy',
+                f'“{ten}” vẫn đang chạy.',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                self)
+            hop.setInformativeText(
+                'Đóng bây giờ thì phần mềm xin dừng sau mặt cắt đang chạy rồi '
+                'mới thoát. Có thể mất một lúc.\n\n'
+                'Vẫn đóng?')
+            hop.setDefaultButton(QMessageBox.StandardButton.Cancel)
+            if hop.exec() != QMessageBox.StandardButton.Yes:
+                e.ignore()
+                return
+
+            w.xin_dung()
+            self.status_bar.showMessage(f'Đang dừng {ten}…')
+            QApplication.processEvents()
+            # Chờ có giới hạn. Một mặt cắt Midas mất 1–3 phút; quá thì buông
+            # tay nhưng nói thẳng, đừng để cửa sổ treo vô hạn.
+            if not w.wait(180_000):
+                self.log.warning(
+                    f'{ten} chưa dừng sau 3 phút — thoát mà không đợi thêm.')
+
         if not self._confirm_discard():
             e.ignore()
             return

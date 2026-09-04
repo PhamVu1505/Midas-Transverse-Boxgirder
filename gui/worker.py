@@ -36,11 +36,34 @@ class GenerateWorker(QThread):
         self.jobs = jobs
         self.output_dir = output_dir
 
+    def xin_dung(self):
+        """Xin dừng tác vụ này.
+
+        Không dùng `requestInterruption()` một mình được: Qt bỏ qua nó khi
+        luồng CHƯA chạy, mà cơ chế dừng thì không nên phụ thuộc trạng thái
+        luồng — nhất là khi test gọi thẳng `run()`. Cờ riêng luôn đúng, cờ
+        Qt giữ lại cho các đường khác của Qt.
+        """
+        self._xin_dung = True
+        self.requestInterruption()
+
+    def _nen_dung(self) -> bool:
+        if getattr(self, "_xin_dung", False):
+            return True
+        return self.isInterruptionRequested()
+
     def run(self):
         count = 0
         seen_excel = set()
 
         for job in self.jobs:
+            # Huỷ HỢP TÁC, xét giữa hai mặt cắt. Cắt ngang lúc đang ghi MCT thì
+            # để lại một file dở dang trên đĩa mà không ai biết là dở.
+            if self._nen_dung():
+                self.log.emit(f'■ Đã dừng theo yêu cầu — xong {count}/'
+                              f'{len(self.jobs)} mặt cắt.')
+                break
+
             name = job['name']
             dxf_path = job['dxf']
             excel = job.get('excel') or None
@@ -188,15 +211,35 @@ class ResultsWorker(QThread):
         self.output_dir = output_dir
         self._retries = []          # [(name, new_bf_path, topo_path)]
 
+    def xin_dung(self):
+        """Xin dừng tác vụ này.
+
+        Không dùng `requestInterruption()` một mình được: Qt bỏ qua nó khi
+        luồng CHƯA chạy, mà cơ chế dừng thì không nên phụ thuộc trạng thái
+        luồng — nhất là khi test gọi thẳng `run()`. Cờ riêng luôn đúng, cờ
+        Qt giữ lại cho các đường khác của Qt.
+        """
+        self._xin_dung = True
+        self.requestInterruption()
+
+    def _nen_dung(self) -> bool:
+        if getattr(self, "_xin_dung", False):
+            return True
+        return self.isInterruptionRequested()
+
     def run(self):
         count = 0
         for name, bf_path, topo_path in self.pairs:
+            if self._nen_dung():
+                self.log.emit(f'■ Đã dừng theo yêu cầu — xong {count}/'
+                              f'{len(self.pairs)} mặt cắt.')
+                break
             ok = self._process_one(name, bf_path, topo_path)
             if ok:
                 count += 1
 
         # Process any retries queued via retry_section()
-        while self._retries:
+        while self._retries and not self._nen_dung():
             retry_name, retry_bf, retry_topo = self._retries.pop(0)
             ok = self._process_one(retry_name, retry_bf, retry_topo)
             if ok:
