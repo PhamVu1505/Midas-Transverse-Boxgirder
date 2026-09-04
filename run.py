@@ -467,6 +467,11 @@ def _gate(feature: str) -> bool:
 
 
 def main():
+    # Console Windows mac dinh cp1252 -> moi print co dau se nem
+    # UnicodeEncodeError va giet tien trinh. Phai goi TRUOC moi print.
+    from src.console import enable_utf8
+    enable_utf8()
+
     parser = build_parser()
     args = parser.parse_args()
 

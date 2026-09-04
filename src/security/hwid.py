@@ -94,7 +94,7 @@ def machine_label() -> str:
     host = os.environ.get('COMPUTERNAME') or os.environ.get('HOSTNAME') or ''
     user = os.environ.get('USERNAME') or os.environ.get('USER') or ''
     if host and user:
-        return f'{host}\{user}'
+        return f'{host}\\{user}'
     return host or user or ''
 
 

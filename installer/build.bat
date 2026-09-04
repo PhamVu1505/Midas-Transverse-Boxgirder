@@ -17,10 +17,16 @@ REM "requests"/"urllib3"/"certifi" VAN dang bi loai tru, va dung nhu vay o V1:
 REM chi src/midas_nx.py can chung, ma GUI chua goi toi module do. KHI NAO them
 REM the Kiem cheo NX thi phai BO BA DONG exclude ay - quen thi loi chi lo ra o
 REM ban da dong goi chu khong lo khi chay tu ma nguon.
+REM KHONG loai tru "unittest": ezdxf -> pyparsing -> pyparsing.testing import
+REM unittest NGAY LUC NAP MODULE, nen loai tru no lam ban dong goi chet ngay o
+REM dong "import ezdxf" (ModuleNotFoundError). Loi nay CHI lo ra o ban .exe.
+REM Luu y: khong duoc dat dong REM GIUA khoi lenh noi bang "^" - cmd ghep no
+REM vao tham so va pyinstaller bao "unrecognized arguments".
 pyinstaller --noconfirm --onedir --windowed ^
     --name "MidasTransverseBoxgirder" ^
     --icon "installer\icon.ico" ^
     --hidden-import "src.check_export" ^
+    --hidden-import "src.console" ^
     --hidden-import "src.dxf_reader" ^
     --hidden-import "src.frame_builder" ^
     --hidden-import "src.geometry" ^
@@ -78,7 +84,6 @@ pyinstaller --noconfirm --onedir --windowed ^
     --exclude-module "tcl" ^
     --exclude-module "sqlite3" ^
     --exclude-module "test" ^
-    --exclude-module "unittest" ^
     --exclude-module "pydoc" ^
     --exclude-module "doctest" ^
     --exclude-module "typeguard" ^
@@ -100,7 +105,7 @@ REM minh. Day la phep soat may, vi "nho khong copy" thi som muon cung quen.
 set "LEAK="
 if exist "dist\MidasTransverseBoxgirder\secrets" set "LEAK=secrets"
 if exist "dist\MidasTransverseBoxgirder\_internal\secrets" set "LEAK=_internal\secrets"
-for /r "dist\MidasTransverseBoxgirder" %%F in (*license_admin* *.mtblic mtb_license_private.json license_admin.sqlite3) do set "LEAK=%%F"
+for /r "dist\MidasTransverseBoxgirder" %%F in (*license_admin* *.mtblic mtb_license_private.json license_admin.sqlite3) do if exist "%%F" set "LEAK=%%F"
 if defined LEAK (
     echo.
     echo *** DUNG LAI: ban dong goi dang mang "%LEAK%"

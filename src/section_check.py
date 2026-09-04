@@ -1,4 +1,4 @@
-"""
+r"""
 Kiểm toán tiết diện khung ngang theo **TCVN 11823** (và 22TCN 272-05 để đối
 chiếu hồ sơ cũ).
 
@@ -12,7 +12,7 @@ thép một lớp, có thể có cáp DƯL. Bốn nhóm kiểm tra:
     4. Cắt                   Vu ≤ Vr = φ·Vn, MCFT               (Đ.8.3.3, 8.3.4.2)
 
 **Nguồn công thức: bản chính thức TCVN 11823-5:2017** ở
-`H:\VUPQ\Tai_lieu_ky_thuat_TieuChuan\Tieu_chuan_thiet_ke_cau_TCVN11823`
+`H:\VUPQ\Tai_lieu_ky_thuat\01_TieuChuan\Tieu_chuan_thiet_ke_cau_TCVN11823`
 (192 trang, md5 2f416af8c590). Số điều và số phương trình ghi ngay tại từng hàm.
 
 **Đối chiếu số:** điểm E của S1 trong sheet `Strength` khớp tuyệt đối cả 11 đại
