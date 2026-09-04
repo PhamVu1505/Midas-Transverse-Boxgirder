@@ -8,15 +8,15 @@ Mức nặng: **cao** = người dùng mất việc hoặc đọc ra kết quả
 | --- | --- | --- | --- | --- |
 | [B-07](#b-07) | Bản vẽ đơn vị mm được nhận là hợp lệ — MCT 426 MB, không một lời cảnh báo | cao | soát tương tác | **ĐÃ SỬA** |
 | [B-08](#b-08) | Tạo lại MCT xong là mặt cắt tự nhận file nội lực của mô hình cũ | cao | soát tương tác | **ĐÃ SỬA** |
-| [B-09](#b-09) | Template trỏ vào file không còn ⇒ MCT rỗng ruột, trạng thái vẫn xanh | cao | soát tương tác | sửa |
+| [B-09](#b-09) | Template trỏ vào file không còn ⇒ MCT rỗng ruột, trạng thái vẫn xanh | cao | soát tương tác | **ĐÃ SỬA** |
 | [B-03](#b-03) | Sửa gối không đánh dấu kết quả nội lực cũ là đã lạc hậu | cao | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
 | [B-10](#b-10) | Không huỷ được tác vụ nào đang chạy, và đóng cửa sổ cũng không dừng nó | vừa | soát tương tác | sửa |
-| [B-11](#b-11) | Nút *Xử lý tất cả* chết vĩnh viễn sau lần chạy đầu | vừa | soát tương tác | sửa |
-| [B-12](#b-12) | *Chọn file Beam Force khác* ở hộp lệch phần tử không bao giờ chạy | vừa | soát tương tác | sửa |
+| [B-11](#b-11) | Nút *Xử lý tất cả* chết vĩnh viễn sau lần chạy đầu | vừa | soát tương tác | **ĐÃ SỬA** |
+| [B-12](#b-12) | *Chọn file Beam Force khác* ở hộp lệch phần tử không bao giờ chạy | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-13](#b-13) | Đổi mặt cắt giữa lúc tạo MCT: cây một đằng, khung xem và dock một nẻo | vừa | soát tương tác | sửa |
-| [B-14](#b-14) | Excel đang mở file báo cáo thì mất trọn kết quả của mặt cắt đó | vừa | soát tương tác | sửa |
-| [B-15](#b-15) | *Bỏ khỏi project* không hỏi lại, và xoá cả cốt thép lẫn gối đã nhập | vừa | soát tương tác | sửa |
-| [B-16](#b-16) | Bảng cốt thép nuốt số nhập sai thành 0 mà không nói gì | vừa | soát tương tác | sửa |
+| [B-14](#b-14) | Excel đang mở file báo cáo thì mất trọn kết quả của mặt cắt đó | vừa | soát tương tác | **ĐÃ SỬA** |
+| [B-15](#b-15) | *Bỏ khỏi project* không hỏi lại, và xoá cả cốt thép lẫn gối đã nhập | vừa | soát tương tác | **ĐÃ SỬA** |
+| [B-16](#b-16) | Bảng cốt thép nuốt số nhập sai thành 0 mà không nói gì | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-17](#b-17) | *Gán template số liệu…* âm thầm vứt MCT đã sinh của mọi mặt cắt được chọn | vừa | soát tương tác | quyết |
 | [B-18](#b-18) | Nhãn *Đã kiểm toán* gắn nhầm chỗ, và bảng kiểm toán không sống qua lần mở lại | vừa | soát tương tác | quyết |
 | [B-19](#b-19) | Thư mục kết quả mặc định là đường dẫn tương đối | vừa | soát tương tác | sửa |
@@ -218,7 +218,7 @@ File ấy nạp vào Midas vẫn giải được và vẫn xuất ra Beam Force 
 2. Bấm *Tạo MCT*. Nhật ký chỉ có một dòng cảnh báo; mặt cắt vẫn sang *Đã tạo MCT*.
 3. Mở file `.mct` vừa sinh: không có `*STLDCASE`, `*LOADCOMB`, `*VEHICLE`.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy `GenerateWorker` với `excel` trỏ vào một đường dẫn không tồn tại: `lỗi = 0`, nhật ký đúng một dòng `WARNING`.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy `GenerateWorker` với `excel` trỏ vào một đường dẫn không tồn tại: `lỗi = 0`, nhật ký đúng một dòng `WARNING`. **ĐÃ SỬA:** template đã gán mà không tìm thấy file nay là LỖI của mặt cắt (`FileNotFoundError` nêu rõ đường dẫn), không còn lặng lẽ đổi sang chế độ "không template". Cố ý bỏ trống template vẫn dựng hình được như cũ — khoá cả hai chiều.
 
 **Nguyên nhân trong mã.** `gui/worker.py` — `if excel and not os.path.exists(excel): excel = None`, rồi từ đó trở đi mọi khối phụ thuộc `ld` đều bị bỏ. Chế độ "không template" vốn là chế độ hợp lệ (dùng khi chỉ muốn xem hình), nhưng nó không phân biệt được *"tôi cố ý không chọn template"* với *"template tôi chọn đã biến mất"*.
 
@@ -279,7 +279,7 @@ Nút chỉ chết sau khi có một việc gì đó dựng lại danh sách — 
 2. Bấm đúp một dòng trong danh sách và gán một file Beam Force.
 3. Nút *Xử lý tất cả* đã xám, nhãn vẫn ghi *"n mặt cắt sẵn sàng"*.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy trên cửa sổ thật: trước khi chạy nút bật; chạy xong nút vẫn bật; gọi lại phép dựng danh sách thì **nút tắt**, nhãn vẫn *"6 mặt cắt sẵn sàng"*.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy trên cửa sổ thật: trước khi chạy nút bật; chạy xong nút vẫn bật; gọi lại phép dựng danh sách thì **nút tắt**, nhãn vẫn *"6 mặt cắt sẵn sàng"*. **ĐÃ SỬA:** `_on_finished` trả `self.worker` về None, đúng khuôn `generate_tab` vốn đã làm.
 
 **Nguyên nhân trong mã.** `gui/results_tab.py` — điều kiện bật nút là `n_ready > 0 and self.worker is None`, nhưng chỗ chạy xong (`_on_finished`) chỉ gọi `setEnabled(True)` mà **không** đặt lại `self.worker = None`. So sánh: `gui/generate_tab.py::_on_finished` có đặt.
 
@@ -303,7 +303,7 @@ Gốc rễ là một cuộc đua. App phát tín hiệu *lệch phần tử* r�
 3. Bấm **Yes**, chọn `Beam Force_S1.xls`.
 4. Không có dòng nhật ký mới; bảng vẫn trống; ô chọn mặt cắt vẫn rỗng.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy: thứ tự tín hiệu đo được là `['mismatch', 'finished_all(0)']` — tức việc xử lý **đã kết thúc trước khi** hộp thoại kịp nhận câu trả lời. Xếp một lượt thử lại sau đó thì hàng đợi có đúng 1 mục và không ai lấy ra.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy: thứ tự tín hiệu đo được là `['mismatch', 'finished_all(0)']` — tức việc xử lý **đã kết thúc trước khi** hộp thoại kịp nhận câu trả lời. Xếp một lượt thử lại sau đó thì hàng đợi có đúng 1 mục và không ai lấy ra. **ĐÃ SỬA:** tách `_chay_worker()`; worker còn sống thì xếp vào hàng đợi cũ, chết rồi thì chạy một lượt mới cho đúng mặt cắt đó.
 
 **Nguyên nhân trong mã.** `gui/worker.py` — `ResultsWorker.run()` duyệt hết danh sách rồi mới rút hàng đợi `_retries`; `_process_one` phát `error_mismatch` (không chờ) rồi trả về ngay. `gui/results_tab.py::_on_mismatch` gọi `self.worker.retry_section(...)` sau khi luồng ấy đã chết.
 
@@ -355,7 +355,7 @@ Trông đợi: viết được file báo cáo hay không là chuyện phụ; n�
 2. Mở `output/<tên>/<tên>_check.xlsx` bằng Excel, để nguyên đó.
 3. Bấm *Xử lý tất cả* lần nữa.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy, khoá file thật bằng khoá vùng của Windows: `section_done` **không hề phát**, `finished_all` trả **0**, nhật ký ba dòng cuối là `8140 records, 74 elements — OK` → `Saved: …_check.txt` → `ERROR: [Errno 13] Permission denied` kèm traceback.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy, khoá file thật bằng khoá vùng của Windows: `section_done` **không hề phát**, `finished_all` trả **0**, nhật ký ba dòng cuối là `8140 records, 74 elements — OK` → `Saved: …_check.txt` → `ERROR: [Errno 13] Permission denied` kèm traceback. **ĐÃ SỬA:** hai lệnh ghi báo cáo tách ra khỏi `try` lớn, bắt riêng `PermissionError` với câu nói rõ phải đóng tệp; `section_done` vẫn phát nên kết quả không mất.
 
 **Nguyên nhân trong mã.** `gui/worker.py::_process_one` — `_export_excel(...)` được gọi **trước** `self.section_done.emit(...)`, và cả thân hàm nằm trong một `try/except Exception` duy nhất, nên bất kỳ lỗi ghi file nào cũng nuốt luôn kết quả đã tính. Ngoài ra `ResultsWorker` không có tín hiệu lỗi riêng, chỉ có tín hiệu lệch phần tử — nên trạng thái mặt cắt cũng không đổi và cây mặt cắt không hề hay biết.
 
@@ -378,7 +378,7 @@ Trông đợi: một câu hỏi, hoặc ít nhất một câu hỏi khi mặt c�
 2. Chọn nó trong cây, bấm nút xoá.
 3. Nó biến mất ngay; không có hộp thoại nào.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy: mặt cắt có 8 cột cốt thép và một file Beam Force đã gán bị bỏ ngay, không hộp thoại, và tra lại theo tên thì không còn.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy: mặt cắt có 8 cột cốt thép và một file Beam Force đã gán bị bỏ ngay, không hộp thoại, và tra lại theo tên thì không còn. **ĐÃ SỬA:** hỏi lại trước khi bỏ, và liệt kê đúng thứ THẬT SỰ mất (cốt thép, gối, Beam Force) để câu hỏi không thành thủ tục bấm qua theo phản xạ. Nút mặc định là Huỷ.
 
 **Nguyên nhân trong mã.** `gui/project_panel.py::_remove_selected` — vòng lặp gọi thẳng `project.remove(n)`, không hỏi gì.
 
@@ -409,7 +409,7 @@ Chiều kia thì không chặn gì cả: một giá trị vô lý đi thẳng v�
 2. Gõ `-16` vào ô đường kính của cột `A`. Ô hiện `0`.
 3. Đặt cự ly của cột đó bằng `0`, bấm *Kiểm toán*: điểm `A` KHÔNG ĐẠT, không có lời giải thích.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy — bảng số trên là số đọc được từ chính các ô.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy — bảng số trên là số đọc được từ chính các ô. **ĐÃ SỬA:** vẫn quy về 0 (số rác không được vào phép tính) nhưng nói ra ở Messages và thanh trạng thái, kèm hậu quả: 0 nghĩa là KHÔNG có cốt thép.
 
 **Nguyên nhân trong mã.** `gui/check_tab.py::_on_input_edited` — `val = max(0.0, float(txt))`, còn `ValueError` thì `val = 0.0`. Không có chặn trên, không có chỗ báo.
 

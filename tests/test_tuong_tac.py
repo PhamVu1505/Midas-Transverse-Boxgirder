@@ -1,0 +1,224 @@
+"""Sáu lỗi tương tác: im lặng nuốt lỗi, nút chết, mất kết quả đã tính.
+
+Chạy:
+    pytest tests/test_tuong_tac.py -v
+
+Điểm chung của cả sáu: **không có gì hỏng ra mặt**. Phần mềm vẫn chạy tiếp,
+vẫn báo Xong, và người dùng chỉ phát hiện khi đã tin vào một con số sai hoặc
+khi bấm mãi một cái nút không còn tác dụng.
+
+* **B-09** Template đã gán mà không tìm thấy file thì bỏ qua trong im lặng, cho
+  ra MCT không có một khối tải trọng nào — mà mặt cắt vẫn sang *Đã tạo MCT*.
+* **B-14** Excel đang giữ tệp báo cáo là mất **trọn** kết quả của mặt cắt, dù
+  nội lực đã tính xong và đúng.
+* **B-11** Nút *Xử lý tất cả* tắt vĩnh viễn sau lượt chạy đầu.
+* **B-16** Bảng cốt thép nuốt `-16` và `abc` thành 0 — mà 0 nghĩa là *không có
+  cốt thép*, tức đổi hẳn kết quả kiểm toán.
+"""
+
+import os
+import sys
+
+import pytest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+pytest.importorskip('PyQt6')
+pytest.importorskip('ezdxf')
+
+
+@pytest.fixture(scope='module')
+def qt():
+    from PyQt6.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
+def _dxf_that():
+    for p in ('input/dxf/S1.dxf', 'data/LT/S1.dxf'):
+        d = os.path.join(ROOT, p)
+        if os.path.exists(d):
+            return d
+    pytest.skip('không tìm thấy DXF mẫu')
+
+
+# ── B-09 ──────────────────────────────────────────────────────────────────
+
+def test_template_da_gan_ma_mat_file_thi_bao_loi(qt, tmp_path):
+    """Không được lặng lẽ đổi sang chế độ "không template"."""
+    from gui.worker import GenerateWorker
+
+    job = {'name': 'S1', 'dxf': _dxf_that(),
+           'excel': str(tmp_path / 'khong-he-co.xls'), 'include_pt': True}
+    w = GenerateWorker([job], str(tmp_path))
+
+    loi, xong, nhat_ky = [], [], []
+    w.section_error.connect(lambda n, e: loi.append((n, e)))
+    w.section_info.connect(lambda n, d: xong.append(n))
+    w.log.connect(nhat_ky.append)
+    w.run()                       # chay thang, khong can luong rieng
+
+    assert loi, ('template đã gán mà mất file thì phải là LỖI của mặt cắt, '
+                 'không phải một dòng cảnh báo rồi đi tiếp')
+    assert not xong, 'vẫn ghi nhận mặt cắt là đã tạo MCT thành công'
+    assert 'khong-he-co.xls' in loi[0][1], 'thông báo không nói rõ tìm file nào'
+
+
+def test_khong_gan_template_van_dung_hinh_duoc(qt, tmp_path):
+    """Chiều ngược lại: cố ý không chọn template vẫn phải chạy được.
+
+    Đây là chế độ hợp lệ, dùng khi chỉ muốn xem hình. Vá lỗi trên mà chặn luôn
+    cả đường này thì hỏng một tính năng đang dùng.
+    """
+    from gui.worker import GenerateWorker
+
+    job = {'name': 'S1', 'dxf': _dxf_that(), 'excel': '', 'include_pt': True}
+    w = GenerateWorker([job], str(tmp_path))
+    loi, xong, nhat_ky = [], [], []
+    w.section_error.connect(lambda n, e: loi.append((n, e)))
+    w.section_info.connect(lambda n, d: xong.append(n))
+    w.log.connect(nhat_ky.append)
+    w.run()
+
+    assert not loi, f'không gán template mà lại báo lỗi: {loi}'
+    assert xong, 'không dựng được hình khi cố ý bỏ trống template'
+    assert any('chưa có template' in d for d in nhat_ky), \
+        'phải còn dòng cảnh báo cho biết đang chạy không có số liệu'
+
+
+# ── B-14 ──────────────────────────────────────────────────────────────────
+
+def _mat_cat_co_ket_qua():
+    """Một mặt cắt trong `output/` có đủ topo và Beam Force."""
+    import glob
+    for topo in sorted(glob.glob(os.path.join(ROOT, 'output', '*', '*_topo.json'))):
+        thu_muc = os.path.dirname(topo)
+        bf = glob.glob(os.path.join(thu_muc, '*.xls'))
+        if bf:
+            return os.path.basename(thu_muc), bf[0], topo
+    pytest.skip('output/ chưa có mặt cắt nào đủ topo + Beam Force')
+
+
+def test_khong_ghi_duoc_bao_cao_thi_van_giu_ket_qua(qt, tmp_path, monkeypatch):
+    """Excel giữ tệp là mất tệp, KHÔNG được mất luôn kết quả đã tính."""
+    import run
+    from gui.worker import ResultsWorker
+
+    ten, bf, topo = _mat_cat_co_ket_qua()
+
+    def _khoa_tep(*a, **k):
+        raise PermissionError('[Errno 13] tệp đang mở ở Excel')
+
+    monkeypatch.setattr(run, '_export_excel', _khoa_tep)
+
+    w = ResultsWorker([(ten, bf, topo)], str(tmp_path))
+    xong, nhat_ky = [], []
+    w.section_done.connect(lambda n, cp: xong.append(n))
+    w.log.connect(nhat_ky.append)
+    ok = w._process_one(ten, bf, topo)
+
+    assert ok, 'ghi tệp hỏng mà coi như cả mặt cắt hỏng'
+    assert xong == [ten], (
+        'không phát section_done — nội lực đã tính xong và đúng, nhưng cả mặt '
+        'cắt mất sạch kết quả chỉ vì không ghi được một tệp báo cáo')
+    assert any('đang được mở ở chương trình khác' in d for d in nhat_ky), (
+        'thông điệp không nói người dùng phải làm gì; trước đây họ nhận được '
+        'một traceback Python')
+    # Ban .txt van phai ghi duoc binh thuong
+    assert any('_check.txt' in d and 'Saved' in d for d in nhat_ky)
+
+
+# ── B-11 ──────────────────────────────────────────────────────────────────
+
+def test_xong_mot_luot_thi_worker_tra_ve_none(qt):
+    """`refresh()` tính trạng thái nút theo `worker is None`."""
+    import inspect
+    from gui.results_tab import ResultsTab
+
+    than = inspect.getsource(ResultsTab._on_finished)
+    assert 'self.worker = None' in than, (
+        'thiếu dòng này thì nút "Xử lý tất cả" tắt vĩnh viễn ở lần dựng lại '
+        'danh sách kế tiếp, trong khi nhãn vẫn ghi "N mặt cắt sẵn sàng"')
+
+
+# ── B-12 ──────────────────────────────────────────────────────────────────
+
+def test_chon_beam_force_khac_chay_duoc_ca_khi_worker_da_chet(qt):
+    import inspect
+    from gui.results_tab import ResultsTab
+
+    than = inspect.getsource(ResultsTab._on_mismatch)
+    assert 'isRunning()' in than, (
+        'không kiểm worker còn sống hay không — hộp thoại mở trên luồng giao '
+        'diện, tới lúc người dùng chọn xong file thì worker thường đã kết thúc '
+        'và retry_section() chỉ xếp vào hàng đợi không ai đọc')
+    assert '_chay_worker' in than, 'không có đường chạy lại khi worker đã chết'
+
+
+# ── B-16 ──────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize('go,ly_do', [('-16', 'số âm'), ('abc', 'không phải số')])
+def test_go_sai_o_bang_cot_thep_thi_bao(qt, go, ly_do, monkeypatch):
+    from gui.check_tab import CheckTab, INPUT_ROWS
+
+    tab = CheckTab.__new__(CheckTab)          # khong dung ca the
+    tab._loading = False
+    tab._points = ['A', 'B']
+    tab.log_area = None
+    tab.status_bar = None
+    noi = []
+    tab._bao = noi.append
+    tab._update_as = lambda: None
+    tab._store_rebars = lambda: None
+
+    class O:
+        def __init__(self, chu):
+            self._t = chu
+        def text(self):
+            return self._t
+        def setText(self, chu):
+            self._t = chu
+        def row(self):
+            return 0
+        def column(self):
+            return 1
+
+    o = O(go)
+    CheckTab._on_input_edited(tab, o)
+
+    assert noi, f'gõ “{go}” mà không có cảnh báo nào'
+    assert ly_do in noi[0], f'không nói rõ vì sao: {noi[0]!r}'
+    assert 'KHÔNG có cốt thép' in noi[0], (
+        'không nói rõ hậu quả — 0 ở đây nghĩa là tiết diện không có thép')
+    assert float(o.text()) == 0.0
+
+
+def test_go_dung_thi_khong_keu(qt):
+    from gui.check_tab import CheckTab
+
+    tab = CheckTab.__new__(CheckTab)
+    tab._loading = False
+    tab._points = ['A']
+    tab.log_area = None
+    tab.status_bar = None
+    noi = []
+    tab._bao = noi.append
+    tab._update_as = lambda: None
+    tab._store_rebars = lambda: None
+
+    class O:
+        def __init__(self, chu):
+            self._t = chu
+        def text(self):
+            return self._t
+        def setText(self, chu):
+            self._t = chu
+        def row(self):
+            return 0
+        def column(self):
+            return 1
+
+    o = O('16')
+    CheckTab._on_input_edited(tab, o)
+    assert not noi, f'gõ số hợp lệ mà vẫn kêu: {noi}'
+    assert float(o.text()) == 16.0

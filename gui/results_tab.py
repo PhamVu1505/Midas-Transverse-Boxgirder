@@ -612,10 +612,18 @@ class ResultsTab(QWidget):
         self.all_env.clear()
         self.section_combo.clear()
 
+        self._chay_worker(self._pairs)
+
+    def _chay_worker(self, pairs):
+        """Dựng và chạy một ResultsWorker cho đúng danh sách này.
+
+        Tách riêng để lối *Chọn file Beam Force khác* dùng lại được: lúc người
+        dùng trả lời xong hộp thoại thì worker cũ thường đã chết.
+        """
         output_dir = self.out_edit.text() or 'output'
-        self.worker = ResultsWorker(self._pairs, output_dir)
+        self.worker = ResultsWorker(list(pairs), output_dir)
         self.worker.log.connect(self._on_log)
-        self._total = len(self._pairs)
+        self._total = len(pairs)
         self._done = 0
         self.progress_changed.emit(0, self._total)
         self.worker.section_done.connect(self._on_section_done)
@@ -654,13 +662,35 @@ class ResultsTab(QWidget):
                 'Excel Files (*.xls *.xlsx);;All Files (*)')
             if new_file:
                 # Update pair and re-process this one
+                topo = ''
                 for i, (n, bf, tp) in enumerate(self._pairs):
                     if n == name:
                         self._pairs[i] = (name, new_file, tp)
+                        topo = tp
                         break
-                self.worker.retry_section(name, new_file)
+
+                # `error_mismatch` là tín hiệu CHÉO LUỒNG: hộp thoại này mở
+                # trên luồng giao diện, còn worker vẫn chạy tiếp, vét hàng đợi
+                # thử lại (lúc đó rỗng) rồi kết thúc. Tới khi người dùng chọn
+                # xong file thì worker thường đã chết, và `retry_section()`
+                # chỉ xếp vào một hàng đợi không còn ai đọc — đo được thứ tự
+                # tín hiệu là ['mismatch', 'finished_all(0)']. Nên: worker còn
+                # sống thì xếp vào nó, chết rồi thì chạy một lượt mới cho đúng
+                # mặt cắt đó.
+                if self.worker is not None and self.worker.isRunning():
+                    self.worker.retry_section(name, new_file)
+                elif topo:
+                    self.log_area.info(
+                        f'[{name}] Chạy lại với {os.path.basename(new_file)}')
+                    self._chay_worker([(name, new_file, topo)])
 
     def _on_finished(self, count):
+        # Phải trả `worker` về None, không chỉ bật lại nút. `refresh()` tính
+        # trạng thái nút theo `self.worker is None`, nên bỏ sót dòng này thì
+        # nút vẫn bật cho tới lần dựng lại danh sách kế tiếp rồi **tắt vĩnh
+        # viễn** — trong khi nhãn bên cạnh vẫn ghi "N mặt cắt sẵn sàng".
+        # `generate_tab._on_finished` vốn đã làm đúng; chỉ thẻ này bỏ sót.
+        self.worker = None
         self.btn_process.setEnabled(True)
         self.progress_changed.emit(count, max(count, getattr(self, '_total', count)))
         self.status_bar.showMessage(

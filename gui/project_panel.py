@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget,
                              QTreeWidgetItem, QLabel, QPushButton, QMenu,
                              QFileDialog, QAbstractItemView, QHeaderView,
                              QCheckBox, QLineEdit, QScrollArea,
-                             QFrame, QSizePolicy)
+                             QFrame, QSizePolicy, QMessageBox)
 
 from src.project import (Project, STATUS_LABEL, NEW, GENERATED, ASSIGNED,
                          CHECKED, ERROR)
@@ -397,7 +397,43 @@ class ProjectPanel(QWidget):
             e.ignore()
 
     def _remove_selected(self):
-        for n in self.selected_names():
+        names = self.selected_names()
+        if not names:
+            return
+
+        # Hỏi trước, và nói rõ mất gì. Bỏ một mặt cắt cũng mất luôn cốt thép
+        # đã nhập, sơ đồ gối tự đặt và file Beam Force đã gán — công nhập tay
+        # hàng chục ô — mà không có hoàn tác. Chỉ liệt kê thứ THẬT SỰ có, để
+        # câu hỏi không thành thủ tục người dùng bấm qua theo phản xạ.
+        mat = []
+        for n in names:
+            s = self.project.find(n)
+            if not s:
+                continue
+            if s.rebars:
+                mat.append(f'{n}: cốt thép đã nhập ({len(s.rebars)} điểm)')
+            if s.supports:
+                mat.append(f'{n}: sơ đồ gối tự đặt ({len(s.supports)} gối)')
+            if s.beam_force:
+                mat.append(f'{n}: Beam Force đã gán')
+
+        chu = ('Bỏ {} mặt cắt khỏi project?'.format(len(names)) if len(names) > 1
+               else f'Bỏ mặt cắt {names[0]} khỏi project?')
+        chi_tiet = 'File trên đĩa vẫn còn; chỉ project quên chúng đi.'
+        if mat:
+            chi_tiet = ('Sẽ mất, không hoàn tác được:\n  · '
+                        + '\n  · '.join(mat)
+                        + '\n\nFile trên đĩa vẫn còn.')
+
+        hop = QMessageBox(QMessageBox.Icon.Warning, 'Bỏ khỏi project',
+                          chu, QMessageBox.StandardButton.Yes
+                          | QMessageBox.StandardButton.Cancel, self)
+        hop.setInformativeText(chi_tiet)
+        hop.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        if hop.exec() != QMessageBox.StandardButton.Yes:
+            return
+
+        for n in names:
             self.project.remove(n)
         self.refresh()
         self.project_changed.emit()

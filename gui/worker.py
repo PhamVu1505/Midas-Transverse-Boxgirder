@@ -44,8 +44,6 @@ class GenerateWorker(QThread):
             name = job['name']
             dxf_path = job['dxf']
             excel = job.get('excel') or None
-            if excel and not os.path.exists(excel):
-                excel = None
             include_pt = job.get('include_pt', True)
             include_pt = None if include_pt else False
 
@@ -53,6 +51,23 @@ class GenerateWorker(QThread):
             os.makedirs(section_dir, exist_ok=True)
 
             try:
+                # Đã CHỌN template mà không tìm thấy file là LỖI, không phải lý
+                # do để lặng lẽ đổi sang chế độ "không template".
+                #
+                # Bản cũ gán `excel = None` rồi đi tiếp, nên MCT sinh ra không
+                # có một khối tải trọng, vật liệu hay tổ hợp nào — mà mặt cắt
+                # vẫn sang "Đã tạo MCT" và dấu hiệu duy nhất là một dòng vàng
+                # giữa nhật ký. File ấy nạp vào Midas vẫn giải xong và vẫn xuất
+                # ra Beam Force hợp lệ nhưng rỗng ruột: đúng chuyện đã xảy ra
+                # với `output/S10`. Dự án đã chốt luật "thiếu khoá trong
+                # template thì báo lỗi, không tự điền mặc định" — thiếu CẢ
+                # template lại càng phải theo luật ấy.
+                if excel and not os.path.exists(excel):
+                    raise FileNotFoundError(
+                        f'Không tìm thấy template số liệu đã gán:\n{excel}\n'
+                        f'Gán lại template cho mặt cắt này, hoặc bỏ gán nếu '
+                        f'chỉ muốn dựng hình.')
+
                 if excel and excel not in seen_excel:
                     seen_excel.add(excel)
                     self.log.emit(source_line(excel))
@@ -231,18 +246,38 @@ class ResultsWorker(QThread):
             from gui.force_diagram import build_envelope
             self.envelope_done.emit(name, build_envelope(results))
 
-            # Save text report
+            # Nội lực đã tính xong và ĐÚNG. Ghi báo cáo ra đĩa là việc phụ, nên
+            # nó không được quyền vứt bỏ kết quả.
+            #
+            # Trước đây hai lệnh ghi nằm thẳng trong `try` lớn, nên chỉ cần
+            # Excel đang mở `<tên>_check.xlsx` là `PermissionError` nhảy xuống
+            # `except`, `section_done` không bao giờ phát, và cả mặt cắt mất
+            # sạch kết quả — thẻ Kiểm toán báo "chưa có nội lực", còn thông
+            # điệp người dùng nhận được là một traceback Python.
             from src.result_reader import format_check_table
-            txt_path = os.path.join(section_dir, f'{name}_check.txt')
-            with open(txt_path, 'w', encoding='utf-8') as f:
-                f.write(format_check_table(name, check_points))
-            self.log.emit(f'[{name}] Saved: {txt_path}')
-
-            # Save Excel report
             from run import _export_excel
-            xlsx_path = os.path.join(section_dir, f'{name}_check.xlsx')
-            _export_excel(name, check_points, xlsx_path)
-            self.log.emit(f'[{name}] Saved: {xlsx_path}')
+
+            def ghi(duong_dan, viet):
+                try:
+                    viet(duong_dan)
+                    self.log.emit(f'[{name}] Saved: {duong_dan}')
+                except PermissionError:
+                    self.log.emit(
+                        f'[{name}] WARNING: không ghi được {os.path.basename(duong_dan)}'
+                        f' — tệp đang được mở ở chương trình khác (thường là Excel).'
+                        f' Đóng tệp rồi xử lý lại. Kết quả vẫn dùng được.')
+                except Exception as loi:
+                    self.log.emit(
+                        f'[{name}] WARNING: không ghi được '
+                        f'{os.path.basename(duong_dan)} — {loi}')
+
+            def _viet_txt(p):
+                with open(p, 'w', encoding='utf-8') as f:
+                    f.write(format_check_table(name, check_points))
+
+            ghi(os.path.join(section_dir, f'{name}_check.txt'), _viet_txt)
+            ghi(os.path.join(section_dir, f'{name}_check.xlsx'),
+                lambda p: _export_excel(name, check_points, p))
 
             self.section_done.emit(name, check_points)
             return True

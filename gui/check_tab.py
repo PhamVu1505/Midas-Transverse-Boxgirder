@@ -671,16 +671,48 @@ class CheckTab(QWidget):
         if self._loading or item.column() == 0 or item.row() >= len(INPUT_ROWS):
             return
         dec = INPUT_ROWS[item.row()][3]
-        txt = item.text().replace(',', '.').strip()
+        goc = item.text().strip()
+        txt = goc.replace(',', '.').strip()
+
+        # Quy về 0 thì vẫn đúng — số rác không được đi vào phép tính. Nhưng
+        # PHẢI nói ra: 0 ở đây nghĩa là "không có cốt thép", tức nó đổi hẳn kết
+        # quả kiểm toán. Gõ nhầm `-16` hay `16a` mà ô lặng lẽ thành `0.000` thì
+        # kỹ sư đọc bảng bên dưới và tin vào một tiết diện không có thép.
+        ly_do = ''
         try:
-            val = max(0.0, float(txt))
+            so = float(txt)
+            if so < 0:
+                ly_do = 'số âm'
+                val = 0.0
+            else:
+                val = so
         except ValueError:
+            ly_do = 'không phải số' if goc else ''
             val = 0.0
+
+        if ly_do:
+            nhan = INPUT_ROWS[item.row()][0]
+            diem = (self._points[item.column() - 1]
+                    if 0 < item.column() <= len(self._points) else '?')
+            self._bao(f'{nhan} tại điểm {diem}: “{goc}” {ly_do} — đã đặt về 0. '
+                      f'0 nghĩa là KHÔNG có cốt thép ở đây.')
+
         self._loading = True
         item.setText(f'{val:.{dec}f}')
         self._loading = False
         self._update_as()
         self._store_rebars()
+
+    def _bao(self, chu: str) -> None:
+        """Nói một câu cảnh báo ra chỗ người dùng đang nhìn.
+
+        Ưu tiên nhật ký Messages vì nó còn đó để đọc lại; thanh trạng thái thì
+        câu sau đè câu trước. Gọi được cả khi thẻ chưa nối log.
+        """
+        if getattr(self, 'log_area', None) is not None:
+            self.log_area.warning(chu)
+        if getattr(self, 'status_bar', None) is not None:
+            self.status_bar.showMessage(chu)
 
     def _col_vals(self, j) -> dict:
         return {key: self._cell_val(i, j)
