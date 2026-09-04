@@ -1037,6 +1037,19 @@ class CheckTab(QWidget):
         if worst_p:
             bits.append(f'hệ số thấp nhất: {worst_p} — '
                         f'{worst_k:.2f} ({worst_lb})')
+
+        # Nội lực đã lạc hậu thì mọi con số dưới đây thuộc về một mô hình
+        # khác. Phải nói ngay ở dòng tóm tắt, chỗ mắt người dùng dừng lại —
+        # bảng bên dưới vẫn ra số đẹp và không có gì khác lộ ra điều đó.
+        sec = self.project.find(self.section_name)
+        lac_hau = getattr(sec, 'stale', '') if sec else ''
+        if lac_hau:
+            self.lb_sum.setText('⚠ KẾT QUẢ ĐÃ LẠC HẬU — ' + lac_hau
+                                + '  ·  ' + ' · '.join(bits))
+            self.lb_sum.setStyleSheet(
+                f'color: {self.t["warn"]}; font-weight: 600;')
+            return
+
         self.lb_sum.setText(' · '.join(bits))
         self.lb_sum.setStyleSheet(
             f'color: {self.t["ok"] if n_ok == len(R) else self.t["err"]};'

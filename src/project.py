@@ -78,6 +78,15 @@ class Section:
     status: str = NEW
     note: str = ''
 
+    # Vì sao nội lực đang gán KHÔNG còn khớp mô hình. Rỗng = còn khớp.
+    #
+    # Đây là loại sai nguy hiểm nhất của phần mềm này: mô hình vẫn chạy, bảng
+    # kiểm toán vẫn ra số đẹp, và không có gì trong cả quy trình lộ ra rằng số
+    # đó thuộc về một mô hình đã bị thay. Trạng thái `assigned` được giữ
+    # nguyên — người dùng không mất đường dẫn Beam Force đã gán — nhưng mọi
+    # chỗ hiển thị kết quả phải nói rõ là nó đã lạc hậu.
+    stale: str = ''
+
     def set_supports(self, supports):
         """Đặt danh sách gối, sắp theo X cho danh sách hiển thị ổn định."""
         self.supports = sorted(
@@ -93,6 +102,8 @@ class Section:
         self.pt_cables = []
         self.status = NEW
         self.note = ''
+        # Không còn kết quả nào thì cũng không còn gì lạc hậu.
+        self.stale = ''
 
 
 @dataclass
@@ -192,8 +203,22 @@ class Project:
     def set_supports(self, name: str, supports):
         s = self.find(name)
         if s:
+            truoc = list(s.supports)
             s.set_supports(supports)
             self._dirty = True
+            # Sơ đồ gối quyết định nội lực. Đổi nó trên một mặt cắt ĐÃ có kết
+            # quả thì bảng nội lực và bảng kiểm toán đang hiện thuộc về một mô
+            # hình khác — mà trước đây không có gì nói ra điều đó: trạng thái
+            # vẫn `assigned`, hệ số an toàn vẫn ra số đẹp.
+            #
+            # So sánh trước/sau vì tín hiệu này còn phát cả khi chỉ dựng lại
+            # danh sách; đánh dấu vô điều kiện thì cảnh báo kêu suốt và người
+            # dùng thôi đọc.
+            if truoc != s.supports:
+                self.mark_stale(
+                    name,
+                    'Sơ đồ gối đã đổi sau khi có kết quả — nội lực đang gán '
+                    'tính từ sơ đồ gối cũ. Hãy tạo lại MCT và chạy lại Midas.')
 
     def set_rebars(self, name: str, rebars: dict):
         """Ghi bảng cốt thép của một mặt cắt. Không đụng tới trạng thái quy
@@ -230,6 +255,8 @@ class Project:
             s.beam_force = path
             if s.status in (GENERATED, ASSIGNED):
                 s.status = ASSIGNED if path else GENERATED
+            # Gán file mới là hết lạc hậu: đây đúng là thao tác chữa nó.
+            s.stale = ''
             self._dirty = True
 
     def record_generated(self, name, mct, topo, section_type,
@@ -243,7 +270,29 @@ class Project:
         s.pt_cables = list(pt_cables or [])
         s.status = ASSIGNED if s.beam_force else GENERATED
         s.note = ''
+        if s.beam_force:
+            # Mô hình vừa được dựng lại, nhưng file nội lực đang gán là kết quả
+            # của LẦN GIẢI TRƯỚC. Trước đây cho về thẳng `assigned` nên bảng
+            # kiểm toán vẫn ra số, tính từ một mô hình không còn tồn tại.
+            s.stale = ('Mô hình vừa được tạo lại — nội lực đang gán là kết quả '
+                       'của lần giải trước. Hãy chạy lại Midas rồi gán lại '
+                       'Beam Force.')
         self._dirty = True
+
+    def mark_stale(self, name: str, reason: str) -> bool:
+        """Đánh dấu nội lực đang gán không còn khớp mô hình.
+
+        Chỉ có nghĩa khi mặt cắt đã có kết quả — đổi gối trên một mặt cắt chưa
+        giải thì không có gì lạc hậu cả.
+        """
+        s = self.find(name)
+        if not s or not s.beam_force:
+            return False
+        if s.stale == reason:
+            return False
+        s.stale = reason
+        self._dirty = True
+        return True
 
     def record_error(self, name, note):
         s = self.find(name)

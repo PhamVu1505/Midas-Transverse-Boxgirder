@@ -255,7 +255,31 @@ class FrameView(QWidget):
         return (self._oy() - py) / self._s
 
     def zoom_by(self, f):
+        """Phóng quanh TÂM khung. Dùng cho phím + và −."""
         self._zoom = max(0.3, min(12.0, self._zoom * f))
+        self.update()
+
+    def zoom_at(self, f, pos):
+        """Phóng quanh CON TRỎ — giữ nguyên điểm mô hình đang nằm dưới nó.
+
+        Phóng quanh tâm khung thì chỗ người dùng đang muốn xem trôi ra ngoài
+        ngay từ nấc thứ hai, và họ phải kéo lại sau mỗi lần lăn. Đo trên S1,
+        cửa sổ 800×600, con trỏ ở (650, 180): một nấc lăn làm điểm dưới con trỏ
+        trôi 0,67 m ngang và 0,28 m đứng.
+
+        `gui/pan_zoom.py` đã sửa đúng lỗi này cho sơ đồ điểm kiểm toán và biểu
+        đồ bao, nhưng bản sửa không được áp cho khung xem chính — là khung
+        người dùng dùng nhiều nhất. Cùng một cú lăn cho hai hành vi khác nhau
+        trong cùng một phần mềm.
+        """
+        if not self.m:
+            return
+        x, z = self.invX(pos.x()), self.invZ(pos.y())
+        self._zoom = max(0.3, min(12.0, self._zoom * f))
+        # Bù lại đúng phần đã dịch. Lấy hiệu sau khi đã đổi `_zoom` nên chặn
+        # trên/dưới của mức phóng cũng được tính vào: chạm trần thì hiệu bằng
+        # 0 và hình đứng yên, thay vì trôi đi một nhịp.
+        self._pan += QPointF(pos.x() - self.TX(x), pos.y() - self.TZ(z))
         self.update()
 
     # ─────────────────────────────────────────
@@ -650,7 +674,7 @@ class FrameView(QWidget):
         super().resizeEvent(e)
 
     def wheelEvent(self, e):
-        self.zoom_by(1.14 if e.angleDelta().y() > 0 else 1 / 1.14)
+        self.zoom_at(1.14 if e.angleDelta().y() > 0 else 1 / 1.14, e.position())
 
     def _sup_at(self, pos):
         """Chỉ số gối mà con trỏ đang chạm (tam giác vẽ PHÍA DƯỚI node)."""

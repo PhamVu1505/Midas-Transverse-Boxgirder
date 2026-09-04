@@ -6,10 +6,10 @@ Mức nặng: **cao** = người dùng mất việc hoặc đọc ra kết quả
 
 | Mã | Tóm tắt | Mức | Nêu bởi | Quyết định cần |
 | --- | --- | --- | --- | --- |
-| [B-07](#b-07) | Bản vẽ đơn vị mm được nhận là hợp lệ — MCT 426 MB, không một lời cảnh báo | cao | soát tương tác | sửa |
-| [B-08](#b-08) | Tạo lại MCT xong là mặt cắt tự nhận file nội lực của mô hình cũ | cao | soát tương tác | sửa |
+| [B-07](#b-07) | Bản vẽ đơn vị mm được nhận là hợp lệ — MCT 426 MB, không một lời cảnh báo | cao | soát tương tác | **ĐÃ SỬA** |
+| [B-08](#b-08) | Tạo lại MCT xong là mặt cắt tự nhận file nội lực của mô hình cũ | cao | soát tương tác | **ĐÃ SỬA** |
 | [B-09](#b-09) | Template trỏ vào file không còn ⇒ MCT rỗng ruột, trạng thái vẫn xanh | cao | soát tương tác | sửa |
-| [B-03](#b-03) | Sửa gối không đánh dấu kết quả nội lực cũ là đã lạc hậu | cao | [Sửa gối](khung-xem/sua-goi.md) | sửa |
+| [B-03](#b-03) | Sửa gối không đánh dấu kết quả nội lực cũ là đã lạc hậu | cao | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
 | [B-10](#b-10) | Không huỷ được tác vụ nào đang chạy, và đóng cửa sổ cũng không dừng nó | vừa | soát tương tác | sửa |
 | [B-11](#b-11) | Nút *Xử lý tất cả* chết vĩnh viễn sau lần chạy đầu | vừa | soát tương tác | sửa |
 | [B-12](#b-12) | *Chọn file Beam Force khác* ở hộp lệch phần tử không bao giờ chạy | vừa | soát tương tác | sửa |
@@ -20,7 +20,7 @@ Mức nặng: **cao** = người dùng mất việc hoặc đọc ra kết quả
 | [B-17](#b-17) | *Gán template số liệu…* âm thầm vứt MCT đã sinh của mọi mặt cắt được chọn | vừa | soát tương tác | quyết |
 | [B-18](#b-18) | Nhãn *Đã kiểm toán* gắn nhầm chỗ, và bảng kiểm toán không sống qua lần mở lại | vừa | soát tương tác | quyết |
 | [B-19](#b-19) | Thư mục kết quả mặc định là đường dẫn tương đối | vừa | soát tương tác | sửa |
-| [B-04](#b-04) | Khung Model phóng quanh tâm, hai khung còn lại phóng quanh con trỏ | vừa | [Sửa gối](khung-xem/sua-goi.md) | sửa |
+| [B-04](#b-04) | Khung Model phóng quanh tâm, hai khung còn lại phóng quanh con trỏ | vừa | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
 | [B-01](#b-01) | Tắt Sửa gối giữa lúc kéo làm hình và project lệch nhau | vừa | [Sửa gối](khung-xem/sua-goi.md) | sửa |
 | [B-02](#b-02) | Không có cách nào huỷ một cú kéo gối | vừa | [Sửa gối](khung-xem/sua-goi.md) | sửa |
 | [B-20](#b-20) | Delete và Enter trên cây mặt cắt không làm gì | thấp | soát tương tác | quyết |
@@ -94,6 +94,8 @@ Cùng gốc: **không một phím bổ trợ nào có tác dụng** trong khung 
 
 **Nguyên nhân trong mã.** `gui/main_window.py:468-478` nối tín hiệu `supports_changed` tới `gen_tab.on_supports_changed` và tới việc ghi vào mặt cắt, nhưng không chỗ nào gọi hàm đưa mặt cắt về trạng thái sớm hơn hay xoá kết quả đã gán. So sánh: `src/project.py` có `Section.reset_outputs()` — nó tồn tại, chỉ là không được gọi ở đây.
 
+**Trạng thái.** ĐÃ SỬA. `Project.set_supports()` so sơ đồ gối trước/sau, khác nhau thì đặt `Section.stale`. Cây mặt cắt hiện dấu `!` màu vàng, dòng tóm tắt của thẻ Kiểm toán mở đầu bằng “⚠ KẾT QUẢ ĐÃ LẠC HẬU”. Trạng thái vẫn giữ `assigned` nên người dùng không mất đường dẫn Beam Force. Khoá bởi `tests/test_ket_qua_lac_hau.py`.
+
 **Quyết định.** Sửa, nhưng cần một quyết định sản phẩm về mức độ: đưa mặt cắt về `new` là mất luôn đường dẫn Beam Force đã gán, có thể quá tay. Đề xuất nhẹ hơn: giữ trạng thái nhưng gắn một dấu *"sơ đồ gối đã đổi sau khi có kết quả"* hiện ở cây mặt cắt, dock Properties và đầu bảng kiểm toán. Cùng cách xử lý này áp được cho mọi thứ khác làm mô hình lạc hậu (đổi template, sửa DXF).
 
 ---
@@ -117,7 +119,7 @@ Chính dự án đã chẩn đoán và sửa lỗi này ở `gui/pan_zoom.py`, k
 
 **Nguyên nhân trong mã.** `gui/frame_view.py:652-653` — `wheelEvent` gọi thẳng `zoom_by(hệ số)` mà không truyền vị trí con trỏ. `gui/frame_view.py:257-259` — `zoom_by()` chỉ đổi `_zoom`, không đụng `_pan`. Gốc toạ độ ở `_ox()`/`_oy()` (`:234-242`) neo vào tâm hình bao của mô hình, nên phép phóng lấy tâm khung làm mốc. Đối chiếu `gui/pan_zoom.py:56-58`, nơi `_off` được bù lại đúng để giữ điểm dưới con trỏ.
 
-**Trạng thái.** Đã kiểm chứng bằng phép đo ở trên.
+**Trạng thái.** Đã kiểm chứng bằng phép đo ở trên. **ĐÃ SỬA:** thêm `FrameView.zoom_at()` bù `_pan` để giữ nguyên điểm dưới con trỏ, đúng cách `gui/pan_zoom.py` đã làm. Đo lại trên cùng kịch bản: trôi **0,0000 m**, khớp tuyệt đối với hai khung kia. Khoá bởi `tests/test_ket_qua_lac_hau.py`.
 
 **Quyết định.** Sửa. Bù `_pan` trong `wheelEvent` theo đúng cách `pan_zoom.py` đã làm. Đây cũng là chỗ tự nhiên để thêm Shift+lăn (pan ngang) và Ctrl+lăn nếu sản phẩm muốn — xem B-02.
 
@@ -170,7 +172,7 @@ Trông đợi: phần mềm nhận ra chiều cao dầm hộp 6 628 m là không
 2. Thêm bản vẽ đó vào project, bấm *Tạo MCT*.
 3. Nhật ký báo `Xong`, không có cảnh báo. Xem cỡ file `.mct` trong thư mục kết quả.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy `GenerateWorker` thật trên bản vẽ đã nhân 1000 — số trong bảng trên là số đo được.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy `GenerateWorker` thật trên bản vẽ đã nhân 1000 — số trong bảng trên là số đo được. **ĐÃ SỬA:** `frame_builder.kiem_don_vi()` chặn ngay đầu `build_frame` (trước cả nhánh hai hộp) khi hình bao vượt 200×50 m, và đoán hệ số bằng cách thử **cả bề rộng lẫn chiều cao** — riêng bề rộng thì 1634 đơn vị không phân biệt được mm với cm. Đặt ở `build_frame` chứ không ở chỗ đọc DXF, để phần xem trước vẫn vẽ được bản vẽ hỏng. Khoá bởi `tests/test_ket_qua_lac_hau.py`.
 
 **Nguyên nhân trong mã.** Không có chỗ nào kiểm biên độ hình học. `frame_builder` chia phần tử theo `target_len` cố định tính bằng mét, nên hình lớn gấp 1000 lần thì số phần tử cũng gấp gần chừng ấy.
 
@@ -193,7 +195,7 @@ Trông đợi: tạo lại MCT phải gỡ file nội lực cũ ra, hoặc ít n
 2. Đổi template riêng cho mặt cắt đó (trạng thái về *Chưa tạo MCT*, xem [B-17](#b-17)).
 3. Bấm *Tạo MCT*. Cây mặt cắt hiện ngay **Đã gán Beam Force**.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy trên `Project` thật: `checked` → đổi template → `new` → tạo lại → **`assigned`**, `beam_force` vẫn nguyên `BF_cu.xls`.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy trên `Project` thật: `checked` → đổi template → `new` → tạo lại → **`assigned`**, `beam_force` vẫn nguyên `BF_cu.xls`. **ĐÃ SỬA:** `record_generated()` đặt `Section.stale` khi mặt cắt đã có `beam_force`; `set_beam_force()` xoá cờ đó — gán kết quả mới đúng là thao tác chữa. Cờ đi qua được `.mtbproj`, và file project cũ không có khoá này vẫn nạp bình thường. Khoá bởi `tests/test_ket_qua_lac_hau.py`.
 
 **Nguyên nhân trong mã.** `src/project.py` — `record_generated()` kết bằng `s.status = ASSIGNED if s.beam_force else GENERATED`. `reset_outputs()` xoá `mct`/`topo`/`report` nhưng **không** xoá `beam_force`.
 

@@ -32,6 +32,59 @@ def _is_twin_inpoly(inpoly_dxf) -> bool:
     return True
 
 
+# Mặt cắt ngang dầm hộp thật nằm gọn trong khoảng này. Ngưỡng đặt RẤT rộng —
+# cầu rộng nhất còn xa mới tới 200 m — nên nó chỉ bắt lỗi đơn vị chứ không bao
+# giờ chặn nhầm một bản vẽ hợp lệ.
+BE_RONG_TOI_DA = 200.0      # m
+CHIEU_CAO_TOI_DA = 50.0     # m
+BE_RONG_TOI_THIEU = 1.0     # m
+
+
+def kiem_don_vi(outpoly_dxf: list) -> None:
+    """Bản vẽ phải vẽ bằng MÉT. Sai đơn vị thì dừng ngay, đừng dựng mô hình.
+
+    Bản vẽ bằng mm đi lọt được suốt cả quy trình mà không có gì báo: cùng một
+    mặt cắt nhân 1000 cho ra **71.059 phần tử** và file MCT **426 MB**, nhật ký
+    vẫn ghi "Xong", trạng thái vẫn xanh. Tệ hơn nữa là nó *gần* dùng được —
+    Midas sẽ ngồi giải một mô hình vô nghĩa hàng giờ.
+
+    Chặn ở đây chứ không ở chỗ đọc DXF, vì phần xem trước phải vẽ được cả những
+    bản vẽ mà frame builder bó tay: đó chính là lúc người dùng cần nhìn nhất.
+    """
+    if not outpoly_dxf:
+        return
+    xs = [p[0] for p in outpoly_dxf]
+    ys = [p[1] for p in outpoly_dxf]
+    rong = max(xs) - min(xs)
+    cao = max(ys) - min(ys)
+
+    if rong > BE_RONG_TOI_DA or cao > CHIEU_CAO_TOI_DA:
+        # Đoán hệ số bằng cách thử: lấy cái nào đưa bề rộng về khoảng hợp lý
+        # của một mặt cắt thật. So theo độ lớn thì không phân biệt được —
+        # 1634 đơn vị có thể là mm (1,6 m, vô lý) hay cm (16,34 m, hợp lý).
+        # Phải xét CẢ hai chiều: riêng bề rộng thì 1634 chia 1000 ra 1,6 m vẫn
+        # lọt, mà chia 100 ra 16,34 m cũng lọt. Thêm chiều cao thì hết nhập
+        # nhằng — 0,66 m không phải chiều cao của dầm hộp, còn 6,63 m thì phải.
+        he_so = 1000
+        for thu in (1000, 100):
+            if 4.0 <= rong / thu <= BE_RONG_TOI_DA \
+                    and 0.8 <= cao / thu <= 20.0:
+                he_so = thu
+                break
+        raise ValueError(
+            f'Bản vẽ có bề rộng {rong:.0f} và chiều cao {cao:.0f} đơn vị — '
+            f'quá lớn so với một mặt cắt ngang dầm hộp.\n'
+            f'Nhiều khả năng bản vẽ đang dùng đơn vị '
+            f'{"mm" if he_so == 1000 else "cm"} thay vì MÉT.\n'
+            f'Hãy chia toạ độ cho {he_so} (SCALE trong CAD) rồi thêm lại bản vẽ.'
+        )
+
+    if rong < BE_RONG_TOI_THIEU:
+        raise ValueError(
+            f'Bản vẽ chỉ rộng {rong:.4f} đơn vị — quá nhỏ so với một mặt cắt '
+            f'ngang dầm hộp.\nKiểm lại đơn vị bản vẽ và lớp OUTPOLY.')
+
+
 def build_frame(outpoly_dxf: list, inpoly_dxf: list,
                 target_len: float = 0.5,
                 d_L: float = 0.4,
@@ -50,6 +103,8 @@ def build_frame(outpoly_dxf: list, inpoly_dxf: list,
     Returns:
         dict chứa frame geometry (MCT coords)
     """
+    kiem_don_vi(outpoly_dxf)
+
     if _is_twin_inpoly(inpoly_dxf):
         return build_twin_frame(outpoly_dxf, inpoly_dxf[0], inpoly_dxf[1],
                                 target_len=target_len, d_L=d_L, d_R=d_R,

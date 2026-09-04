@@ -270,9 +270,15 @@ class ProjectPanel(QWidget):
             it.setForeground(0, QBrush(QColor(self.t[STATUS_COLOR.get(s.status, 'ink_3')])))
             it.setTextAlignment(0, Qt.AlignmentFlag.AlignCenter)
 
-            it.setText(1, s.name)
+            # Dấu ! ngay sau tên: nội lực đang gán không còn khớp mô hình.
+            # Trạng thái vẫn là "đã gán", nên nếu không có dấu này thì cây mặt
+            # cắt nói rằng mọi thứ đã xong trong khi con số thuộc về một mô
+            # hình khác.
+            it.setText(1, s.name + ('  !' if s.stale else ''))
             if s.status == ERROR:
                 it.setForeground(1, QBrush(QColor(self.t['err'])))
+            elif s.stale:
+                it.setForeground(1, QBrush(QColor(self.t['warn'])))
 
             it.setText(2, str(s.n_elems) if s.n_elems else '—')
             it.setFont(2, mono)
@@ -291,8 +297,11 @@ class ProjectPanel(QWidget):
                        + ('' if s.template else ' (chung)'))
             if s.beam_force:
                 tip.append('Beam Force: ' + os.path.basename(s.beam_force))
+            if s.stale:
+                tip.append(f'<span style="color:{self.t["warn"]}">'
+                           f'<b>{s.stale}</b></span>')
             if s.note:
-                tip.append(f'<span style="color:#B42318">{s.note}</span>')
+                tip.append(f'<span style="color:{self.t["err"]}">{s.note}</span>')
             it.setToolTip(1, '<br>'.join(tip))
 
             if s.name in keep:
