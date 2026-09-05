@@ -13,10 +13,13 @@ REM GUI chay bang PyQt6. Phai loai tru PyQt5/PySide6/shiboken bang tay: hook Qt
 REM cua PyInstaller gom CA BA bo binding co trong may, va ban v1.4.1 dau tien
 REM dong goi 300 MB trong do 164 MB la PyQt5 + PySide6 hoan toan thua (chi co
 REM DLL, khong mot module Python nao import toi). Installer 86 MB -> kiem lai.
-REM "requests"/"urllib3"/"certifi" VAN dang bi loai tru, va dung nhu vay o V1:
-REM chi src/midas_nx.py can chung, ma GUI chua goi toi module do. KHI NAO them
-REM the Kiem cheo NX thi phai BO BA DONG exclude ay - quen thi loi chi lo ra o
-REM ban da dong goi chu khong lo khi chay tu ma nguon.
+REM "requests"/"urllib3"/"certifi" DA duoc bo khoi danh sach loai tru (v1.5.0):
+REM the "Kiem cheo NX" goi src/midas_nx.py, ma module do chay tren requests.
+REM Loai tru chung thi the ay chet NGAY o dong import va loi CHI lo ra o ban
+REM da dong goi. tests/test_build_script.py khoa cap nay ca hai chieu.
+REM "tools.nx_crosscheck" cung phai ke tay: tools/ khong nam trong do thi phu
+REM thuoc cua run_gui.py (gui/nx_worker.py nap no luc chay), nen PyInstaller
+REM khong tu tim ra.
 REM KHONG loai tru "unittest": ezdxf -> pyparsing -> pyparsing.testing import
 REM unittest NGAY LUC NAP MODULE, nen loai tru no lam ban dong goi chet ngay o
 REM dong "import ezdxf" (ModuleNotFoundError). Loi nay CHI lo ra o ban .exe.
@@ -36,6 +39,7 @@ pyinstaller --noconfirm --onedir --windowed ^
     --hidden-import "src.material_reader" ^
     --hidden-import "src.mct_frame_writer" ^
     --hidden-import "src.midas_driver" ^
+    --hidden-import "src.midas_nx" ^
     --hidden-import "src.preview" ^
     --hidden-import "src.project" ^
     --hidden-import "src.pt_layout" ^
@@ -54,6 +58,7 @@ pyinstaller --noconfirm --onedir --windowed ^
     --hidden-import "src.security.hwid" ^
     --hidden-import "src.security.paths" ^
     --hidden-import "src.security.keys" ^
+    --hidden-import "tools.nx_crosscheck" ^
     --exclude-module "PyQt5" ^
     --exclude-module "PySide6" ^
     --exclude-module "PySide2" ^
@@ -74,9 +79,6 @@ pyinstaller --noconfirm --onedir --windowed ^
     --exclude-module "lxml" ^
     --exclude-module "contourpy" ^
     --exclude-module "kiwisolver" ^
-    --exclude-module "certifi" ^
-    --exclude-module "requests" ^
-    --exclude-module "urllib3" ^
     --exclude-module "paramiko" ^
     --exclude-module "setuptools" ^
     --exclude-module "pkg_resources" ^

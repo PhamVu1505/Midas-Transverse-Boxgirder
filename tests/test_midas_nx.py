@@ -261,3 +261,60 @@ def test_truyen_thang_base_thi_thang_tat_ca(monkeypatch):
     monkeypatch.setattr(nx, 'doc_registry', lambda: {'Key': 'K'})
     phien = nx.NX(log=lambda *a: None, base='http://vi-du:1/civil')
     assert phien.base == 'http://vi-du:1/civil'
+
+
+# ── Chẩn đoán tình trạng NX trên máy ─────────────────────────────────────
+
+def test_chan_doan_phan_biet_ba_tinh_huong(monkeypatch):
+    """Ba tình huống cần ba lời khuyên khác nhau.
+
+    Một câu chung chung kiểu "không gọi được API" thì người dùng không biết
+    nên đi cài NX, hay mở NX, hay bấm Connect.
+    """
+    from src import midas_nx as nx
+
+    monkeypatch.setattr(nx, 'duong_dan_nx', lambda: '')
+    assert 'Cài NX' in nx.chan_doan() or 'Không tìm thấy' in nx.chan_doan()
+
+    monkeypatch.setattr(nx, 'duong_dan_nx', lambda: r'C:\x\CVLw.exe')
+    monkeypatch.setattr(nx, 'nx_dang_chay', lambda: False)
+    assert 'chưa chạy' in nx.chan_doan()
+
+    monkeypatch.setattr(nx, 'nx_dang_chay', lambda: True)
+    monkeypatch.setattr(nx, 'doc_registry', dict)
+    assert 'Connect' in nx.chan_doan()
+
+    monkeypatch.setattr(nx, 'doc_registry', lambda: {'Key': 'K'})
+    chu = nx.chan_doan()
+    assert 'Disconnect' in chu and 'Connect' in chu, (
+        'đã có khoá mà phiên chưa nhận thì phải bảo Disconnect rồi Connect '
+        'lại — bảo "Connect" không thôi sẽ không có tác dụng')
+
+
+def test_duong_dan_nx_nhan_bien_moi_truong(monkeypatch, tmp_path):
+    """Máy cài NX ở chỗ khác vẫn phải trỏ được."""
+    from src import midas_nx as nx
+
+    gia = tmp_path / 'CVLw.exe'
+    gia.write_text('', encoding='utf-8')
+    monkeypatch.setenv('MTB_NX_EXE', str(gia))
+    assert nx.duong_dan_nx() == str(gia)
+
+    monkeypatch.setenv('MTB_NX_EXE', str(tmp_path / 'khong-co.exe'))
+    assert nx.duong_dan_nx() == '', 'trỏ vào file không tồn tại mà vẫn nhận'
+
+
+def test_loi_client_does_not_exist_kem_chan_doan(monkeypatch):
+    """Câu gốc của API không nói gì về việc phải làm."""
+    from src import midas_nx as nx
+
+    class R:
+        def json(self):
+            return {'error': {'message': 'client does not exist'}}
+
+    monkeypatch.setattr(nx.requests, 'request', lambda *a, **k: R())
+    monkeypatch.setattr(nx, 'chan_doan', lambda: 'HÃY BẤM CONNECT')
+    phien = nx.NX(key='K', log=lambda *a: None)
+    with pytest.raises(nx.NXError) as e:
+        phien.get('db/UNIT')
+    assert 'HÃY BẤM CONNECT' in str(e.value)

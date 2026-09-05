@@ -16,6 +16,7 @@ from .license_dialog import LicenseDialog
 from .generate_tab import GenerateController
 from .results_tab import ResultsTab
 from .check_tab import CheckTab
+from .nx_tab import NXTab
 from .project_panel import ProjectPanel
 from .properties_panel import PropertiesPanel
 from .viewer_panel import ViewerPanel
@@ -109,7 +110,8 @@ class MainWindow(QMainWindow):
     # ba tab đầu cùng trỏ về khung xem nhưng đổi chế độ vẽ.
     VIEW_TABS = [('Model', 0, MODEL), ('Section shape', 0, SHAPE),
                  ('Parts', 0, PARTS), ('Results table', 1, None),
-                 ('Kiểm toán mặt cắt', 3, None), ('MCT source', 2, None)]
+                 ('Kiểm toán mặt cắt', 3, None), ('MCT source', 2, None),
+                 ('Kiểm chéo NX', 4, None)]
 
     def _build_central(self):
         root = QWidget()
@@ -156,8 +158,15 @@ class MainWindow(QMainWindow):
         self.mct_view.setReadOnly(True)
         self.mct_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
 
+        # Thẻ Kiểm chéo NX: cổng giấy phép truyền vào chứ không để thẻ tự
+        # quyết — chỉ cửa sổ chính mới mở được hộp thoại Giấy phép, mà cổng thì
+        # phải nằm ở chỗ TÍNH (nút Chạy), không phải chỗ mở thẻ.
+        self.nx_tab = NXTab(self.status, self.project, self.t,
+                            require_license=self.require_license)
+
         self.stack = QStackedWidget()
-        for w in (self.viewer, self.res_tab, self.mct_view, self.check_tab):
+        for w in (self.viewer, self.res_tab, self.mct_view, self.check_tab,
+                  self.nx_tab):
             self.stack.addWidget(w)
         lay.addWidget(self.stack, 1)
 
@@ -176,6 +185,7 @@ class MainWindow(QMainWindow):
         3: 'Bảng nội lực và biểu đồ bao',
         4: 'Kiểm toán tiết diện theo TCVN 11823-5',
         5: 'Nội dung file MCT đã sinh',
+        6: 'Cho MIDAS CIVIL NX giải lại và so nội lực với Civil 2022',
     }
 
     def _on_view_tab(self, idx):
@@ -194,6 +204,8 @@ class MainWindow(QMainWindow):
             self.check_tab.refresh()
             self.check_tab.refresh_results_state()
             self.steps.set_state(4, ACTIVE)
+        elif page == 4:
+            self.nx_tab.refresh()
         elif page == 2:
             self.mct_view.setPlainText(
                 self.gen_tab.current_mct_text() or
@@ -251,6 +263,7 @@ class MainWindow(QMainWindow):
         self.gen_tab.set_log(self.log)
         self.res_tab.set_log(self.log)
         self.check_tab.set_log(self.log)
+        self.nx_tab.set_log(self.log)
 
     def _build_status(self):
         self.status = StatusBar()
@@ -512,6 +525,7 @@ class MainWindow(QMainWindow):
         # Ô chọn mặt cắt của hai thẻ này kéo theo cả app — xem `_sync_section`.
         self.res_tab.section_selected.connect(self._sync_section)
         self.check_tab.section_selected.connect(self._sync_section)
+        self.nx_tab.section_selected.connect(self._sync_section)
         # Sửa một ô cốt thép chỉ cần đánh dấu project bẩn — nối vào
         # _on_project_changed thì mỗi lần gõ phím lại dựng lại cả cây mặt cắt.
         self.check_tab.project_changed.connect(self._update_title)
@@ -543,6 +557,7 @@ class MainWindow(QMainWindow):
         self.gen_tab.set_project(project)
         self.res_tab.set_project(project)
         self.check_tab.set_project(project)
+        self.nx_tab.set_project(project)
         self._on_project_changed()
         self.steps.reset()
         self.steps.set_state(0, DONE if len(project) else ACTIVE,
@@ -584,6 +599,7 @@ class MainWindow(QMainWindow):
         self.gen_tab.refresh()
         self.res_tab.refresh()
         self.check_tab.refresh()
+        self.nx_tab.refresh()
         self._update_title()
         n = len(self.project)
         self.lb_count.setText(
@@ -722,6 +738,7 @@ class MainWindow(QMainWindow):
         self.props.apply_theme(self.t)
         self.res_tab.apply_theme(self.t, self.sizes)
         self.check_tab.apply_theme(self.t, self.sizes)
+        self.nx_tab.apply_theme(self.t, self.sizes)
         self.log.apply_theme(self.t, self.sizes)
         self._restyle_chrome()
 
@@ -926,6 +943,11 @@ class MainWindow(QMainWindow):
             (getattr(getattr(self, 'gen_tab', None), 'worker', None), 'Tạo MCT'),
             (getattr(getattr(self, 'res_tab', None), 'worker', None),
              'Xử lý Beam Force'),
+            # Thiếu dòng này thì nút Dừng và `closeEvent` không thấy lượt kiểm
+            # chéo NX: đóng cửa sổ giữa chừng là NX vẫn giải tiếp và vẫn ghi
+            # tiếp file, còn app thì không còn chỗ nào để bảo nó dừng.
+            (getattr(getattr(self, 'nx_tab', None), 'worker', None),
+             'Kiểm chéo NX'),
         ]
         for w, ten in ung_vien:
             if w is not None and w.isRunning():

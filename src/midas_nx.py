@@ -79,6 +79,66 @@ class NXError(RuntimeError):
 
 REG_CONNECTION = r'SOFTWARE\MIDAS\CVLwNX_US\CONNECTION'
 
+#: Nơi NX thường được cài. Dò theo thứ tự này khi cần biết NX **có trên máy
+#: hay không** — để câu báo lỗi nói đúng việc: chưa cài là một chuyện, cài rồi
+#: mà chưa Connect là chuyện khác hẳn, và hai chuyện đó cần hai lời khuyên
+#: khác nhau.
+NOI_CAI_NX = [
+    r'C:\Program Files\MIDAS\MIDAS CIVIL NX\MIDAS CIVIL NX',
+    r'C:\Program Files (x86)\MIDAS\MIDAS CIVIL NX\MIDAS CIVIL NX',
+]
+TEN_EXE_NX = 'CVLw.exe'
+
+
+def duong_dan_nx() -> str:
+    """Đường dẫn `CVLw.exe`, hoặc chuỗi rỗng nếu không tìm thấy.
+
+    Biến `MTB_NX_EXE` ghi đè, cho máy cài NX ở chỗ khác.
+    """
+    tay = (os.environ.get('MTB_NX_EXE') or '').strip()
+    if tay:
+        return tay if os.path.isfile(tay) else ''
+    for d in NOI_CAI_NX:
+        p = os.path.join(d, TEN_EXE_NX)
+        if os.path.isfile(p):
+            return p
+    return ''
+
+
+def nx_dang_chay() -> bool:
+    """NX có tiến trình nào đang chạy không.
+
+    Chỉ ĐỌC danh sách tiến trình. Không mở, không đóng, không điều khiển NX —
+    phiên là của người dùng, đúng luật của `midas_driver`.
+    """
+    if os.name != 'nt':
+        return False
+    try:
+        import subprocess
+        r = subprocess.run(['tasklist', '/FI', f'IMAGENAME eq {TEN_EXE_NX}'],
+                           capture_output=True, text=True, timeout=15)
+        return TEN_EXE_NX.lower() in r.stdout.lower()
+    except Exception:
+        return False
+
+
+def chan_doan() -> str:
+    """Câu nói đúng việc phải làm, tuỳ tình trạng NX trên máy này.
+
+    Ba tình huống cần ba lời khuyên khác nhau, mà một câu chung chung kiểu
+    "không gọi được API" thì không phân biệt được cái nào.
+    """
+    if not duong_dan_nx():
+        return ('Không tìm thấy MIDAS CIVIL NX trên máy này. Cài NX, hoặc đặt '
+                'biến MTB_NX_EXE trỏ tới CVLw.exe nếu cài ở chỗ khác.')
+    if not nx_dang_chay():
+        return 'MIDAS CIVIL NX chưa chạy. Mở NX rồi thử lại.'
+    if not doc_registry().get('Key'):
+        return ('NX đang chạy nhưng chưa bật API. Trong NX: Apps → API '
+                'Settings → Connect.')
+    return ('NX đang chạy và đã có khoá, nhưng phiên API chưa nhận. Trong NX: '
+            'Apps → API Settings → Disconnect → Connect.')
+
 
 def doc_registry() -> dict:
     """Thông số kết nối NX tự ghi vào registry: `Key`, `URI`, `PORT`, `HTTPS`.
@@ -195,6 +255,12 @@ class NX:
             msg = (d['error'] or {}).get('message', '')
             if 'not opened' in msg:
                 raise NXError('NX chưa mở tài liệu nào')
+            # `client does not exist` nghĩa là phiên API chưa được nhận — câu
+            # gốc không nói gì về việc phải làm, mà việc phải làm lại khác
+            # nhau tuỳ NX đã cài chưa, đang chạy chưa, đã Connect chưa. Ghép
+            # thêm chẩn đoán để người dùng đọc một lần là biết bấm gì.
+            if 'client does not exist' in msg.lower():
+                raise NXError(f'{method} {ep}: {msg}\n{chan_doan()}')
             raise NXError(f'{method} {ep}: {msg}')
         return d
 
