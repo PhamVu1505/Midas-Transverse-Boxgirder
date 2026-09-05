@@ -21,14 +21,14 @@ Mức nặng: **cao** = người dùng mất việc hoặc đọc ra kết quả
 | [B-18](#b-18) | Nhãn *Đã kiểm toán* gắn nhầm chỗ, và bảng kiểm toán không sống qua lần mở lại | vừa | soát tương tác | quyết |
 | [B-19](#b-19) | Thư mục kết quả mặc định là đường dẫn tương đối | vừa | soát tương tác | sửa |
 | [B-04](#b-04) | Khung Model phóng quanh tâm, hai khung còn lại phóng quanh con trỏ | vừa | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
-| [B-01](#b-01) | Tắt Sửa gối giữa lúc kéo làm hình và project lệch nhau | vừa | [Sửa gối](khung-xem/sua-goi.md) | sửa |
-| [B-02](#b-02) | Không có cách nào huỷ một cú kéo gối | vừa | [Sửa gối](khung-xem/sua-goi.md) | sửa |
+| [B-01](#b-01) | Tắt Sửa gối giữa lúc kéo làm hình và project lệch nhau | vừa | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
+| [B-02](#b-02) | Không có cách nào huỷ một cú kéo gối | vừa | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
 | [B-20](#b-20) | Delete và Enter trên cây mặt cắt không làm gì | thấp | soát tương tác | quyết |
 | [B-21](#b-21) | Hộp thoại *Element Mismatch* viết bằng tiếng Anh | thấp | soát tương tác | sửa |
 | [B-22](#b-22) | Thanh trạng thái giữ nguyên câu của thao tác trước | thấp | soát tương tác | sửa |
 | [B-23](#b-23) | Thêm bản vẽ xong không nói thêm được mấy, bỏ mấy | thấp | soát tương tác | sửa |
 | [B-24](#b-24) | Mặt cắt bị bỏ giữa lúc tạo MCT để lại file mồ côi | thấp | soát tương tác | sửa |
-| [B-06](#b-06) | Bấm vào node đã có gối không phản hồi gì | thấp | [Sửa gối](khung-xem/sua-goi.md) | sửa |
+| [B-06](#b-06) | Bấm vào node đã có gối không phản hồi gì | thấp | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
 
 ---
 
@@ -49,7 +49,7 @@ Mức nặng: **cao** = người dùng mất việc hoặc đọc ra kết quả
 
 **Nguyên nhân trong mã.** `gui/frame_view.py:166-171` — `set_edit_supports()` đặt `_drag_sup = -1`. `gui/frame_view.py:702-707` — `mouseReleaseEvent` chỉ phát tín hiệu khi `_drag_sup >= 0`. Nhưng `gui/frame_view.py:722` đã sửa `self.supports[...]['x']` ngay trong lúc kéo. Vậy dữ liệu đã đổi, tín hiệu thì không bao giờ đi.
 
-**Trạng thái.** Đã kiểm chứng trên `FrameView` thật với `output/S1/S1_topo.json`: gối dời từ `x = −1,2992 m` sang `x = +1,2992 m` trên hình — **2,6 m** — mà số tín hiệu phát ra là **0**.
+**Trạng thái.** Đã kiểm chứng trên `FrameView` thật với `output/S1/S1_topo.json`: gối dời từ `x = −1,2992 m` sang `x = +1,2992 m` trên hình — **2,6 m** — mà số tín hiệu phát ra là **0**. **ĐÃ SỬA:** `FrameView._cancel_sup_drag()` trả gối về vị trí đã chụp lúc bấm chuột xuống và KHÔNG phát tín hiệu — hoàn nguyên là cách duy nhất làm hình và project khớp lại mà không ghi bừa một vị trí người dùng không chọn. `set_edit_supports()` gọi nó thay cho việc quên cú kéo đi. Khoá bởi `tests/test_sua_goi.py`.
 
 **Quyết định.** Sửa. Hai hướng: phát tín hiệu trong `set_edit_supports()` nếu đang kéo dở, hoặc chụp lại vị trí đầu và hoàn nguyên. Hướng thứ hai hợp với B-02 hơn.
 
@@ -71,6 +71,8 @@ Cùng gốc: **không một phím bổ trợ nào có tác dụng** trong khung 
 3. Thả chuột. Vị trí mới đã được ghi.
 
 **Nguyên nhân trong mã.** `gui/frame_view.py:752-763` — `keyPressEvent` xử lý `F`, `+`, `-`, `Esc`, nhưng nhánh `Esc` chỉ xoá node đang chọn (`self._sel = None`) và không đụng tới `_drag_sup`. Không chỗ nào lưu vị trí gối trước khi kéo, nên cũng không có gì để hoàn nguyên.
+
+**Trạng thái.****ĐÃ SỬA:** Esc huỷ cú kéo đang dở (cùng gốc với B-01); không kéo gì thì Esc vẫn giữ nghĩa cũ là bỏ chọn node — khoá cả hai chiều. Việc thêm phím bổ trợ Shift/Ctrl vẫn để ngỏ, đó là quyết định sản phẩm riêng. Khoá bởi `tests/test_sua_goi.py`.
 
 **Quyết định.** Sửa. Chụp lại `x` lúc bấm xuống, cho Esc trả về giá trị đó và kết thúc cú kéo. Việc thêm phím bổ trợ là quyết định sản phẩm riêng, nên tách khỏi mục này.
 
@@ -140,7 +142,7 @@ Cùng khuôn: kéo một gối vào node đã bị chiếm thì nó **đứng im
 2. Bấm chuột trái cách node đó khoảng 10 điểm ảnh **về phía trên**.
 3. Không có gì xảy ra: không thêm gối, không có nháy sáng, không có chữ nào ở dòng truy vấn.
 
-**Trạng thái.** Đã kiểm chứng trên `FrameView` thật với `output/S1/S1_topo.json`, phát sự kiện chuột thật: số gối giữ nguyên 1, số tín hiệu phát ra 0.
+**Trạng thái.** Đã kiểm chứng trên `FrameView` thật với `output/S1/S1_topo.json`, phát sự kiện chuột thật: số gối giữ nguyên 1, số tín hiệu phát ra 0. **ĐÃ SỬA:** phát `FrameView.message` khi bấm vào node đã có gối, kèm tô sáng chính node bị từ chối để cú bấm có phản hồi NHÌN THẤY được chứ không chỉ một dòng chữ ở mép dưới. Kéo gối vào node bị chiếm cũng nói ra, một lần cho mỗi node chứ không theo từng cú dịch chuột. `SupportEditor.set_view()` nối tiếp tín hiệu ra dòng truy vấn — không có cầu đó thì mọi lời từ chối rơi vào hư không. Khoá bởi `tests/test_sua_goi.py`.
 
 **Nguyên nhân trong mã.** `gui/frame_view.py:686` — điều kiện `if not any(...)` bỏ qua im lặng khi node đã có gối. Không có nhánh `else`.
 

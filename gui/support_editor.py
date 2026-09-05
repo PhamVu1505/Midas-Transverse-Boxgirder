@@ -35,7 +35,20 @@ class SupportEditor(QWidget):
         self.rebuild()
 
     def set_view(self, view):
+        # Dòng truy vấn dưới khung xem chỉ nghe `SupportEditor.message`
+        # (main_window nối đúng một dây tới đó), nên những lời từ chối
+        # phát ra từ chính khung xem — bấm vào node đã có gối, kéo gối
+        # vào node đã bị chiếm (B-06) — phải mượn đường này mới tới nơi.
+        # Gỡ dây cũ trước: đổi view hai lần mà cứ nối thêm thì mỗi thông
+        # báo đi ra bấy nhiêu bản.
+        if self.view is not None and hasattr(self.view, 'message'):
+            try:
+                self.view.message.disconnect(self.message)
+            except (TypeError, RuntimeError):
+                pass
         self.view = view
+        if view is not None and hasattr(view, 'message'):
+            view.message.connect(self.message)
         self.rebuild()
 
     def apply_theme(self, theme: dict):

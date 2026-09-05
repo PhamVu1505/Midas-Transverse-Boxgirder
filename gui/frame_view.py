@@ -50,6 +50,10 @@ class FrameView(QWidget):
     node_hovered = pyqtSignal(int, dict)   # id, thông tin (id=-1 khi rời chuột)
     node_clicked = pyqtSignal(int)
     supports_changed = pyqtSignal(list)    # [{'x','kind'}] sau khi người dùng sửa
+    # Lời từ chối phát ra từ chính khung xem. Dòng truy vấn dưới
+    # canvas chỉ nghe `SupportEditor.message`, nên tín hiệu này được
+    # nối tiếp qua đó trong `SupportEditor.set_view()` — xem B-06.
+    message = pyqtSignal(str)
 
     def __init__(self, theme: dict = None, parent=None):
         super().__init__(parent)
@@ -67,6 +71,13 @@ class FrameView(QWidget):
         self.supports = []                # [{'x': float, 'kind': str}]
         self.edit_supports = False
         self._drag_sup = -1
+        # Vị trí gối lúc bấm chuột xuống, chụp lại để còn đường lui:
+        # `mouseMoveEvent` sửa thẳng toạ độ trên hình trong suốt cú
+        # kéo, nên không giữ trị đầu thì không có gì để hoàn nguyên.
+        self._drag_x0 = None
+        # Node đã báo là bị chiếm trong cú kéo hiện tại — chỉ để nói
+        # một lần cho mỗi node chứ không nói mỗi lần con trỏ nhích.
+        self._drag_block = None
         self._zoom = 1.0
         self._pan = QPointF(0, 0)
         self._base = 1.0
@@ -163,9 +174,33 @@ class FrameView(QWidget):
                          for s in (supports or [])]
         self.update()
 
-    def set_edit_supports(self, on: bool):
-        self.edit_supports = bool(on)
+    def _cancel_sup_drag(self) -> bool:
+        """Huỷ cú kéo gối đang dở, trả gối về đúng chỗ lúc bấm xuống.
+
+        Hoàn nguyên chứ KHÔNG phát tín hiệu, và đây là điểm mấu chốt:
+        trong lúc kéo, `mouseMoveEvent` đã sửa thẳng `supports[..]['x']`
+        trên hình còn project thì chưa hề biết. Bỏ lửng ở đó là hình và
+        project nói hai chuyện khác nhau cho tới lần nạp lại, lúc ấy gối
+        nhảy về chỗ cũ mà không có gì giải thích (B-01). Trả về trị đã
+        chụp thì hai bên lại khớp mà không phải ghi gì — và cũng chính
+        là thứ Esc cần để huỷ một cú kéo (B-02).
+        """
+        if self._drag_sup < 0:
+            return False
+        if (self._drag_x0 is not None
+                and 0 <= self._drag_sup < len(self.supports)):
+            self.supports[self._drag_sup]['x'] = self._drag_x0
         self._drag_sup = -1
+        self._drag_x0 = None
+        self._drag_block = None
+        self.update()
+        return True
+
+    def set_edit_supports(self, on: bool):
+        # Tắt chế độ (hoặc đổi thẻ chế độ xem) giữa lúc kéo dở thì hoàn
+        # nguyên chứ đừng chỉ quên cú kéo đi — xem _cancel_sup_drag().
+        self._cancel_sup_drag()
+        self.edit_supports = bool(on)
         self.setCursor(Qt.CursorShape.PointingHandCursor if on
                        else Qt.CursorShape.CrossCursor)
         self.update()
@@ -702,6 +737,10 @@ class FrameView(QWidget):
                     self.update()
                 else:
                     self._drag_sup = hit
+                    # Chụp vị trí đầu ngay tại đây: Esc và việc tắt
+                    # chế độ giữa chừng đều cần một chỗ để trả về.
+                    self._drag_x0 = self.supports[hit]['x']
+                    self._drag_block = None
                     self.update()
                 return
             nid = self._near(e.position(), self.m['bot_ids'])
@@ -710,7 +749,17 @@ class FrameView(QWidget):
                 if not any(self._sup_node(sp) == nid for sp in self.supports):
                     self.supports.append({'x': x, 'kind': 'roller'})
                     self._emit_supports()
-                    self.update()
+                else:
+                    # Im lặng ở đây thì người dùng không phân biệt được
+                    # "phần mềm từ chối vì node đã có gối" với "tôi bấm
+                    # hụt" (B-06). Nói ra ở dòng truy vấn, và tô sáng
+                    # chính node bị từ chối để cú bấm có phản hồi nhìn
+                    # thấy được chứ không chỉ một dòng chữ ở mép dưới.
+                    self._sel = nid
+                    self.message.emit(
+                        f'Node {nid} đã có gối — kéo tam giác để dời, '
+                        f'chuột phải để xóa')
+                self.update()
                 return
             self._drag = (e.position(), QPointF(self._pan))
             return
@@ -727,6 +776,8 @@ class FrameView(QWidget):
         self._drag = None
         if self._drag_sup >= 0:
             self._drag_sup = -1
+            self._drag_x0 = None
+            self._drag_block = None
             self._emit_supports()
             self.update()
         self.setCursor(Qt.CursorShape.PointingHandCursor if self.edit_supports
@@ -744,6 +795,16 @@ class FrameView(QWidget):
                             if k != self._drag_sup)
                 if not taken:
                     self.supports[self._drag_sup]['x'] = x
+                    self._drag_block = None
+                elif nid != self._drag_block:
+                    # Gối đứng im vì node đã bị gối khác chiếm. Không
+                    # nói gì thì trông như phần mềm treo trong khoảnh
+                    # khắc đó (B-06). Nói đúng MỘT lần cho mỗi node —
+                    # phát theo từng cú dịch chuột thì dòng truy vấn
+                    # nhấp nháy tới mức không đọc được.
+                    self._drag_block = nid
+                    self.message.emit(
+                        f'Node {nid} đã có gối — gối đang kéo đứng lại')
             self.update()
             return
         if self._drag:
@@ -781,7 +842,15 @@ class FrameView(QWidget):
         elif e.key() == Qt.Key.Key_Minus:
             self.zoom_by(1 / 1.25)
         elif e.key() == Qt.Key.Key_Escape:
-            self._sel = None
-            self.update()
+            # Esc trước hết là "bỏ việc đang làm dở" — mọi công cụ kỹ
+            # thuật kỹ sư quen dùng đều cho Esc huỷ cú kéo, còn ở đây
+            # thì thả chuột ở đâu gối nằm đó và ghi ngay, không hoàn tác
+            # (B-02). Chỉ khi không kéo gì thì Esc mới rơi xuống nghĩa
+            # cũ là bỏ chọn node.
+            if self._cancel_sup_drag():
+                self.message.emit('Đã huỷ cú kéo — gối trở về vị trí cũ')
+            else:
+                self._sel = None
+                self.update()
         else:
             super().keyPressEvent(e)
