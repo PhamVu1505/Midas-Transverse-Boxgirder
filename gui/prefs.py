@@ -11,9 +11,11 @@ rồi mới biết mình chọn gì.
 sổ chính hỏi `Prefs` rồi tự phân phát xuống các panel qua `apply_theme()`.
 """
 
+import os
+
 from dataclasses import dataclass, asdict, field, fields
 
-from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtCore import Qt, QSettings, QStandardPaths
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget,
                              QListWidgetItem, QStackedWidget, QWidget, QLabel,
                              QComboBox, QRadioButton, QButtonGroup, QSlider,
@@ -33,6 +35,49 @@ LAYER_LABELS = [
 ]
 
 VIEW_MODES = [('model', 'Model'), ('shape', 'Section shape'), ('parts', 'Parts')]
+
+
+def _thu_muc_ket_qua_mac_dinh() -> str:
+    """Thư mục kết quả mặc định — LUÔN là đường dẫn tuyệt đối.
+
+    Mặc định cũ là chuỗi ``'output'``: một đường dẫn TƯƠNG ĐỐI, nên thư mục kết
+    quả mọc ra ở **thư mục làm việc của tiến trình** — chỗ nào cũng có thể tuỳ
+    app được mở bằng lối tắt Start Menu, bấm đúp `.mtbproj` hay kéo thả. Người
+    dùng không đoán được file của mình nằm đâu, và hai project cùng có mặt cắt
+    tên `S1` ghi đè lên nhau mà không có gì hỏi. Lối chuột phải đã vá chuyện
+    này (`gui/quick_mct.py::default_output_for`); app chính thì chưa.
+
+    Thư mục Tài liệu của người dùng luôn tồn tại và luôn cho ghi, lại là chỗ
+    người dùng biết đường mở. `MTB_OUTPUT_DIR` để công cụ kiểm và bản chạy thử
+    khỏi rải file vào Tài liệu thật của máy đang phát triển.
+    """
+    env = str(os.environ.get('MTB_OUTPUT_DIR', '') or '').strip()
+    if env:
+        return os.path.normpath(os.path.abspath(env))
+    base = ''
+    try:
+        base = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.DocumentsLocation)
+    except Exception:      # Qt chưa dựng xong / nền không có thư mục chuẩn
+        base = ''
+    if not base:
+        base = os.path.join(os.path.expanduser('~'), 'Documents')
+    return os.path.normpath(os.path.join(base, 'Midas-Transverse-Boxgirder'))
+
+
+def resolve_output_dir(value) -> str:
+    """Quy giá trị người dùng về đường dẫn tuyệt đối.
+
+    Đường dẫn tương đối KHÔNG được `abspath()` ở đây: `abspath` neo vào thư mục
+    làm việc của **lần chạy này**, mà lần chạy sau lại khác — tức vẫn đúng cái
+    lỗi đang vá, chỉ khác là nó đã hoá thành một chuỗi trông như hợp lệ. Trị
+    tương đối (kể cả `'output'` còn sót trong QSettings của bản cũ) quy về
+    thư mục mặc định.
+    """
+    v = str(value or '').strip()
+    if v and os.path.isabs(v):
+        return os.path.normpath(v)
+    return _thu_muc_ket_qua_mac_dinh()
 
 
 def _default_layers() -> dict:
@@ -56,7 +101,8 @@ class Prefs:
     start_mode: str = 'model'
 
     # ── Mặc định ──
-    output_dir: str = 'output'
+    # Tuyệt đối, không phải chuỗi 'output' — xem `_thu_muc_ket_qua_mac_dinh`.
+    output_dir: str = field(default_factory=_thu_muc_ket_qua_mac_dinh)
     template: str = ''
     reopen_last: bool = True
     select_on_add: bool = True
@@ -105,6 +151,10 @@ class Prefs:
         base = _default_layers()
         base.update({k: bool(v) for k, v in (p.layers or {}).items() if k in base})
         p.layers = base
+        # QSettings của bản cũ mang chuỗi 'output'. Quy về tuyệt đối ngay lúc
+        # nạp, nên mọi nơi đọc `prefs.output_dir` (cửa sổ chính nhận thẳng vào
+        # `project.output_dir`) đều chỉ thấy đường dẫn đầy đủ.
+        p.output_dir = resolve_output_dir(p.output_dir)
         return p
 
     def save(self, settings: QSettings):
@@ -521,6 +571,10 @@ class PreferencesDialog(QDialog):
         self._sync_widgets()
 
     def result_prefs(self) -> Prefs:
+        # Người dùng gõ tay được đường dẫn tương đối vào ô Thư mục kết quả.
+        # Quy về tuyệt đối ở đây chứ không lúc gõ: sửa từng ký tự trong lúc
+        # người ta đang gõ thì ô nhập nhảy chữ.
+        self.p.output_dir = resolve_output_dir(self.p.output_dir)
         return self.p
 
 

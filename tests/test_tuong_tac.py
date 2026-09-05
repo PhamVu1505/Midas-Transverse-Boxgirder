@@ -125,7 +125,7 @@ def test_khong_ghi_duoc_bao_cao_thi_van_giu_ket_qua(qt, tmp_path, monkeypatch):
         'thông điệp không nói người dùng phải làm gì; trước đây họ nhận được '
         'một traceback Python')
     # Ban .txt van phai ghi duoc binh thuong
-    assert any('_check.txt' in d and 'Saved' in d for d in nhat_ky)
+    assert any('_check.txt' in d and 'Đã ghi' in d for d in nhat_ky)
 
 
 # ── B-11 ──────────────────────────────────────────────────────────────────
@@ -421,3 +421,19 @@ def test_doi_the_thi_dat_lai_dong_chi_tiet(qt):
     assert i_dat < i_stack, (
         'phải đặt lại dòng chi tiết TRƯỚC khi đổi thẻ, để phần dưới còn ghi đè '
         'bằng câu cụ thể hơn nếu có')
+
+
+# ── B-25 ──────────────────────────────────────────────────────────────────
+
+def test_chon_beam_force_khac_thi_ghi_vao_project(qt):
+    """Chỉ sửa danh sách tạm của thẻ thì lần `refresh()` sau quay về tệp cũ."""
+    import inspect
+    from gui.results_tab import ResultsTab
+
+    than = inspect.getsource(ResultsTab._on_mismatch)
+    assert 'set_beam_force' in than, (
+        'chọn tệp Beam Force khác mà không ghi vào project — lần dựng lại danh '
+        'sách kế tiếp quay về tệp cũ và lại lệch y như trước')
+    i_pairs = than.index('self._pairs[i] =')
+    i_ghi = than.index('set_beam_force')
+    assert i_pairs < i_ghi, 'ghi vào project trước khi biết tệp nào được chọn'

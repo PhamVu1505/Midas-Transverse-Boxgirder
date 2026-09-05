@@ -6,9 +6,10 @@ duy nhất giữ trạng thái toàn bộ quy trình, thay vì mỗi tab tự gi
 file riêng rồi phải dò ghép lại với nhau.
 """
 
+import html
 import os
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QEvent, pyqtSignal
 from PyQt6.QtGui import QColor, QBrush, QFont, QAction
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget,
                              QTreeWidgetItem, QLabel, QPushButton, QMenu,
@@ -44,6 +45,10 @@ class ProjectPanel(QWidget):
         self.t = theme or LIGHT
         self.project = project if project is not None else Project()
         self.select_on_add = True      # tùy chọn: tự chọn mặt cắt vừa thêm
+        # Kết quả lần thêm bản vẽ gần nhất, hiện ngay dưới cây. Giữ lại chứ
+        # không chớp rồi tắt: người dùng kéo vào 12 file rồi mới nhìn xuống.
+        self._add_note = ''
+        self._add_warn = False
         self.setAcceptDrops(True)
         self._build()
         self._restyle()
@@ -90,6 +95,8 @@ class ProjectPanel(QWidget):
         self.tree.customContextMenuRequested.connect(self._menu)
         self.tree.itemSelectionChanged.connect(self._on_select)
         self.tree.setStyleSheet('QTreeWidget { border: 0; }')
+        # Phím Delete/Enter chỉ có tác dụng KHI CON TRỎ BÀN PHÍM Ở TRONG CÂY.
+        self.tree.installEventFilter(self)
         # Khống chế vùng: cây không nở vô hạn đẩy các mục dưới ra khỏi màn hình,
         # quá số hàng này thì tự hiện thanh cuộn của chính nó.
         self.tree.setMinimumHeight(150)
@@ -242,6 +249,9 @@ class ProjectPanel(QWidget):
     # ─────────────────────────────────────────
     def set_project(self, project: Project):
         self.project = project
+        # Dòng nhắc thuộc về project cũ — một câu đứng lì là một câu sai ngay
+        # khi bối cảnh đã đổi.
+        self._add_note, self._add_warn = '', False
         self._set_path(self.ed_tpl, project.template)
         self._set_path(self.ed_out, project.output_dir)
         self.refresh()
@@ -313,17 +323,68 @@ class ProjectPanel(QWidget):
     def _update_summary(self):
         n = len(self.project)
         if not n:
-            self.lb_sum.setText('Chưa có mặt cắt nào')
+            dong = 'Chưa có mặt cắt nào'
+        else:
+            c = self.project.counts()
+            bits = [f'{n} mặt cắt', f'{self.project.total_elements} phần tử']
+            if c.get(CHECKED):
+                bits.append(f'{c[CHECKED]} đã kiểm toán')
+            if c.get(ERROR):
+                bits.append(f'{c[ERROR]} lỗi')
+            dong = ' · '.join(bits)
+        if not self._add_note:
+            self.lb_sum.setText(dong)
             return
-        c = self.project.counts()
-        bits = [f'{n} mặt cắt', f'{self.project.total_elements} phần tử']
-        if c.get(CHECKED):
-            bits.append(f'{c[CHECKED]} đã kiểm toán')
-        if c.get(ERROR):
-            bits.append(f'{c[ERROR]} lỗi')
-        self.lb_sum.setText(' · '.join(bits))
+        # Màu lấy từ token của theme, không gõ mã màu — bảng Tối/Tương phản cao
+        # dùng chung khoá này.
+        mau = self.t['warn'] if self._add_warn else self.t['ink_3']
+        self.lb_sum.setText(
+            f'{html.escape(dong)}<br>'
+            f'<span style="color:{mau}">{html.escape(self._add_note)}</span>')
 
     # ─────────────────────────────────────────
+    def eventFilter(self, obj, ev):
+        """Delete = bỏ khỏi project · Enter = tạo MCT cho mặt cắt đang chọn.
+
+        Vì sao là bộ lọc gắn vào `self.tree` chứ không phải QShortcut cấp cửa
+        sổ: phím tắt cấp cửa sổ ăn phím của MỌI widget: dự án đã mắc đúng lỗi
+        ấy khi gán Esc cấp cửa sổ và làm mất Esc-bỏ-chọn của khung xem. Ở đây
+        Delete phải còn là Delete khi người dùng đang gõ trong ô Thư mục kết
+        quả ngay bên dưới.
+
+        Delete đi đúng đường `_remove_selected` — tức có hộp xác nhận kể ra
+        những gì sẽ mất (B-15). Nối thẳng vào `project.remove()` thì một phím
+        lỡ tay xoá luôn bảng cốt thép nhập tay mà không hoàn tác được.
+        """
+        if obj is self.tree and ev.type() == QEvent.Type.KeyPress:
+            key = ev.key()
+            if key == Qt.Key.Key_Delete:
+                self._remove_selected()
+                return True
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                # Việc hiển nhiên nhất với một mặt cắt đang chọn: tạo MCT —
+                # đúng mục đầu tiên của menu chuột phải, và đúng bước kế tiếp
+                # của quy trình. Không tự chạy: chỉ phát yêu cầu như khi bấm
+                # menu, nên mọi cổng kiểm (giấy phép, preflight) vẫn nguyên.
+                names = self.selected_names()
+                if names:
+                    self.generate_requested.emit(names)
+                return True
+        return super().eventFilter(obj, ev)
+
+    def _log(self, msg: str, muc: str = 'info'):
+        """Ghi một dòng vào nhật ký Messages của cửa sổ chính, nếu có.
+
+        Panel không giữ LogView riêng và cũng không nên giữ — nhật ký của app
+        là MỘT chỗ duy nhất ở dock Messages. Lấy qua `window()` và duck-typing
+        để không phải nối thêm dây; không có cửa sổ nào (lúc chạy test, lúc
+        dựng thử) thì lặng lẽ bỏ qua, vì dòng tóm tắt dưới cây vẫn nói.
+        """
+        log = getattr(self.window(), 'log', None)
+        fn = getattr(log, muc, None)
+        if callable(fn):
+            fn(msg)
+
     def _on_select(self):
         name = self.current_name()
         if name:
@@ -342,9 +403,43 @@ class ProjectPanel(QWidget):
             self.add_dxf(sorted(glob.glob(os.path.join(folder, '*.dxf'))))
 
     def add_dxf(self, paths):
+        """Thêm bản vẽ, rồi NÓI RA đã thêm mấy, bỏ mấy, đổi tên cái nào.
+
+        `Project.add_dxf` trả lại mặt cắt sẵn có khi trùng đường dẫn, và tự đặt
+        `S1_2` khi trùng tên — cả hai đều hợp lý và cả hai đều im lặng. Kéo một
+        thư mục 12 bản vẽ vào thì cây dài thêm một ít và người dùng không biết
+        vì sao ít hơn 12, cũng không biết cái tên `S1_2` ở đâu ra.
+
+        So trùng bằng `normpath` chứ không `normcase`: phải dùng ĐÚNG quy tắc
+        mà `Project.add_dxf` dùng, nếu không thì đếm một đằng, project làm một
+        nẻo.
+        """
+        co_san = {os.path.normpath(s.dxf) for s in self.project}
+        them, trung, doi_ten = 0, [], []
         last = None
         for p in paths:
+            da_co = os.path.normpath(p) in co_san
             last = self.project.add_dxf(p)
+            if da_co:
+                trung.append(os.path.basename(p))
+                continue
+            co_san.add(os.path.normpath(p))
+            them += 1
+            goc = os.path.splitext(os.path.basename(p))[0]
+            if last.name != goc:
+                doi_ten.append(f'{goc} → {last.name}')
+
+        bits = [f'Đã thêm {them} bản vẽ' if them != 1 else 'Đã thêm 1 bản vẽ']
+        if trung:
+            bits.append(f'bỏ qua {len(trung)} đã có trong project')
+        if doi_ten:
+            bits.append('đổi tên vì trùng tên: ' + ', '.join(doi_ten))
+        self._add_note = ' · '.join(bits)
+        # Chỉ tô cảnh báo khi có chuyện NGƯỜI DÙNG KHÔNG YÊU CẦU — bỏ bớt file
+        # hoặc đặt một cái tên họ chưa từng gõ. Thêm trót lọt thì màu thường.
+        self._add_warn = bool(trung or doi_ten)
+        self._log(self._add_note, 'warning' if self._add_warn else 'info')
+
         self.refresh()
         self.project_changed.emit()
         # Chọn luôn mặt cắt vừa thêm: khung xem dựng ngay bản xem trước từ DXF,
@@ -435,6 +530,7 @@ class ProjectPanel(QWidget):
 
         for n in names:
             self.project.remove(n)
+        self._add_note, self._add_warn = '', False
         self.refresh()
         self.project_changed.emit()
 
@@ -475,15 +571,73 @@ class ProjectPanel(QWidget):
         m.addAction(a)
         m.exec(self.tree.viewport().mapToGlobal(pos))
 
+    @staticmethod
+    def _cung_template(a, b) -> bool:
+        """Hai đường dẫn template trỏ cùng một chỗ? (rỗng = dùng chung)"""
+        a, b = str(a or ''), str(b or '')
+        if not a or not b:
+            return not a and not b
+        return os.path.normcase(os.path.normpath(a)) == \
+            os.path.normcase(os.path.normpath(b))
+
     def _set_template(self, names, path=None):
+        """Gán template riêng — hỏi trước khi vứt MCT đã sinh.
+
+        `Project.set_template` gọi `reset_outputs()`: mặt cắt tụt về *Chưa tạo
+        MCT*, project quên đường dẫn MCT, topo, số node/phần tử. Việc hạ trạng
+        thái là có lý (template đổi thì MCT cũ đúng là lạc hậu) — cái sai là nó
+        IM LẶNG: một lần bấm nhầm mục menu với sáu mặt cắt đang chọn là sáu
+        lượt tạo MCT bị vứt, không hoàn tác.
+
+        Vì sao hỏi chứ không chuyển sang gắn dấu “lạc hậu” như B-03/B-08: dấu
+        ấy nằm ở `src/project.py`, ngoài phạm vi lần sửa này. Hỏi rồi làm đúng
+        việc cũ là phương án bảo thủ nhất mà vẫn trung thực — không đổi ngữ
+        nghĩa của trạng thái, chỉ thôi làm lén.
+        """
         if path is None:
             path, _ = QFileDialog.getOpenFileName(
                 self, 'Chọn template số liệu', '.',
                 'File Excel (*.xls *.xlsx);;Tất cả (*)')
             if not path:
                 return
-        for n in names:
-            self.project.set_template(n, path)
+
+        secs = [s for s in (self.project.find(n) for n in names) if s]
+        # Chọn lại đúng template đang dùng KHÔNG phải là thay đổi — không có
+        # lý do gì để vứt MCT đi.
+        doi = [s for s in secs if not self._cung_template(s.template, path)]
+        viec = 'Gán template số liệu' if path else 'Bỏ template riêng'
+        if not doi:
+            self._log(f'{viec}: {len(secs)} mặt cắt vốn đã dùng đúng template '
+                      f'này — không mặt cắt nào bị hạ trạng thái.')
+            return
+
+        mat = [s.name for s in doi if s.mct or s.status != NEW]
+        if mat:
+            chu = (f'{viec} cho {len(doi)} mặt cắt?' if len(doi) > 1
+                   else f'{viec} cho mặt cắt {doi[0].name}?')
+            hop = QMessageBox(
+                QMessageBox.Icon.Warning, viec, chu,
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.Cancel, self)
+            hop.setInformativeText(
+                'Số liệu đổi thì MCT đã sinh không còn dùng được, nên các mặt '
+                'cắt sau trở về “Chưa tạo MCT” và project quên đường dẫn MCT, '
+                'topo, số node/phần tử:\n  · ' + '\n  · '.join(mat)
+                + '\n\nFile .mct trên đĩa vẫn còn — tạo lại MCT là xong.')
+            hop.setDefaultButton(QMessageBox.StandardButton.Cancel)
+            if hop.exec() != QMessageBox.StandardButton.Yes:
+                self._log(f'{viec}: đã huỷ, không mặt cắt nào bị đổi.')
+                return
+
+        for s in doi:
+            self.project.set_template(s.name, path)
+        cau = f'{viec}: {len(doi)} mặt cắt'
+        if len(secs) > len(doi):
+            cau += f' · bỏ qua {len(secs) - len(doi)} vốn đã dùng template này'
+        if mat:
+            cau += (f' · {len(mat)} mặt cắt trở về “Chưa tạo MCT”: '
+                    + ', '.join(mat))
+        self._log(cau, 'warning' if mat else 'info')
         self.refresh()
         self.project_changed.emit()
 

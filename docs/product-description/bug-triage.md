@@ -13,21 +13,22 @@ Mức nặng: **cao** = người dùng mất việc hoặc đọc ra kết quả
 | [B-10](#b-10) | Không huỷ được tác vụ nào đang chạy, và đóng cửa sổ cũng không dừng nó | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-11](#b-11) | Nút *Xử lý tất cả* chết vĩnh viễn sau lần chạy đầu | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-12](#b-12) | *Chọn file Beam Force khác* ở hộp lệch phần tử không bao giờ chạy | vừa | soát tương tác | **ĐÃ SỬA** |
-| [B-13](#b-13) | Đổi mặt cắt giữa lúc tạo MCT: cây một đằng, khung xem và dock một nẻo | vừa | soát tương tác | sửa |
+| [B-13](#b-13) | Đổi mặt cắt giữa lúc tạo MCT: cây một đằng, khung xem và dock một nẻo | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-14](#b-14) | Excel đang mở file báo cáo thì mất trọn kết quả của mặt cắt đó | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-15](#b-15) | *Bỏ khỏi project* không hỏi lại, và xoá cả cốt thép lẫn gối đã nhập | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-16](#b-16) | Bảng cốt thép nuốt số nhập sai thành 0 mà không nói gì | vừa | soát tương tác | **ĐÃ SỬA** |
-| [B-17](#b-17) | *Gán template số liệu…* âm thầm vứt MCT đã sinh của mọi mặt cắt được chọn | vừa | soát tương tác | quyết |
-| [B-18](#b-18) | Nhãn *Đã kiểm toán* gắn nhầm chỗ, và bảng kiểm toán không sống qua lần mở lại | vừa | soát tương tác | quyết |
-| [B-19](#b-19) | Thư mục kết quả mặc định là đường dẫn tương đối | vừa | soát tương tác | sửa |
+| [B-17](#b-17) | *Gán template số liệu…* âm thầm vứt MCT đã sinh của mọi mặt cắt được chọn | vừa | soát tương tác | **ĐÃ SỬA** |
+| [B-18](#b-18) | Nhãn *Đã kiểm toán* gắn nhầm chỗ, và bảng kiểm toán không sống qua lần mở lại | vừa | soát tương tác | **ĐÃ SỬA** |
+| [B-19](#b-19) | Thư mục kết quả mặc định là đường dẫn tương đối | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-04](#b-04) | Khung Model phóng quanh tâm, hai khung còn lại phóng quanh con trỏ | vừa | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
 | [B-01](#b-01) | Tắt Sửa gối giữa lúc kéo làm hình và project lệch nhau | vừa | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
 | [B-02](#b-02) | Không có cách nào huỷ một cú kéo gối | vừa | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
-| [B-20](#b-20) | Delete và Enter trên cây mặt cắt không làm gì | thấp | soát tương tác | quyết |
-| [B-21](#b-21) | Hộp thoại *Element Mismatch* viết bằng tiếng Anh | thấp | soát tương tác | sửa |
-| [B-22](#b-22) | Thanh trạng thái giữ nguyên câu của thao tác trước | thấp | soát tương tác | sửa |
-| [B-23](#b-23) | Thêm bản vẽ xong không nói thêm được mấy, bỏ mấy | thấp | soát tương tác | sửa |
-| [B-24](#b-24) | Mặt cắt bị bỏ giữa lúc tạo MCT để lại file mồ côi | thấp | soát tương tác | sửa |
+| [B-20](#b-20) | Delete và Enter trên cây mặt cắt không làm gì | thấp | soát tương tác | **ĐÃ SỬA** |
+| [B-21](#b-21) | Hộp thoại *Element Mismatch* viết bằng tiếng Anh | thấp | soát tương tác | **ĐÃ SỬA** |
+| [B-22](#b-22) | Thanh trạng thái giữ nguyên câu của thao tác trước | thấp | soát tương tác | **ĐÃ SỬA** |
+| [B-23](#b-23) | Thêm bản vẽ xong không nói thêm được mấy, bỏ mấy | thấp | soát tương tác | **ĐÃ SỬA** |
+| [B-24](#b-24) | Mặt cắt bị bỏ giữa lúc tạo MCT để lại file mồ côi | thấp | soát tương tác | **ĐÃ SỬA** |
+| [B-25](#b-25) | Chọn tệp Beam Force khác ở hộp lệch phần tử không ghi vào project | vừa | soát tương tác | **ĐÃ SỬA** |
 | [B-06](#b-06) | Bấm vào node đã có gối không phản hồi gì | thấp | [Sửa gối](khung-xem/sua-goi.md) | **ĐÃ SỬA** |
 
 ---
@@ -332,7 +333,7 @@ Gốc rễ là một cuộc đua. App phát tín hiệu *lệch phần tử* r�
 | 0,5 s sau | `M110` | **`M119`** | **`M119`** |
 | chạy xong | `M110` | **`M119`** | **`M119`** |
 
-**Trạng thái.** Đã kiểm chứng bằng phép đo ở trên.
+**Trạng thái.** Đã kiểm chứng bằng phép đo ở trên. **ĐÃ SỬA:** vẫn tự nhảy theo mặt cắt vừa xong (đó là phản hồi tốt khi người dùng ngồi nhìn), nhưng người dùng tự chọn một lần là thôi nhảy cho hết lượt. Phải phân biệt tiếng vọng của chính nó — `section_shown` phát lại sau mỗi `show_section` — với cú bấm thật trong cây, nếu không thì tính năng tự tắt ngay từ mặt cắt đầu; có bài test riêng khoá chỗ đó. Khoá bởi `tests/test_tuong_tac.py`.
 
 **Nguyên nhân trong mã.** `gui/generate_tab.py::_on_done` gọi `show_section(name)` cho **mỗi** mặt cắt hoàn thành, không xét mặt cắt người dùng đang chọn.
 
@@ -436,7 +437,7 @@ Việc hạ trạng thái bản thân nó là có lý (template đổi thì MCT 
 2. Chọn cả loạt trong cây, chuột phải → *Gán template số liệu…*, chọn một file.
 3. Cả loạt hiện *Chưa tạo MCT*; thẻ Results table báo *"Chưa có mặt cắt nào đã tạo MCT"*.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy trên `Project` thật: `checked` → đổi template → `new`, `mct` về chuỗi rỗng.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy trên `Project` thật: `checked` → đổi template → `new`, `mct` về chuỗi rỗng. **ĐÃ SỬA:** hỏi trước và liệt kê đúng tên những mặt cắt sẽ mất MCT; chọn lại đúng template đang dùng thì không đụng gì, và không có gì để mất thì không hỏi — câu hỏi hỏi mãi sẽ thành thủ tục bấm qua. Cố ý KHÔNG đổi sang cơ chế dấu "lạc hậu" của B-03/B-08: dấu ấy sống trong `src/project.py::set_template`, và hỏi-trước là phương án bảo thủ hơn — không đổi ngữ nghĩa trạng thái, chỉ thôi làm lén. Khoá bởi `tests/test_project_panel.py`.
 
 **Nguyên nhân trong mã.** `src/project.py::set_template` gọi `s.reset_outputs()`. Người gọi ở `gui/project_panel.py::_set_template` chỉ dựng lại cây.
 
@@ -464,7 +465,7 @@ Nhãn ấy vì thế không nói lên điều nó nói. Một project mở ra v�
 2. Sang thẻ Kiểm toán, bấm *Kiểm toán* — trạng thái vẫn y nguyên.
 3. Lưu project, đóng app, mở lại. Trạng thái vẫn *Đã kiểm toán*; nút *Kiểm toán* xám.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy: sau F6 cả sáu mặt cắt ở `checked`; gọi phép kiểm toán thật thì `checked` → `checked` (không đổi). Phần "mở lại project" suy từ đọc mã — bảng kết quả nội lực chỉ sống trong bộ nhớ của thẻ Results table và không có gì trong `.mtbproj` giữ nó.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy: sau F6 cả sáu mặt cắt ở `checked`; gọi phép kiểm toán thật thì `checked` → `checked` (không đổi). Phần "mở lại project" suy từ đọc mã — bảng kết quả nội lực chỉ sống trong bộ nhớ của thẻ Results table và không có gì trong `.mtbproj` giữ nó. **ĐÃ SỬA:** F6 thôi gọi `record_checked` — nó chỉ đọc nội lực nên mặt cắt giữ nguyên *Đã gán Beam Force*; nhãn *Đã kiểm toán* chỉ do thẻ Kiểm toán đặt sau khi thật sự ra bảng. Thanh bước cũng thôi đặt bước ⑤ là DONE sau F6. Phần "sống qua lần mở lại" cất **nội lực** ra `<tên>_forces.json` kèm dấu của hai tệp nguồn (đường dẫn · mtime · cỡ) chứ không cất bảng kiểm toán: cốt thép và tuỳ chọn vốn đã nằm trong `.mtbproj` nên dựng lại bảng chỉ tốn một cú bấm, mà lại không để một bản sao kết quả nào ngoài đĩa để về sau nói khác mô hình. Khoá bởi `tests/test_ket_qua_the.py`.
 
 **Nguyên nhân trong mã.** `gui/results_tab.py::_on_section_done` gọi `project.record_checked(name)`; `gui/check_tab.py::run_check` không gọi gì cả.
 
@@ -484,7 +485,7 @@ Chính dự án đã nhận ra và vá chuyện này cho lối chuột phải, k
 
 **Bước tái hiện.** Mở app từ hai chỗ khác nhau, tạo MCT, rồi tìm thư mục `output`.
 
-**Trạng thái.** Chỉ suy từ đọc mã, chưa kiểm trên bản đóng gói. Xác định được: mặc định là chuỗi `output`, cửa sổ chính nhận nó nguyên xi, còn cửa sổ chuột phải thì lọc bỏ đường dẫn tương đối. **Chưa xác định được** app đã cài đặt chạy với thư mục làm việc nào, và điều gì xảy ra nếu chỗ đó không cho ghi — ba công cụ kiểm của dự án đều chạy từ mã nguồn nên mù với chuyện này.
+**Trạng thái.** Chỉ suy từ đọc mã, chưa kiểm trên bản đóng gói. Xác định được: mặc định là chuỗi `output`, cửa sổ chính nhận nó nguyên xi, còn cửa sổ chuột phải thì lọc bỏ đường dẫn tương đối. **Chưa xác định được** app đã cài đặt chạy với thư mục làm việc nào, và điều gì xảy ra nếu chỗ đó không cho ghi — ba công cụ kiểm của dự án đều chạy từ mã nguồn nên mù với chuyện này. **ĐÃ SỬA:** `Prefs.output_dir` mặc định là thư mục Tài liệu người dùng (`QStandardPaths`), và `resolve_output_dir()` quy mọi trị tương đối về đó — kể cả `'output'` còn sót trong QSettings của bản cũ và trong file `.mtbproj` cũ (quy tại `MainWindow._apply_project`, vì `src/` không được phụ thuộc `gui/`). **Cố ý không dùng `abspath()`**: nó neo vào thư mục làm việc của lần chạy này, tức vẫn đúng cái lỗi đang vá, chỉ khác là đã hoá thành một chuỗi trông như hợp lệ. Khoá bởi `tests/test_project_panel.py`.
 
 **Nguyên nhân trong mã.** `gui/prefs.py` — `output_dir: str = 'output'`. `gui/main_window.py:77` nhận thẳng. Đối chiếu `gui/quick_mct.py::default_output_for`, nơi đường dẫn tương đối bị loại.
 
@@ -504,7 +505,7 @@ Ctrl+A thì có tác dụng: chọn hết mọi mặt cắt (đo được: 6/6).
 
 **Bước tái hiện.** Chọn một mặt cắt, bấm Delete. Số mặt cắt không đổi. Bấm Enter. Không có gì xảy ra.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy: 6 mặt cắt trước và sau khi bấm Delete; lựa chọn không đổi sau khi bấm Enter.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy: 6 mặt cắt trước và sau khi bấm Delete; lựa chọn không đổi sau khi bấm Enter. **ĐÃ SỬA:** Delete gọi *Bỏ khỏi project* (đi qua hộp xác nhận của B-15), Enter xin tạo MCT cho mặt cắt đang chọn — phát đúng tín hiệu mà mục menu dùng, nên mọi cổng giấy phép và bước tiền kiểm vẫn nguyên. Xử lý phím **trong cây** bằng event filter chứ không phải phím tắt cấp cửa sổ, đúng bài học Esc đã mất của khung xem. Khoá bởi `tests/test_project_panel.py`.
 
 **Nguyên nhân trong mã.** `gui/project_panel.py` không xử lý phím nào — không có `keyPressEvent`, không có phím tắt gắn vào cây.
 
@@ -524,7 +525,7 @@ Ctrl+A thì có tác dụng: chọn hết mọi mặt cắt (đo được: 6/6).
 
 **Bước tái hiện.** Gán `Beam Force_S10.xls` cho `S1`, bấm *Xử lý tất cả*.
 
-**Trạng thái.** Đã kiểm chứng: chuỗi trên là chuỗi đọc được trong lúc chạy phép thử gán chéo file.
+**Trạng thái.** Đã kiểm chứng: chuỗi trên là chuỗi đọc được trong lúc chạy phép thử gán chéo file. **ĐÃ SỬA:** viết lại theo giọng các hộp thoại khác — tiêu đề *Lệch số phần tử*, nêu hai con số, nói luôn nguyên nhân thường gặp, nút đặt tên theo việc (*Chọn tệp khác…* / *Bỏ qua mặt cắt này*). Dịch nốt ba dòng nhật ký tiếng Anh còn sót trong `gui/worker.py`. Giữ nguyên phần logic vừa sửa ở B-12. Khoá bởi `tests/test_ket_qua_the.py`.
 
 **Nguyên nhân trong mã.** `gui/results_tab.py::_on_mismatch` và mấy dòng nhật ký quanh đó (`Element mismatch: MCT=…, Results=…`, `Loading topology:`, `Saved:`) là phần chưa được dịch.
 
@@ -544,7 +545,7 @@ Ctrl+A thì có tác dụng: chọn hết mọi mặt cắt (đo được: 6/6).
 1. Project rỗng. Bấm F6, đọc thanh trạng thái.
 2. Bấm F7. Câu cũ vẫn còn.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy trên project rỗng.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy trên project rỗng. **ĐÃ SỬA:** mỗi thẻ có câu mở đầu riêng, đặt TRƯỚC khi đổi thẻ để phần dưới còn ghi đè bằng câu cụ thể hơn nếu có. Khoá bởi `tests/test_tuong_tac.py`.
 
 **Nguyên nhân trong mã.** `gui/main_window.py::run_section_check` chỉ đổi thẻ. Dòng chi tiết của thanh trạng thái không có ai xoá.
 
@@ -567,7 +568,7 @@ Hai bản vẽ trùng tên ở hai thư mục khác nhau thì cái sau được 
 2. Thêm lại chính thư mục ấy. Cây không dài thêm; không có thông báo nào.
 3. Thêm một bản vẽ tên `S1.dxf` từ thư mục khác: trong cây hiện `S1_2`.
 
-**Trạng thái.** Đã kiểm chứng bằng cách chạy phần đặt tên (`S1` · `S1_2`, thêm lại file cũ thì số mặt cắt không đổi). Phần "không có thông báo" suy từ đọc mã: chỗ thêm bản vẽ chỉ dựng lại cây rồi chọn mặt cắt cuối.
+**Trạng thái.** Đã kiểm chứng bằng cách chạy phần đặt tên (`S1` · `S1_2`, thêm lại file cũ thì số mặt cắt không đổi). Phần "không có thông báo" suy từ đọc mã: chỗ thêm bản vẽ chỉ dựng lại cây rồi chọn mặt cắt cuối. **ĐÃ SỬA:** đếm thêm/bỏ qua/đổi tên bằng **đúng quy tắc `normpath` của `Project.add_dxf`** chứ không đếm lại theo cách khác, rồi ghi một dòng vào Messages và vào dòng tóm tắt dưới cây. Dòng nhắc ở lại chứ không chớp rồi tắt: người dùng kéo vào cả chục file rồi mới nhìn xuống. Khoá bởi `tests/test_project_panel.py`.
 
 **Nguyên nhân trong mã.** `gui/project_panel.py::add_dxf` không ghi nhật ký; `src/project.py::add_dxf` trả về mặt cắt sẵn có mà không cho biết là đã trùng.
 
@@ -590,11 +591,27 @@ Cùng khuôn: bấm *Tạo MCT* lần thứ hai thì file cũ bị ghi đè, **k
 2. Trong lúc chạy, bỏ khỏi project một mặt cắt nằm cuối danh sách.
 3. Chạy xong: thư mục kết quả của mặt cắt ấy vẫn có đủ file; con số tổng kết vẫn tính nó.
 
-**Trạng thái.** Chỉ suy từ đọc mã. Đã dựng phép thử nhưng lượt tạo MCT kết thúc trước khi kịp bỏ mặt cắt (**6 mặt cắt trong dưới 0,4 s**), nên chưa quan sát được trực tiếp. Xác định được từ mã: chỗ ghi kết quả vào project **im lặng bỏ qua** khi không còn tìm thấy mặt cắt theo tên, còn phần ghi file thì đã chạy xong từ trước.
+**Trạng thái.** Chỉ suy từ đọc mã. Đã dựng phép thử nhưng lượt tạo MCT kết thúc trước khi kịp bỏ mặt cắt (**6 mặt cắt trong dưới 0,4 s**), nên chưa quan sát được trực tiếp. Xác định được từ mã: chỗ ghi kết quả vào project **im lặng bỏ qua** khi không còn tìm thấy mặt cắt theo tên, còn phần ghi file thì đã chạy xong từ trước. **ĐÃ SỬA:** `GenerateWorker` nhận thêm `con_can(tên)` và bỏ qua mặt cắt đã bị bỏ khỏi project, có ghi rõ một dòng vì sao. Người gọi giữ project còn worker thì không, nên hỏi ngược ra thay vì để worker ôm thêm tham chiếu tới thứ nó không sở hữu; không truyền thì hành vi y như cũ. Khoá bởi `tests/test_tuong_tac.py`.
 
 **Nguyên nhân trong mã.** `gui/worker.py` — worker chụp danh sách công việc lúc bắt đầu và không hỏi lại project. `src/project.py::record_generated`/`record_error` — `if not s: return`.
 
 **Quyết định.** Sửa, mức thấp. Hoặc bỏ qua mặt cắt không còn trong project ngay đầu mỗi vòng, hoặc ghi một dòng nhật ký và đừng đếm nó vào con số tổng kết.
+
+---
+
+## B-25
+
+**Chọn tệp Beam Force khác ở hộp lệch phần tử không ghi vào project**
+
+**Người dùng gặp ở đâu.** Hộp *Lệch số phần tử* hiện lên, người dùng bấm *Chọn tệp khác…* và chỉ tới một file Beam Force đúng.
+
+**Điều xảy ra so với điều trông đợi.** Lượt xử lý chạy lại với tệp mới và ra kết quả đúng, nhưng project **không** được ghi nhận: `set_beam_force()` không được gọi. Lần `refresh()` kế tiếp dựng lại danh sách từ project nên quay về tệp cũ, và lần xử lý sau lại lệch y như trước. Người dùng phải chọn lại tệp mỗi lần, mà không có gì nói vì sao.
+
+**Trạng thái.** **ĐÃ SỬA** ngay trong cùng phiên: `_on_mismatch` gọi `project.set_beam_force(name, new_file)` sau khi người dùng chọn tệp. Khoá bởi `tests/test_tuong_tac.py`.
+
+**Nguyên nhân trong mã.** `gui/results_tab.py::_on_mismatch` cập nhật `self._pairs` (danh sách tạm của thẻ) nhưng không gọi `self.project.set_beam_force(name, new_file)`.
+
+**Quyết định.** Sửa. Một dòng, nhưng phải kiểm cả chiều ngược: gán tệp mới là hết "lạc hậu" (xem B-03/B-08), nên `set_beam_force` cũng xoá cờ đó — đúng điều ta muốn ở đây.
 
 ---
 

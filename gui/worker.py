@@ -269,7 +269,7 @@ class ResultsWorker(QThread):
         os.makedirs(section_dir, exist_ok=True)
 
         try:
-            self.log.emit(f'[{name}] Loading topology: {os.path.basename(topo_path)}')
+            self.log.emit(f'[{name}] Đọc topo: {os.path.basename(topo_path)}')
             with open(topo_path, 'r', encoding='utf-8') as f:
                 topo = json.load(f)
 
@@ -288,8 +288,8 @@ class ResultsWorker(QThread):
             mct_elems = set(eid for eid, _, _, _ in topo['elements'])
 
             if result_elems != mct_elems:
-                self.log.emit(f'[{name}] Element mismatch: '
-                              f'MCT={len(mct_elems)}, Results={len(result_elems)}')
+                self.log.emit(f'[{name}] Lệch số phần tử: '
+                              f'MCT có {len(mct_elems)}, kết quả có {len(result_elems)}')
                 self.error_mismatch.emit(name, len(mct_elems),
                                          len(result_elems), bf_path)
                 return False
@@ -319,7 +319,7 @@ class ResultsWorker(QThread):
             def ghi(duong_dan, viet):
                 try:
                     viet(duong_dan)
-                    self.log.emit(f'[{name}] Saved: {duong_dan}')
+                    self.log.emit(f'[{name}] Đã ghi: {duong_dan}')
                 except PermissionError:
                     self.log.emit(
                         f'[{name}] WARNING: không ghi được {os.path.basename(duong_dan)}'

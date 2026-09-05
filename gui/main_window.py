@@ -481,6 +481,9 @@ class MainWindow(QMainWindow):
     def _connect(self):
         # Người dùng tự chọn trong cây thì phần mềm thôi giành khung xem cho
         # tới hết lượt chạy — xem `GenerateController._on_done`.
+        # Kiểm toán xong thì cây mặt cắt phải vẽ lại dấu trạng thái ngay,
+        # không đợi tới lần dựng lại kế tiếp.
+        self.check_tab.check_recorded.connect(self._on_project_changed)
         self.panel.section_selected.connect(self.gen_tab.nguoi_dung_da_chon)
         self.panel.section_selected.connect(self.gen_tab.show_section)
         self.panel.section_selected.connect(self._on_section_selected)
@@ -517,6 +520,22 @@ class MainWindow(QMainWindow):
     # Project
     # ─────────────────────────────────────────
     def _apply_project(self, project: Project):
+        # File `.mtbproj` cũ mang `output_dir: 'output'` — một đường dẫn TƯƠNG
+        # ĐỐI, tức thư mục kết quả mọc ra ở chỗ nào cũng có thể tuỳ nơi app
+        # được mở. Quy về tuyệt đối ngay tại phễu nạp; `Prefs` đã bịt đường
+        # mặc định, đây là đường project cũ.
+        #
+        # Quy đổi ở ĐÂY chứ không ở `src/project.py`: phép chọn thư mục mặc
+        # định là chuyện của giao diện (`QStandardPaths`), mà `src/` thì không
+        # được phụ thuộc vào `gui/`.
+        from .prefs import resolve_output_dir
+        moi = resolve_output_dir(project.output_dir)
+        if moi != project.output_dir:
+            self.log.warning(
+                f'Thư mục kết quả của project là đường dẫn tương đối '
+                f'({project.output_dir!r}) — đã quy về {moi}')
+            project.output_dir = moi
+
         self.project = project
         self.gen_tab.project = project
         self.panel.set_project(project)
@@ -1221,9 +1240,13 @@ class MainWindow(QMainWindow):
         self.steps.set_state(2, DONE)
         self.steps.set_state(3, DONE if done >= total else ACTIVE, f'{done}/{total}')
         if done >= total:
-            n = len(self.project.by_status(CHECKED))
-            self.steps.set_state(4, DONE, f'{n} mặt cắt')
-            self.status_msg('Đã kiểm toán xong')
+            # F6 chỉ ĐỌC nội lực — nó chưa kiểm toán gì. Bước ⑤ vì thế mới
+            # ACTIVE chứ chưa DONE, và câu tổng kết phải nói đúng việc vừa làm.
+            # Trước đây bước ⑤ được đặt DONE kèm số mặt cắt `checked` và câu
+            # "Đã kiểm toán xong", nên thanh bước nói sai chính điều nó sinh ra
+            # để nói — cùng khuôn với việc F6 từng tự gắn nhãn "Đã kiểm toán".
+            self.steps.set_state(4, ACTIVE)
+            self.status_msg('Đã xử lý nội lực xong — sang thẻ Kiểm toán mặt cắt')
             # Nội lực vừa đổi → cột điểm và dòng nhắc của tab Kiểm toán mặt cắt
             # phải theo, kể cả khi người dùng đang đứng ở tab đó.
             self.check_tab.refresh_results_state()

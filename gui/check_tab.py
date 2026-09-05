@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QScrollArea, QSplitter, QFrame, QCheckBox)
 
 from src import section_check as sc
+from src.project import CHECKED
 from src.result_reader import order_points
 from src.security import guard, usage_log
 from .theme import LIGHT
@@ -180,6 +181,14 @@ class CheckTab(QWidget):
     project_changed = pyqtSignal()
     # Đổi mặt cắt ở ô "Mặt cắt" — kéo theo cây mặt cắt, khung xem, dock Properties.
     section_selected = pyqtSignal(str)
+    # Vừa ra một bảng kiểm toán → mặt cắt đổi sang "Đã kiểm toán" (B-18).
+    #
+    # Tách khỏi `project_changed` vì hai tín hiệu này đòi hai việc khác nhau:
+    # `project_changed` phát mỗi lần gõ một ô cốt thép nên chỉ được đánh dấu
+    # project bẩn (nối vào `_on_project_changed` thì mỗi phím gõ lại dựng lại
+    # cả cây mặt cắt), còn tín hiệu này phát đúng một lần cho một lượt kiểm
+    # toán và cần cây mặt cắt vẽ lại để đổi dấu trạng thái.
+    check_recorded = pyqtSignal(str)
 
     def __init__(self, status_bar, project=None, theme=None,
                  results_provider=None):
@@ -452,9 +461,25 @@ class CheckTab(QWidget):
                 f'Cột bên trên đang là bộ điểm mặc định A–H; mặt cắt nhiều hộp '
                 f'sẽ có thêm cột sau khi tạo MCT.')
         elif not has_forces:
+            # Đã từng kiểm toán mà giờ không nạp lại được nội lực: nói thẳng
+            # ra. Trạng thái mặt cắt vẫn là "Đã kiểm toán" — im lặng thì dòng
+            # nhắc và cây mặt cắt nói hai chuyện khác nhau (B-18).
+            da_kiem = bool(sec and sec.status == CHECKED)
             self.lb_sum.setText(
-                f'Chưa có nội lực cho {name} — sang thẻ “Results table”, '
-                f'gán Beam Force rồi bấm “Xử lý tất cả”.')
+                (f'{name} đã kiểm toán ở lần chạy trước, nhưng nội lực không '
+                 f'nạp lại được (mô hình hoặc tệp Beam Force đã đổi) — '
+                 if da_kiem else f'Chưa có nội lực cho {name} — ')
+                + 'sang thẻ “Results table”, gán Beam Force rồi bấm '
+                  '“Xử lý tất cả”.')
+        elif sec and sec.status == CHECKED:
+            # Bảng kiểm toán không được cất xuống đĩa — cốt thép và tuỳ chọn
+            # thì có (trong .mtbproj), nên dựng lại chỉ tốn một cú bấm. Không
+            # tự chạy lại: kiểm toán là phép TÍNH, phải đi qua cổng giấy phép
+            # do người dùng chủ động bấm, không phải một việc lén làm lúc mở
+            # project.
+            self.lb_sum.setText(
+                f'{name} đã kiểm toán ở lần chạy trước — cốt thép đã nhập vẫn '
+                f'còn; bấm “Kiểm toán” để dựng lại bảng.')
         else:
             self.lb_sum.setText('Đã có nội lực — bấm “Kiểm toán”.')
 
@@ -834,6 +859,15 @@ class CheckTab(QWidget):
         self._out_points = order_points(self._results.keys())
         self._fill_output()
         self.btn_xlsx.setEnabled(True)
+
+        # Đây — và CHỈ ở đây — mới là chỗ đặt nhãn "Đã kiểm toán" (B-18). Việc
+        # vừa xong đúng là việc mà nhãn ấy mô tả: đã có sức kháng, đã có hệ số
+        # Mr/Mu cho từng điểm. Trước đây nhãn do thẻ Results table đặt sau khi
+        # chỉ mới ĐỌC nội lực, nên một project mở ra với sáu mặt cắt "Đã kiểm
+        # toán" có thể chưa có lấy một bảng kiểm toán nào.
+        self.project.record_checked(name)
+        self.project_changed.emit()     # tiêu đề cửa sổ: project đã bẩn
+        self.check_recorded.emit(name)  # cây mặt cắt: đổi dấu trạng thái
 
         n_ok = sum(1 for r in self._results.values() if r['ok'])
         n = len(self._results)

@@ -35,6 +35,91 @@ MAX_STRETCH_COLS = 9
 GROUP_TOKEN = {'Top slab': 'grp_top', 'Bottom slab': 'grp_bot', 'Web': 'grp_web'}
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Nội lực đã xử lý — cất xuống đĩa để sống qua lần mở lại project (B-18)
+# ─────────────────────────────────────────────────────────────────────────
+# Trước đây bảng nội lực chỉ nằm trong bộ nhớ của thẻ này. Mở lại project hôm
+# sau thì mặt cắt vẫn mang nhãn "Đã kiểm toán" (nhãn ấy do chính thẻ này đặt,
+# sai chỗ — xem `_on_section_done`), trong khi thẻ Kiểm toán báo "Chưa có nội
+# lực" và nút Kiểm toán xám: trạng thái nói đã xong, giao diện bảo làm lại từ
+# đầu.
+#
+# Cất kèm DẤU của hai tệp nguồn (đường dẫn · mtime · cỡ tệp). Nạp lại mà dấu
+# không khớp thì BỎ, không dùng — tạo lại MCT hay xuất Beam Force mới nghĩa là
+# nội lực cũ không còn thuộc mô hình nào đang có. Thà để người dùng bấm "Xử lý
+# tất cả" một lần nữa còn hơn dựng bảng kiểm toán từ số liệu của một mô hình đã
+# bị bỏ — đúng khuôn lỗi mà `Section.stale` sinh ra để chặn.
+CACHE_FORMAT = 1
+
+
+def forces_cache_path(output_dir: str, name: str) -> str:
+    """Chỗ cất nội lực đã xử lý của một mặt cắt.
+
+    Nằm cạnh `<tên>_check.xlsx` do worker ghi ra, để dọn thư mục kết quả là
+    dọn luôn cả cache — không có bản sao nào sống sót ở chỗ khác rồi nói dối.
+    """
+    return os.path.join(output_dir or '.', name, f'{name}_forces.json')
+
+
+def _dau_tep(path: str):
+    """Dấu nhận dạng một tệp nguồn. Không đọc được thì None (coi như đã đổi)."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    # mtime làm tròn về mili giây: các hệ tệp khác nhau giữ độ phân giải khác
+    # nhau, so nguyên vẹn thì cache tự vô hiệu vô cớ sau khi chép thư mục.
+    return {'path': os.path.abspath(path),
+            'mtime': round(st.st_mtime, 3), 'size': st.st_size}
+
+
+def save_forces_cache(output_dir: str, name: str, bf_path: str, topo_path: str,
+                      check_points: dict, envelope: dict = None) -> str:
+    """Ghi nội lực đã xử lý + bao nội lực. Trả về đường dẫn đã ghi."""
+    duong = forces_cache_path(output_dir, name)
+    os.makedirs(os.path.dirname(duong), exist_ok=True)
+    goi = {'format': CACHE_FORMAT, 'section': name,
+           'beam_force': _dau_tep(bf_path), 'topo': _dau_tep(topo_path),
+           'check_points': check_points,
+           'envelope': {str(k): v for k, v in (envelope or {}).items()}}
+    with open(duong, 'w', encoding='utf-8') as f:
+        json.dump(goi, f, ensure_ascii=False, indent=1)
+    return duong
+
+
+def load_forces_cache(output_dir: str, name: str, bf_path: str, topo_path: str):
+    """(check_points, envelope) nếu cache còn khớp hai tệp nguồn, không thì
+    (None, None).
+
+    Mọi lỗi đọc đều trả về (None, None): cache là tiện nghi, không phải nguồn
+    sự thật — hỏng thì im lặng bảo người dùng xử lý lại, chứ không được làm
+    vỡ lúc mở project.
+    """
+    try:
+        with open(forces_cache_path(output_dir, name), encoding='utf-8') as f:
+            goi = json.load(f)
+        if goi.get('format') != CACHE_FORMAT:
+            return None, None
+        if goi.get('beam_force') != _dau_tep(bf_path):
+            return None, None
+        if goi.get('topo') != _dau_tep(topo_path):
+            return None, None
+        cps = goi.get('check_points') or {}
+        if not cps:
+            return None, None
+        # Khoá phần tử về lại số nguyên: JSON chỉ có khoá chuỗi, mà
+        # `ForceDiagram._values()` tra theo đúng id phần tử của topo.
+        env = {}
+        for k, v in (goi.get('envelope') or {}).items():
+            try:
+                env[int(k)] = v
+            except (TypeError, ValueError):
+                env[k] = v
+        return cps, env
+    except Exception:
+        return None, None
+
+
 def group_color(group: str, t: dict) -> QColor:
     return QColor(t.get(GROUP_TOKEN.get(group, ''), t['panel']))
 
@@ -457,6 +542,7 @@ class ResultsTab(QWidget):
 
         self._pairs = []      # [(name, bf_path, topo_path)] dựng từ project
         self.refresh()
+        self._nap_cache_noi_luc()
 
     def _set_points(self, points):
         """Dựng lại cột theo ĐÚNG các điểm kiểm toán của mặt cắt đang xem.
@@ -510,7 +596,12 @@ class ResultsTab(QWidget):
     def set_project(self, project):
         self.project = project
         self.out_edit.setText(project.output_dir)
+        # Project khác thì nội lực của project cũ không còn nghĩa gì.
+        self.all_results.clear()
+        self.all_env.clear()
+        self.section_combo.clear()
         self.refresh()
+        self._nap_cache_noi_luc()
 
     def _browse_output(self):
         folder = QFileDialog.getExistingDirectory(
@@ -640,34 +731,123 @@ class ResultsTab(QWidget):
 
     def _on_section_done(self, name, check_points):
         self.all_results[name] = check_points
-        self.project.record_checked(name)
+        # KHÔNG đặt trạng thái "Đã kiểm toán" ở đây (B-18). "Xử lý tất cả" chỉ
+        # đọc nội lực rồi rút ra các điểm kiểm toán — chưa ai nhập một thanh
+        # cốt thép nào và chưa có một hệ số sức kháng nào. Nhãn ấy nay chỉ do
+        # thẻ "Kiểm toán mặt cắt" đặt, đúng chỗ thật sự tính. Mặt cắt giữ
+        # nguyên "Đã gán Beam Force" — đúng việc vừa làm xong.
+        #
+        # Đổi lại, nội lực vừa tính được cất xuống đĩa: mở lại project là dùng
+        # được ngay, thay vì mất sạch cùng bộ nhớ của thẻ này.
+        self._luu_cache(name, check_points)
         self.section_combo.addItem(name)
         self._done += 1
         self.progress_changed.emit(self._done, self._total)
         self.status_bar.showMessage(f'Đã xử lý: {name}')
 
-    def _on_mismatch(self, name, mct_count, result_count, bf_path):
-        """Handle element mismatch - ask user to select a different file."""
-        reply = QMessageBox.warning(
-            self, f'Element Mismatch - {name}',
-            f'Beam Force file has {result_count} elements,\n'
-            f'but MCT model has {mct_count} elements.\n\n'
-            f'File: {os.path.basename(bf_path)}\n\n'
-            f'Select a different Beam Force file?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    def _nguon_cua(self, name):
+        """(Beam Force, topo) của một mặt cắt — ưu tiên cặp đang chạy."""
+        for n, bf, tp in self._pairs:
+            if n == name:
+                return bf, tp
+        s = self.project.find(name)
+        return (s.beam_force, s.topo) if s else ('', '')
 
-        if reply == QMessageBox.StandardButton.Yes:
+    def _luu_cache(self, name, check_points):
+        """Cất nội lực xuống đĩa — ghi hỏng thì KHÔNG được mất kết quả.
+
+        Cùng luật với hai tệp báo cáo của worker: nội lực đã tính xong và
+        đúng, ghi tệp chỉ là việc phụ (B-14).
+        """
+        bf, topo = self._nguon_cua(name)
+        try:
+            save_forces_cache(self._output_dir(), name, bf, topo,
+                              check_points, self.all_env.get(name))
+        except PermissionError:
+            self.log_area.warning(
+                f'[{name}] không cất được nội lực để dùng lại — tệp đang mở ở '
+                f'chương trình khác. Kết quả lần này vẫn dùng bình thường.')
+        except Exception as loi:
+            self.log_area.warning(
+                f'[{name}] không cất được nội lực để dùng lại: {loi}')
+
+    def _output_dir(self) -> str:
+        return self.out_edit.text() or self.project.output_dir or 'output'
+
+    def _nap_cache_noi_luc(self):
+        """Nạp lại nội lực đã xử lý ở lần chạy trước cho các mặt cắt đang có.
+
+        Gọi khi MỞ project, không gọi trong `refresh()`: `refresh()` chạy mỗi
+        lần đổi thẻ và ngay sau nút "Xóa" — nạp ở đó thì nút Xóa không xoá
+        được gì.
+        """
+        n = 0
+        for name, bf, topo in self._pairs:
+            if name in self.all_results:
+                continue
+            cps, env = load_forces_cache(self._output_dir(), name, bf, topo)
+            if not cps:
+                continue
+            self.all_results[name] = cps
+            if env:
+                self.all_env[name] = env
+            if self.section_combo.findText(name) < 0:
+                self.section_combo.addItem(name)
+            n += 1
+        if n and self.log_area is not None:
+            self.log_area.info(
+                f'Nạp lại nội lực đã xử lý của {n} mặt cắt (lần chạy trước). '
+                f'Mô hình hay Beam Force đổi thì phải xử lý lại.')
+        return n
+
+    def _on_mismatch(self, name, mct_count, result_count, bf_path):
+        """Tệp Beam Force không cùng mô hình với MCT — hỏi tệp khác.
+
+        Đây là hộp thoại quan trọng nhất của thẻ này: nó bắt được việc gán
+        nhầm tệp, thứ dẫn thẳng tới một bảng kiểm toán đẹp mà sai. Người dùng
+        là kỹ sư cầu, không nhất thiết đọc được tiếng Anh — nên nói tiếng Việt,
+        và nói luôn nguyên nhân thường gặp thay vì chỉ nêu hai con số (B-21).
+        Nút cũng đặt tên theo việc, giống các hộp thoại còn lại của app.
+        """
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(f'Lệch số phần tử — {name}')
+        box.setText(f'Tệp Beam Force không cùng mô hình với MCT của {name}.')
+        box.setInformativeText(
+            f'Tệp Beam Force có <b>{result_count}</b> phần tử, mô hình MCT có '
+            f'<b>{mct_count}</b> phần tử.<br><br>'
+            f'Tệp: <tt>{os.path.basename(bf_path)}</tt><br><br>'
+            'Thường là gán nhầm tệp của mặt cắt khác, hoặc tệp của lần giải '
+            '<b>trước khi</b> tạo lại MCT. Xử lý tiếp với tệp này thì bảng '
+            'kiểm toán sẽ tính từ nội lực của một mô hình khác.')
+        box.setTextFormat(Qt.TextFormat.RichText)
+        chon = box.addButton('Chọn tệp khác…', QMessageBox.ButtonRole.AcceptRole)
+        box.addButton('Bỏ qua mặt cắt này', QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(chon)
+        box.exec()
+
+        if box.clickedButton() is chon:
             new_file, _ = QFileDialog.getOpenFileName(
-                self, f'Select Beam Force for {name}', os.path.dirname(bf_path),
-                'Excel Files (*.xls *.xlsx);;All Files (*)')
+                self, f'Chọn Beam Force cho {name}', os.path.dirname(bf_path),
+                'File Excel (*.xls *.xlsx);;Tất cả (*)')
             if new_file:
-                # Update pair and re-process this one
+                # Đổi cặp rồi xử lý lại đúng mặt cắt này
                 topo = ''
                 for i, (n, bf, tp) in enumerate(self._pairs):
                     if n == name:
                         self._pairs[i] = (name, new_file, tp)
                         topo = tp
                         break
+
+                # Ghi vào PROJECT, không chỉ vào danh sách tạm của thẻ.
+                #
+                # `_pairs` được dựng lại từ project ở mỗi `refresh()`, nên chỉ
+                # sửa nó thì lần sau quay về tệp cũ và lại lệch y như trước —
+                # người dùng phải chọn lại tệp mỗi lần mà không có gì nói vì
+                # sao. Tiện thể `set_beam_force()` xoá cờ "kết quả lạc hậu",
+                # đúng điều ta muốn: gán tệp mới chính là thao tác chữa nó.
+                self.project.set_beam_force(name, new_file)
+                self.project_changed.emit()
 
                 # `error_mismatch` là tín hiệu CHÉO LUỒNG: hộp thoại này mở
                 # trên luồng giao diện, còn worker vẫn chạy tiếp, vét hàng đợi
