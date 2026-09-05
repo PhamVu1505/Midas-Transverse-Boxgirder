@@ -738,9 +738,9 @@ nhiều mặt cắt*.
    nguồn, Excel là bản in. Đây chính là phần "tích hợp báo cáo" VuPQ hỏi.
 
 ## Current Sprint
-**Goal:** VuPQ chốt 2026-09-05: **tạm dừng nhánh Midas Civil 2022, tập trung vào Midas NX.** Ba việc đã làm: bật mặc định `*VERSION` · thẻ Kiểm chéo NX · đọc MAPI-Key từ registry. Còn chờ: thử chế độ `Local API` (cần người dùng tự bấm trong NX).
+**Goal:** VuPQ chốt 2026-09-05: **DỪNG nhánh Midas Civil 2022, làm Midas NX.** Bốn việc đã làm: bật mặc định `*VERSION` · thẻ Kiểm chéo NX (đã chạy thật, 4/4 ĐẠT) · đọc MAPI-Key từ registry · phép soát ba tệp nguồn có cùng một mô hình không. Còn chờ đúng **một** việc: thử chế độ `Local API` — cần người dùng tự bấm trong NX.
 
-**Trạng thái (2026-09-05):** `pytest tests -q` **268 đạt** · `tools/check_gui.py` **42 đạt · 0 hỏng** · `tools/audit_gui.py` **63 điều khiển, 59 đạt · 0 hỏng**. Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` đi trước **15 commit**, **chưa đẩy remote, chưa merge**. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
+**Trạng thái (2026-09-05):** `pytest tests -q` **268 đạt** · `tools/check_gui.py` **42 đạt · 0 hỏng** · `tools/audit_gui.py` **63 điều khiển, 59 đạt · 0 hỏng**. Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` đi trước **17 commit**, **chưa đẩy remote, chưa merge**. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
 
 **Máy đang làm việc không phải máy phát triển.** Repo nằm trên ổ SSD ngoài `H:`, cắm qua lại giữa hai máy. `DESKTOP-NLCA550` (Windows 11) **không có** Inno Setup và **không có Midas Civil 2022** — chỉ có MIDAS CIVIL NX. Không có venv trong repo; dựng venv riêng ở `%TEMP%\mtbv` rồi chạy mọi thứ bằng nó, và **luôn đặt `MTB_DATA_DIR`** trỏ thư mục tạm để khỏi đốt ngày dùng thử của máy.
 
@@ -775,20 +775,41 @@ nhiều mặt cắt*.
 **Chạy loạt 6 mặt cắt bằng driver: 6 đạt · 0 hỏng** (2026-07-30, hộp cát `%TEMP%\midas_gd3`, MCT sinh từ mã hiện tại + template chung):
 `S1 8.140` · `S10 6.050` · `S16 7.260` · `S1_V2 12.430` · `S20 4.680` · `SLT 9.180` bản ghi. Cả 6 đủ 4 chuỗi `str_all`/`ser_all` và tập phần tử khớp topo. **Không** ghi vào `output/` — muốn dùng số này cho tab Kiểm toán thì phải sinh lại vào `output/<tên>/`.
 
-**Next Action cụ thể:**
+**Next Action — NHÁNH MIDAS NX (việc đang làm):**
 
-0. **XONG — không còn chặn.** Người dùng đã Connect trong NX, và
-   `NXWorker.run()` đã chạy thật: **4/4 ĐẠT** (S16 · S10 · S1_V2 · SLT). Mặt
-   cắt **S1** ra `KHÔNG KẾT LUẬN` vì `.mcb` cũ hơn `.mct` — xem mục *Ba tệp
-   nguồn có cùng một mô hình không*.
-   Vẫn nên tích **Connect API on Startup** (`Apps → API Settings`) để khỏi bấm
-   lại sau mỗi lần mở NX. Muốn thoát máy chủ Seoul thì chọn **Local API** trước
-   khi Connect, rồi chạy `python tools/nx_thu_local_api.py`.
+N1. **Thử chế độ `Local API` — việc duy nhất còn chờ, và chờ NGƯỜI DÙNG bấm.**
+    Trong NX: `Apps → API Settings` → chọn **Local API** → `Connect`, rồi chạy
+    `python tools/nx_thu_local_api.py`. Chạy được thì cả quy trình thoát khỏi
+    máy chủ MIDAS ở Seoul: máy ngoài mạng vẫn kiểm chéo được, và mô hình cầu
+    không đi ra khỏi máy. Công cụ **không** điều khiển NX — chỉ gọi một lệnh
+    đọc `db/UNIT` rồi báo ĐẠT/CHƯA.
+    Tiện thể tích luôn **Connect API on Startup** để khỏi bấm lại sau mỗi lần
+    mở NX.
+N2. **Plugin NX — KHÔNG làm bây giờ.** Khảo sát 2026-09-04: NX **không có SDK
+    nhúng**; "Plug-in" của nó là ứng dụng Python gọi REST API nộp dưới dạng
+    `.zip`, tức gần đúng thứ ta đã có. Làm plugin thật sẽ **mất** khung xem
+    PyQt, thẻ Kiểm toán và hệ giấy phép, mà vẫn vấp chỗ chặn cũ: vòng tròn
+    JSON của NX không bảo toàn tổ hợp tải.
+N3. **Bỏ template Excel, khai số liệu trong app** — VuPQ yêu cầu 2026-09-05.
+    Đã đo và báo cáo; xem mục *Bỏ template Excel* để biết vì sao nên làm theo
+    ba bước chứ không dựng thẳng 40 ô nhập. Việc này **không phụ thuộc NX hay
+    Civil 2022** nên làm được bất cứ lúc nào.
 
-0b. **S1 — cần MÁY PHÁT TRIỂN.** `output/S1` có `.mcb` (14:27) cũ hơn `.mct`
-   (15:34) cùng ngày 29/7. Sinh lại MCT rồi chạy lại **Civil 2022** cho S1, sau
-   đó kiểm chéo lại thì mới biết `Prestress` có thật sự trùng hay không. Máy
-   hiện tại không có Civil 2022.
+Đã xong trên nhánh NX: khối `*VERSION` bật mặc định (`6bd8826`) · thẻ Kiểm chéo
+NX (`560f24f`, `0de6e6d`) · MAPI-Key + `base_url()` đọc từ registry (`9f7c84a`)
+· phép soát ba tệp nguồn (`a6fd2d1`). Chi tiết ở mục *Thẻ Kiểm chéo NX*.
+
+**ĐÃ DỪNG — nhánh Midas Civil 2022** (VuPQ chốt 2026-09-05). Mã đường đó
+**không xoá, không sửa**: `src/midas_driver.py`, `gui/midas_worker.py` và 8 bài
+`tests/test_midas_driver.py` giữ nguyên, F8 vẫn chạy. Chỉ là **không làm thêm
+việc mới** cho nó. Hai việc bị treo theo, mở lại khi nào VuPQ cần:
+
+* **S1 kiểm chéo** — `output/S1` có `.mcb` (14:27) cũ hơn `.mct` (15:34) cùng
+  ngày 29/7, nên đang là `KHÔNG KẾT LUẬN`. Muốn xong phải sinh lại MCT rồi chạy
+  lại **Civil 2022** cho S1. Bốn mặt cắt kia đã ĐẠT nên **không chặn gì**.
+* **Thử căng cáp hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng không.
+
+**Phát hành v1.5.0 — không thuộc nhánh nào, vẫn còn nguyên:**
 
 1. **Đóng gói v1.5.0 — PHẢI làm trên máy phát triển** (máy hiện tại không có
    Inno Setup). `installer\build.bat` rồi `installer\build_admin.bat`. Ba lỗi
@@ -805,29 +826,6 @@ nhiều mặt cắt*.
    chỉ mất phần theo dõi và chặn nhanh.
 4. **Hoạt tải template S10 / S20** — VuPQ chốt **không sửa hộ**, app đã báo rõ
    trên dock Properties. Không chặn phát hành.
-5. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
-
-**Nhánh Midas NX** — VuPQ chốt 2026-09-05: **đây là nhánh chính, Civil 2022 tạm dừng.**
-6. **Khối `*VERSION` — XONG, đã bật mặc định** (`6bd8826`). MCT chênh đúng ba
-   dòng so với bản V1; `--khong-version` giữ đường tái lập file cũ.
-7. **Thẻ Kiểm chéo NX — XONG, đã chạy thật** (`560f24f`, `0de6e6d`).
-   `gui/nx_tab.py` + `gui/nx_worker.py`, 18 bài test. Phần gọi API thật đã kiểm
-   trên NX đang Connect: 4/4 ĐẠT, và lượt chạy đó lôi ra phép soát **ba tệp
-   nguồn có cùng một mô hình không**.
-8. **Đọc MAPI-Key từ registry — XONG** (`9f7c84a`). Hết cảnh chép tay khoá sau
-   mỗi lần khởi động lại NX. `base_url()` cũng dựng từ registry nên đổi sang
-   `Local API` là chạy ngay, không phải sửa mã.
-9. **Thử chế độ `Local API`** — công cụ đã có (`tools/nx_thu_local_api.py`),
-   chờ người dùng bấm. Chạy được thì máy ngoài mạng vẫn kiểm chéo được và hồ sơ
-   không đi qua máy chủ ở Seoul.
-10. **Plugin NX — KHÔNG làm bây giờ.** Khảo sát 2026-09-04: NX **không có SDK
-    nhúng**; "Plug-in" của nó là ứng dụng Python gọi REST API nộp dưới dạng
-    `.zip`, tức gần đúng thứ ta đã có. Làm plugin thật sẽ **mất** khung xem
-    PyQt, thẻ Kiểm toán, hệ giấy phép lẫn đường Civil 2022, mà vẫn vấp chỗ chặn
-    cũ: vòng tròn JSON của NX không bảo toàn tổ hợp tải.
-11. **Bỏ template Excel, khai số liệu trong app** — VuPQ yêu cầu 2026-09-05.
-    Đã đo và báo cáo; xem mục *Số liệu đầu vào* để biết vì sao nên làm theo ba
-    bước chứ không dựng thẳng 40 ô nhập.
 
 **S20 — VuPQ chốt CHƯA tạo lại** (2026-07-29). Đã sinh thử ra thư mục tạm rồi so với `output/S20`: số hiệu node/phần tử **không đổi**, nhưng 8 node bản mặt đổi toạ độ (−5.75 → −5.8…), 32 dòng chiều dày tiết diện lệch (0.2686 → 0.2663), và ràng buộc gối cũ là `101000`/`001000` — tức bản S20 đang lưu **có trước cả bản sửa khoá Dy**. Tạo lại thì `Beam Force_S20.xls` hiện có hết khớp mô hình, phải chạy lại Midas. Hệ quả để nguyên: ô mặt cắt ở Results table của S20 trống (topo thiếu khối `geometry`), biểu đồ bao vẫn vẽ.
 
