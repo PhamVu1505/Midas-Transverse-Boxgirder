@@ -226,6 +226,9 @@ def test_cli_version_flag_does_not_eat_a_dxf():
     lỗi, không có cảnh báo; chỉ lộ ra vì đếm lại thư mục thấy thiếu một mặt cắt.
 
     Nay `--mct-version` bắt buộc có giá trị, còn cờ trơn là `--nx`.
+
+    Từ v1.5 khối này bật mặc định, nên `--nx` thành không-làm-gì và cờ đáng
+    kiểm là `--khong-version` — đường tái lập đúng file của V1.
     """
     import run as cli
     parser = cli.build_parser()
@@ -239,22 +242,32 @@ def test_cli_version_flag_does_not_eat_a_dxf():
     assert a.input == dxfs, f'--mct-version nuốt mất DXF: còn {a.input}'
     assert a.mct_version == '9.1.0'
 
+    # Khong co co nao: van phai BAT, vi do la mac dinh moi
     a = parser.parse_args(['generate'] + dxfs)
-    assert a.mct_version is None, 'mặc định phải là None (không ghi *VERSION)'
+    assert a.mct_version == MCT_VERSION_CONST, (
+        f'không có cờ mà mct_version = {a.mct_version!r} — mặc định phải BẬT')
+
+    # Co tat: khong duoc nuot DXF, va phai cho ra None
+    a = parser.parse_args(['generate', '--khong-version'] + dxfs)
+    assert a.input == dxfs, f'--khong-version nuốt mất DXF: còn {a.input}'
+    assert a.mct_version is None
 
 
 def test_mct_version_block():
-    """Khối `*VERSION`: mặc định KHÔNG ghi, bật lên thì đúng chỗ NX cần.
+    """Khối `*VERSION`: mặc định CÓ ghi, tắt đi thì về đúng file của V1.
 
     Bối cảnh: NX chỉ nạp được MCT qua `/doc/IMPORTMXT` **và** khi file có khối
     `*VERSION` — thiếu nó thì NX trả *command complete* rồi nạp về 0 nút (đo đủ
     bốn tổ hợp trên S16, xem `docs/MIDAS-NX-API.md` mục 4b).
 
-    Nhưng V1 đã chạy thật 6/6 mặt cắt trên Civil 2022 với MCT **không** có khối
-    này, nên mặc định phải cho ra file trùng khít TỪNG BYTE — thêm một dòng vào
-    mọi file MCT là phải chạy lại cả 6 mặt cắt mới dám phát hành. Khoá cả hai
-    chiều: quên `if mct_version:` thì chiều thứ nhất bắt, còn đặt khối sai chỗ
-    hoặc kèm theo thay đổi khác thì chiều thứ hai bắt.
+    V1 từng để mặc định TẮT, vì nó đã chạy thật 6/6 mặt cắt trên Civil 2022 với
+    MCT không có khối này. Phép đo A/B sau đó bác bỏ nỗi lo ấy: cùng một phiên
+    Civil 2022, 6/6 mặt cắt, 44.940 bản ghi, `ΔMy = ΔVz = 0,0000` — Civil 2022
+    đọc file có khối `*VERSION` y hệt file không có. Nên từ v1.5 mặc định BẬT,
+    để đường NX dùng được ngay mà không phải nhớ thêm một cờ.
+
+    `mct_version=None` vẫn phải cho ra ĐÚNG file của V1, từng byte: đó là đường
+    tái lập lại bản đã đi trọn chu trình QA. Khoá cả hai chiều.
 
     Kiểm trên CẢ single lẫn twin box — hai writer có hai khối header riêng, sửa
     một quên một là đúng khuôn lỗi `_COMBOS` từng mắc.
@@ -265,13 +278,16 @@ def test_mct_version_block():
         frame, cables, props, name, _ = _frame_for(dxf_rel)
         kw = dict(pt_cables=cables, pt_props=props)
 
-        mac_dinh, _ = write_mct(frame, name, EXCEL, **kw)
-        assert '*VERSION' not in mac_dinh, (
-            f'{name}: mặc định KHÔNG được ghi *VERSION — MCT của V1 phải trùng '
-            f'khít bản đã chạy thật trên Civil 2022')
+        co, _ = write_mct(frame, name, EXCEL, **kw)
+        assert '*VERSION' in co, (
+            f'{name}: mặc định PHẢI ghi *VERSION — thiếu nó thì NX trả '
+            f'"command complete" rồi nạp về 0 nút, không báo lỗi gì')
 
-        co, _ = write_mct(frame, name, EXCEL, mct_version=MCT_VERSION, **kw)
-        assert co != mac_dinh, f'{name}: bật mct_version mà file không đổi'
+        mac_dinh, _ = write_mct(frame, name, EXCEL, mct_version=None, **kw)
+        assert '*VERSION' not in mac_dinh, (
+            f'{name}: mct_version=None mà vẫn ghi khối — mất đường tái lập '
+            f'đúng file của V1')
+        assert co != mac_dinh, f'{name}: tắt mct_version mà file không đổi'
 
         dong = co.splitlines()
         i = dong.index('*VERSION')
@@ -282,7 +298,8 @@ def test_mct_version_block():
         # Bỏ đúng ba dòng đó ra thì phải còn lại y hệt bản mặc định — chứng minh
         # cờ này KHÔNG đụng vào bất cứ thứ gì khác trong file.
         assert dong[:i] + dong[i + 3:] == mac_dinh.splitlines(), (
-            f'{name}: bật *VERSION làm đổi cả chỗ khác trong MCT')
+            f'{name}: khối *VERSION kéo theo thay đổi ở chỗ khác trong MCT — '
+            f'bỏ đúng ba dòng đó ra phải còn lại y hệt bản tắt')
 
         # NX đọc khối này để chọn bộ đọc tương thích ngược, nên nó phải đứng
         # TRƯỚC mọi khối dữ liệu — file tham chiếu của Midas đặt ngay sau header.

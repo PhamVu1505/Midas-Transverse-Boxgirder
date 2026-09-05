@@ -37,13 +37,14 @@ EXCEL_PATH = os.path.join(os.path.dirname(__file__),
 
 def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
                   pt_jacking: str = 'begin',
-                  mct_version: str = None):
+                  mct_version: str = MCT_VERSION):
     """Generate MCT + SVG for one DXF file into output_dir/name/.
 
     include_pt: True/False/None (None = auto-detect from DXF layers).
     pt_jacking: 'begin' căng một đầu · 'both' căng hai đầu.
-    mct_version: ghi khối *VERSION (vd '9.1.0'). None = không ghi, MCT trùng
-        khít bản đã kiểm trên Civil 2022. Xem MCT_VERSION ở mct_frame_writer.
+    mct_version: ghi khối *VERSION (vd '9.1.0'). MẶC ĐỊNH ghi, vì NX chỉ nạp
+        được MCT khi có khối này. None = không ghi, cho ra file trùng khít bản
+        đã kiểm trên Civil 2022. Xem MCT_VERSION ở mct_frame_writer.
     """
     name = os.path.splitext(os.path.basename(dxf_path))[0]
     section_dir = os.path.join(output_dir, name)
@@ -151,7 +152,7 @@ def cmd_generate(args):
         try:
             _generate_one(dxf_path, output_dir, include_pt=include_pt,
                           pt_jacking=getattr(args, 'pt_jacking', 'begin'),
-                          mct_version=getattr(args, 'mct_version', None))
+                          mct_version=getattr(args, 'mct_version', MCT_VERSION))
         except Exception as e:
             print(f'  [ERROR] {dxf_path}: {e}')
             import traceback
@@ -427,12 +428,19 @@ def build_parser():
                            help='Output root directory (default: output)')
     gen_parser.add_argument('--no-pt', action='store_true',
                            help='Skip PT tendon detection even if DXF has PT-* layers')
-    gen_parser.add_argument('--mct-version', metavar='X.Y.Z', default=None,
+    gen_parser.add_argument('--mct-version', metavar='X.Y.Z',
+                            default=MCT_VERSION,
                             help='ghi khối *VERSION với số hiệu này')
+    # `--nx` giữ lại làm lối tắt cũ, nay là không-làm-gì vì đã bật mặc định.
+    # Bỏ hẳn thì mọi ghi chú, script và thói quen gõ tay đang có sẽ gãy.
     gen_parser.add_argument('--nx', action='store_const', const=MCT_VERSION,
                             dest='mct_version',
-                            help=f'lối tắt của --mct-version {MCT_VERSION} — '
-                                 f'cần cho Midas NX nạp qua /doc/IMPORTMXT')
+                            help=f'(đã là mặc định) ghi *VERSION {MCT_VERSION}')
+    gen_parser.add_argument('--khong-version', '--no-version',
+                            action='store_const', const=None,
+                            dest='mct_version',
+                            help='KHÔNG ghi khối *VERSION — cho ra file trùng '
+                                 'khít bản đã kiểm trên Civil 2022 của V1')
     gen_parser.add_argument('--pt-jacking', choices=('begin', 'both'),
                            default='begin',
                            help='Căng cáp một đầu (begin, mặc định) hay hai đầu (both)')

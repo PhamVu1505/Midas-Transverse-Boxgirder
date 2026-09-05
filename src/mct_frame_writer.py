@@ -137,7 +137,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
               include_pt: bool = None,
               supports: list = None,
               pt_jacking: str = 'begin',
-              mct_version: str = None) -> str:
+              mct_version: str = MCT_VERSION) -> str:
     """Tạo file MCT từ frame data.
 
     pt_jacking: 'begin' = căng một đầu · 'both' = căng hai đầu. Chỉ có nghĩa
@@ -689,8 +689,14 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                     include_pt: bool = None,
                     supports: list = None,
                     pt_jacking: str = 'begin',
-                    mct_version: str = None) -> tuple:
-    """MCT cho mặt cắt 2 hộp: 3 bụng (ngoài L/R + vách giữa), bản đáy liên tục."""
+                    mct_version: str = MCT_VERSION) -> tuple:
+    """MCT cho mặt cắt 2 hộp: 3 bụng (ngoài L/R + vách giữa), bản đáy liên tục.
+
+    Hàm riêng, chỉ `write_mct` gọi và luôn truyền đủ tham số — nên mặc định ở
+    đây **không bao giờ được dùng tới**, và không phép kiểm nào bắt được nếu
+    nó sai. Vẫn để bằng `MCT_VERSION` cho khớp `write_mct`, phòng khi sau này
+    có ai gọi thẳng.
+    """
     # Thiếu thuộc tính cáp vẫn dựng hình học — xem chú thích ở write_mct.
     pt_warnings = []
     if include_pt is None:
