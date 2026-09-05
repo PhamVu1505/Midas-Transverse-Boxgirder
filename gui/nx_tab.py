@@ -456,6 +456,13 @@ class NXTab(QWidget):
             self.log_area.append_auto(msg)
 
     def _on_done(self, ten, kq, ok):
+        # Đếm theo MẶT CẮT đã kiểm chéo xong, không theo số lần bấm nút —
+        # cùng lối `generate_tab` đếm `mct`. Thiếu dòng này thì thẻ *Sử dụng*
+        # công bố thiếu một loại việc, mà công bố thiếu thì đúng là thứ luật
+        # minh bạch của dự án sinh ra để tránh.
+        from src.security import usage_log
+        usage_log.record('nx')
+
         self._kq[ten] = (dict(kq), bool(ok), False, False)
         self._fill()
         self.status_bar.showMessage(

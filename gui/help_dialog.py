@@ -385,6 +385,40 @@ f<sub>r</sub> — lúc đó tiết diện chưa nứt. Cột nào bỏ qua thì 
 ở hàng <i>Ghi chú</i>.</p>
 '''),
 
+        ('Kiểm chéo bằng Midas NX', f'''
+<h2 style="color:{ink}">Cho một bản Midas KHÁC giải lại</h2>
+<p>Cả quy trình đứng trên <b>một</b> phép giải: Midas/Civil đọc file MCT rồi trả
+nội lực, và bảng kiểm toán tin con số đó. Cho <b>MIDAS CIVIL NX</b> giải lại
+đúng file ấy là phép kiểm độc lập rẻ nhất — không chạm chuột, khoảng 10 giây
+mỗi mặt cắt.</p>
+<p>Thẻ <b>Kiểm chéo NX</b> hiện bảng đạt/hỏng: số bản ghi hai bên, số ghép
+được, lệch lớn nhất của tải cơ bản và của trị số bao.</p>
+
+<h3 style="color:{ink}">Cần gì để chạy</h3>
+<p>NX phải <b>đang chạy</b> và đã bật API. Trong NX: <b>Apps → API Settings</b>,
+tích <b>Connect API on Startup</b> rồi bấm <b>Connect</b>. Tích ô đó một lần thì
+những lần mở NX sau tự kết nối, không phải làm lại.</p>
+<p style="color:{ink2}">Khoá API chết mỗi lần NX khởi động lại, nhưng bạn
+<b>không phải chép tay</b>: NX tự ghi khoá vào registry và chương trình đọc
+thẳng từ đó.</p>
+
+<h3 style="color:{ink}">Đọc kết quả</h3>
+<p><b>Tải cơ bản</b> là hệ tuyến tính nên hai bản Midas phải ra <b>cùng một
+số</b> — lệch quá đơn vị hiển thị là có chuyện thật. <b>Trị số bao</b> thì dựng
+từ đường ảnh hưởng, mỗi bản rời rạc hoá một kiểu, nên đo bằng sai số tương đối
+và <b>không</b> tính vào đạt/hỏng; nó được báo riêng để đọc, không phải để
+phán.</p>
+<p>Kết quả ghi ra tệp nên <b>tra lại được bất cứ lúc nào</b>. Nếu mô hình hoặc
+file nội lực mới hơn lần kiểm chéo gần nhất, hàng đó chuyển <b>vàng</b> kèm chữ
+<i>mô hình đã đổi</i> — con số cũ vẫn còn đó nhưng không còn nói về mô hình
+hiện tại.</p>
+
+<h3 style="color:{ink}">Ba điều chương trình không bao giờ làm</h3>
+<p>Không tự mở NX · không tự đóng NX · không bấm hộ vào giao diện NX. Mọi việc
+đi qua API. Tài liệu đang mở trong NX <b>không sạch</b> thì chương trình
+<b>dừng và báo</b>, vì mở file kiểm chéo sẽ đè lên nó.</p>
+'''),
+
         ('Tùy chọn giao diện', f'''
 <h2 style="color:{ink}">Tùy chọn</h2>
 <p>Mở bằng nút <b>⚙</b> cuối thanh công cụ, hoặc <b>Công cụ → Tùy chọn</b>

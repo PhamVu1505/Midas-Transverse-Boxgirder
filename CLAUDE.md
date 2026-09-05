@@ -639,8 +639,33 @@ bấm vào thư mục → tạo cho mọi DXF bên trong.
 - `_kiem_hinh_hoc()` trong `mct_frame_writer` soi `*NODE`/`*ELEMENT` của **chính văn bản MCT vừa ghi**: node trùng toạ độ, phần tử dài 0. Đây là lỗi im lặng suốt cả quy trình — MCT vẫn ghi xong, topo vẫn đủ khoá, khung xem vẫn vẽ; chỉ Midas mới chối, mà lại chối sai chỗ (`element no. 38 is incorrect` → import bỏ dở ở dòng 171 → `.mcb` 17 KB → *"Load information has not been entered"*).
 - `tests/test_regression.py` vốn có bất biến "không node trùng toạ độ", nhưng `CASES` chỉ có S16 và S1_V2 — **cả hai đều có đỉnh sẵn tại x=0**, nên bất biến đó không bao giờ soi tới hình của SLT. Nay có SLT trong `CASES`.
 
+### Thẻ Kiểm chéo NX — `gui/nx_tab.py` + `gui/nx_worker.py` (v1.5.0)
+
+Cả quy trình đứng trên **một** phép giải. Thẻ này cho MIDAS CIVIL NX giải lại
+đúng file `.mcb` đó rồi so nội lực — phép kiểm độc lập rẻ nhất, ~10 s/mặt cắt.
+
+- Worker gọi thẳng `tim`/`mot_mat_cat`/`dat` của `tools/nx_crosscheck.py`,
+  **không viết lại vòng so sánh**: ngưỡng, hộp cát và phép phân loại tải cơ bản
+  từ `db/STLD` chỉ được có một bản. Cùng lý do `MidasWorker` gọi
+  `chay_nhieu_mat_cat()`.
+- **Kết quả tra được bất cứ lúc nào**: thẻ đọc lại `nx_crosscheck_<tên>.json`.
+  `.mcb`/`.xls` mới hơn tệp kết quả thì hàng chuyển **vàng** kèm chữ *mô hình đã
+  đổi* — cùng cơ chế "kết quả lạc hậu" của B-03/B-08 trong `bug-triage.md`.
+- Cổng giấy phép `'nx'` đặt ở **chỗ tính** (nút Chạy), không phải chỗ mở thẻ.
+- **`build.bat` phải bỏ ba dòng loại trừ `requests`/`urllib3`/`certifi`** và kê
+  `src.midas_nx` + `tools.nx_crosscheck`. `tests/test_build_script.py` khoá cặp
+  đó nên làm nửa vời là đỏ ngay — đây đúng cái bẫy đã ghi sẵn ở mục *Đóng gói*.
+- `src/midas_nx.chan_doan()` phân biệt **ba tình huống cần ba lời khuyên khác
+  nhau**: chưa cài NX · cài rồi mà chưa mở · mở rồi mà chưa Connect. Lỗi
+  `client does not exist` kèm luôn câu chỉ đường.
+- **NX có sẵn ô tích `Connect API on Startup`** (`ctrl_wg_main_us.json`,
+  `IDS_IDD_MAIN_API_SETTINGS_DLG_IDC_SETTING_CONNECT_API_CHK`). Tích một lần là
+  mỗi lần mở NX tự Connect, khoá tự ghi vào registry, hết cảnh chép tay.
+- **CHƯA kiểm phần gọi API thật** trên máy phát triển hiện tại: NX cài rồi
+  nhưng chưa Connect lần nào trong phiên kiểm.
+
 ## Current Sprint
-**Goal:** phát hành **V1 = sinh MCT cho Midas Civil 2022**. Thẻ Midas NX để sau (VuPQ chốt 2026-08-20).
+**Goal:** VuPQ chốt 2026-09-05: **tạm dừng nhánh Midas Civil 2022, tập trung vào Midas NX.** Ba việc đã làm: bật mặc định `*VERSION` · thẻ Kiểm chéo NX · đọc MAPI-Key từ registry. Còn chờ: thử chế độ `Local API` (cần người dùng tự bấm trong NX).
 
 **Trạng thái:** `pytest tests -q` **149/149** · `tools/check_gui.py` **34/34** · `tools/audit_gui.py` **54 đạt · 0 hỏng** (57 điều khiển) · kiểm chéo NX **4/4 đạt**. Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `4bf929c` (V1 QA, đã đẩy remote); phần giấy phép + chuột phải đang ở nhánh làm việc, **chưa merge**. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
 

@@ -48,6 +48,7 @@ EVENTS = {
     'midas': 'Lượt tự chạy Midas',
     'check': 'Lượt xuất kiểm toán',
     'context_menu': 'Lượt tạo MCT từ chuột phải',
+    'nx': 'Lượt kiểm chéo bằng Midas NX',
 }
 
 

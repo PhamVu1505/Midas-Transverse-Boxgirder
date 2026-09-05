@@ -18,11 +18,12 @@ MỤC LỤC
   7. Chạy Midas/Civil
   8. Đọc kết quả
   9. Kiểm toán mặt cắt
-  10. Tùy chọn giao diện
-  11. Giấy phép
-  12. Tạo MCT từ chuột phải
-  13. Phím tắt
-  14. Xử lý sự cố
+  10. Kiểm chéo bằng Midas NX
+  11. Tùy chọn giao diện
+  12. Giấy phép
+  13. Tạo MCT từ chuột phải
+  14. Phím tắt
+  15. Xử lý sự cố
 
 ==============================================================================
 1. TỔNG QUAN
@@ -406,7 +407,47 @@ khi ứng suất kéo ở trạng thái Sử dụng chưa tới 80% fr — lúc 
 nứt. Cột nào bỏ qua thì cột đó ghi rõ lý do ở hàng Ghi chú.
 
 ==============================================================================
-10. TÙY CHỌN GIAO DIỆN
+10. KIỂM CHÉO BẰNG MIDAS NX
+==============================================================================
+
+CHO MỘT BẢN MIDAS KHÁC GIẢI LẠI
+-------------------------------
+
+Cả quy trình đứng trên một phép giải: Midas/Civil đọc file MCT rồi trả nội
+lực, và bảng kiểm toán tin con số đó. Cho MIDAS CIVIL NX giải lại đúng file ấy
+là phép kiểm độc lập rẻ nhất — không chạm chuột, khoảng 10 giây mỗi mặt cắt.
+
+Thẻ Kiểm chéo NX hiện bảng đạt/hỏng: số bản ghi hai bên, số ghép được, lệch
+lớn nhất của tải cơ bản và của trị số bao.
+
+Cần gì để chạy
+
+NX phải đang chạy và đã bật API. Trong NX: Apps → API Settings, tích Connect
+API on Startup rồi bấm Connect. Tích ô đó một lần thì những lần mở NX sau tự
+kết nối, không phải làm lại.
+
+Khoá API chết mỗi lần NX khởi động lại, nhưng bạn không phải chép tay: NX tự
+ghi khoá vào registry và chương trình đọc thẳng từ đó.
+
+Đọc kết quả
+
+Tải cơ bản là hệ tuyến tính nên hai bản Midas phải ra cùng một số — lệch quá
+đơn vị hiển thị là có chuyện thật. Trị số bao thì dựng từ đường ảnh hưởng, mỗi
+bản rời rạc hoá một kiểu, nên đo bằng sai số tương đối và không tính vào
+đạt/hỏng; nó được báo riêng để đọc, không phải để phán.
+
+Kết quả ghi ra tệp nên tra lại được bất cứ lúc nào. Nếu mô hình hoặc file nội
+lực mới hơn lần kiểm chéo gần nhất, hàng đó chuyển vàng kèm chữ mô hình đã đổi
+— con số cũ vẫn còn đó nhưng không còn nói về mô hình hiện tại.
+
+Ba điều chương trình không bao giờ làm
+
+Không tự mở NX · không tự đóng NX · không bấm hộ vào giao diện NX. Mọi việc đi
+qua API. Tài liệu đang mở trong NX không sạch thì chương trình dừng và báo, vì
+mở file kiểm chéo sẽ đè lên nó.
+
+==============================================================================
+11. TÙY CHỌN GIAO DIỆN
 ==============================================================================
 
 TÙY CHỌN
@@ -441,7 +482,7 @@ Khôi phục mặc định đưa mọi mục về ban đầu nhưng giữ nguyê
 mục kết quả và template.
 
 ==============================================================================
-11. GIẤY PHÉP
+12. GIẤY PHÉP
 ==============================================================================
 
 GIẤY PHÉP VÀ DÙNG THỬ
@@ -491,7 +532,7 @@ Giấy phép bị chối
   Đã bị thu hồi       Người cấp đã thu hồi; lý do hiện ngay trong thông báo.
 
 ==============================================================================
-12. TẠO MCT TỪ CHUỘT PHẢI
+13. TẠO MCT TỪ CHUỘT PHẢI
 ==============================================================================
 
 TẠO MCT KHÔNG CẦN MỞ PHẦN MỀM
@@ -527,7 +568,7 @@ LƯU Ý: Cửa sổ này không tự đóng. Nó còn phải nói cho bạn bi�
   5–15%.
 
 ==============================================================================
-13. PHÍM TẮT
+14. PHÍM TẮT
 ==============================================================================
 
 PHÍM TẮT
@@ -551,7 +592,7 @@ PHÍM TẮT
   F1            Mở hướng dẫn này
 
 ==============================================================================
-14. XỬ LÝ SỰ CỐ
+15. XỬ LÝ SỰ CỐ
 ==============================================================================
 
 CÁC LỖI HAY GẶP
