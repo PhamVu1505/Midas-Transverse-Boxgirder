@@ -468,6 +468,135 @@ def test_ket_qua_cu_lac_hau_thi_khong_duoc_to_xanh(qt, tmp_path):
     assert 'mô hình đã đổi' in tab.lb_sum.text()
 
 
+# ── 5b. Ba tệp nguồn có cùng một mô hình không ────────────────────────────
+
+def _dat_gio(p, giay):
+    """Đặt dấu thời gian tuyệt đối cho tệp — mốc 2026-01-01 cộng `giay`."""
+    t = 1767225600 + giay
+    os.utime(p, (t, t))
+
+
+def _du_an_gia(tmp_path, ten='S1', mcb_giay=0, mct_giay=0, xls_giay=0,
+               them_mcb=()):
+    """Một thư mục `output/<ten>` với .mct/.mcb/.xls đặt dấu thời gian sẵn."""
+    d = tmp_path / 'output' / ten
+    d.mkdir(parents=True)
+    for phu, giay in ((f'{ten}_frame.mct', mct_giay), (f'{ten}.mcb', mcb_giay),
+                      ('Beam Force.xls', xls_giay)):
+        p = d / phu
+        p.write_text('x', encoding='utf-8')
+        _dat_gio(p, giay)
+    for phu, giay in them_mcb:
+        p = d / phu
+        p.write_text('x', encoding='utf-8')
+        _dat_gio(p, giay)
+    return str(tmp_path / 'output')
+
+
+def test_tim_khong_lay_bua_mcb_dau_bang_chu_cai(tmp_path):
+    """`output/S1` có cả `1.mcb` lẫn `S1.mcb` — phải lấy đúng cái mang tên.
+
+    Đây là lỗi ĐÃ XẢY RA THẬT. `1.mcb` là mô hình rời của một lượt chạy tay
+    tháng 4, tổ hợp còn mang tên `LCB1..LCB15`; `sorted(glob('*.mcb'))[0]` lấy
+    đúng cái đó, và lượt kiểm chéo báo **3.532 bản ghi chỉ có ở 2022 · 3.976
+    chỉ có ở NX** như thể hai bản Midas bất đồng, trong khi chúng đang giải hai
+    mô hình khác nhau.
+
+    Chứng minh bắt được lỗi: trả `sorted(glob(...))[0]` như bản cũ thì bài này
+    ĐỎ (chọn `1.mcb`).
+    """
+    import tools.nx_crosscheck as loi
+
+    out = _du_an_gia(tmp_path, them_mcb=[('1.mcb', 0)])
+    (ten, mcb, _xls), = loi.tim(out)
+    assert ten == 'S1'
+    assert os.path.basename(mcb) == 'S1.mcb', (
+        'lấy nhầm .mcb của một mô hình khác nằm cùng thư mục')
+
+
+def test_nguon_lac_hau_bat_mct_sinh_lai_sau_khi_giai(tmp_path):
+    """`.mct` mới hơn `.mcb` ⇒ ba tệp không cùng một mô hình.
+
+    Quy trình sinh ra chúng theo đúng một thứ tự (`.mct` → `.mcb` → `.xls`),
+    nên dấu thời gian đảo ngược là bằng chứng đủ. Ở `output/S1` thật, `.mcb`
+    đề 14:27 còn `.mct` đề 15:34 cùng ngày; chạy kiểm chéo trên cặp đó cho ra
+    9/10 trường hợp tải cơ bản trùng tới 0,0000 và riêng `Prestress` lệch
+    146/148 bản ghi tới 9,97 kN·m — **đội lốt một phát hiện kỹ thuật** về cách
+    NX hiểu khối `*TDN-*`, trong khi chỉ là hai mô hình khác cáp.
+    """
+    import tools.nx_crosscheck as loi
+
+    # Thứ tự đúng: sinh MCT → giải → xuất bảng. Không có gì để báo.
+    out = _du_an_gia(tmp_path, mct_giay=0, mcb_giay=60, xls_giay=120)
+    assert loi.nguon_lac_hau('S1', os.path.join(out, 'S1', 'S1.mcb'),
+                             os.path.join(out, 'S1', 'Beam Force.xls')) == []
+
+    # MCT sinh lại SAU khi giải — `.mcb` không còn là mô hình đang có.
+    out = _du_an_gia(tmp_path / 'b', mcb_giay=0, mct_giay=4020, xls_giay=4080)
+    ly_do = loi.nguon_lac_hau('S1', os.path.join(out, 'S1', 'S1.mcb'),
+                              os.path.join(out, 'S1', 'Beam Force.xls'))
+    assert len(ly_do) == 1
+    assert 'S1_frame.mct' in ly_do[0] and 'S1.mcb' in ly_do[0]
+    assert '1 giờ 7 phút' in ly_do[0], ly_do[0]
+
+    # Bảng Beam Force xuất TRƯỚC lượt giải đang cầm.
+    out = _du_an_gia(tmp_path / 'c', xls_giay=0, mct_giay=60, mcb_giay=120)
+    ly_do = loi.nguon_lac_hau('S1', os.path.join(out, 'S1', 'S1.mcb'),
+                              os.path.join(out, 'S1', 'Beam Force.xls'))
+    assert len(ly_do) == 1 and 'Beam Force.xls' in ly_do[0]
+
+
+def test_nguon_khac_mo_hinh_khong_duoc_muon_hai_chu_dat_hong(qt, tmp_path):
+    """Nguồn lệch thì kết quả **không kết luận** — không phải ĐẠT, không phải HỎNG.
+
+    Hai chữ đó đều là câu về *hai bản Midas giải khác nhau*, còn đây là câu về
+    *tệp trên đĩa*, và việc phải làm cũng khác hẳn: sinh lại MCT rồi chạy lại
+    Civil 2022, chứ không phải đi soi khối MCT nào sai.
+
+    Chứng minh bắt được lỗi: bỏ nhánh `nguon` trong `hang()` và `_fill()` —
+    như bản đầu — thì ô kết quả in `HỎNG` trên nền đỏ và bài này ĐỎ.
+    """
+    from gui.nx_tab import NXTab, hang
+    from gui.theme import LIGHT
+
+    ly_do = ['S1_frame.mct mới hơn S1.mcb 1 giờ 7 phút — MCT đã sinh lại SAU '
+             'khi giải, nên .mcb không còn là mô hình đang có']
+    o = hang(KQ_MAU, False, nguon=ly_do)[6]
+    assert o.startswith('KHÔNG KẾT LUẬN')
+    assert 'sinh lại' in o, 'ô kết quả không nói ra vì sao'
+    # Kể cả khi các con số tình cờ khớp, vẫn không được nói ĐẠT.
+    assert hang(KQ_MAU, True, nguon=ly_do)[6].startswith('KHÔNG KẾT LUẬN')
+
+    tab = NXTab(Thanh(), theme=LIGHT)
+    tab._viec = viec('S1')
+    tab._viec[0]['nguon'] = ly_do
+    tab._kq['S1'] = (KQ_MAU, False, False, False)
+    tab._fill()
+    it = tab.table.item(0, tab.table.columnCount() - 1)
+    assert it.text().startswith('KHÔNG KẾT LUẬN')
+    assert it.background().color().name().lower() == LIGHT['warn_bg'].lower()
+    assert 'không kết luận' in tab.lb_sum.text()
+    assert 'đạt' not in tab.lb_sum.text() and 'hỏng' not in tab.lb_sum.text()
+
+
+def test_mat_cat_chua_chay_van_noi_ra_nguon_lech(qt):
+    """Biết trước khi bấm, đừng bắt chạy 45 giây rồi mới biết vô nghĩa.
+
+    Dấu thời gian đọc được ngay lúc dựng bảng, nên không có cớ nào để im lặng
+    cho tới sau lượt chạy.
+    """
+    from gui.nx_tab import NXTab
+    from gui.theme import LIGHT
+
+    tab = NXTab(Thanh(), theme=LIGHT)
+    tab._viec = viec('S1')
+    tab._viec[0]['nguon'] = ['S1_frame.mct mới hơn S1.mcb 1 giờ 7 phút']
+    tab._fill()
+    it = tab.table.item(0, tab.table.columnCount() - 1)
+    assert 'chưa chạy' in it.text() and 'mới hơn' in it.text()
+    assert it.background().color().name().lower() == LIGHT['warn_bg'].lower()
+
+
 # ── 6. Bản đóng gói ───────────────────────────────────────────────────────
 
 def test_build_bat_ke_tools_nx_crosscheck():

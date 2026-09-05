@@ -440,6 +440,18 @@ Kết quả ghi ra tệp nên tra lại được bất cứ lúc nào. Nếu mô
 lực mới hơn lần kiểm chéo gần nhất, hàng đó chuyển vàng kèm chữ mô hình đã đổi
 — con số cũ vẫn còn đó nhưng không còn nói về mô hình hiện tại.
 
+KHÔNG KẾT LUẬN nghĩa là gì
+
+Một lượt kiểm chéo chỉ có nghĩa khi ba tệp cùng thuộc một mô hình: file MCT
+chương trình sinh ra, file .mcb Midas/Civil giải, và bảng Beam Force xuất từ
+chính lượt giải đó. Nếu dấu thời gian của chúng đảo ngược — hay gặp nhất là
+tạo lại MCT sau khi đã giải — thì chương trình ghi KHÔNG KẾT LUẬN và nói rõ
+tệp nào mới hơn tệp nào.
+
+Lúc đó chữ ĐẠT hay HỎNG đều sai chỗ: chúng nói về hai bản Midas giải khác
+nhau, còn đây là chuyện tệp trên đĩa. Việc phải làm là tạo lại MCT rồi chạy
+lại Midas/Civil cho mặt cắt đó, sau đó kiểm chéo lại.
+
 Ba điều chương trình không bao giờ làm
 
 Không tự mở NX · không tự đóng NX · không bấm hộ vào giao diện NX. Mọi việc đi

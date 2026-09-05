@@ -413,6 +413,17 @@ file nội lực mới hơn lần kiểm chéo gần nhất, hàng đó chuyển
 <i>mô hình đã đổi</i> — con số cũ vẫn còn đó nhưng không còn nói về mô hình
 hiện tại.</p>
 
+<h3 style="color:{ink}">KHÔNG KẾT LUẬN nghĩa là gì</h3>
+<p>Một lượt kiểm chéo chỉ có nghĩa khi <b>ba tệp cùng thuộc một mô hình</b>:
+file MCT chương trình sinh ra, file <code>.mcb</code> Midas/Civil giải, và bảng
+Beam Force xuất từ chính lượt giải đó. Nếu dấu thời gian của chúng đảo ngược —
+hay gặp nhất là <b>tạo lại MCT sau khi đã giải</b> — thì chương trình ghi
+<b>KHÔNG KẾT LUẬN</b> và nói rõ tệp nào mới hơn tệp nào.</p>
+<p style="color:{ink2}">Lúc đó chữ ĐẠT hay HỎNG đều sai chỗ: chúng nói về hai
+bản Midas giải khác nhau, còn đây là chuyện tệp trên đĩa. Việc phải làm là
+<b>tạo lại MCT rồi chạy lại Midas/Civil</b> cho mặt cắt đó, sau đó kiểm chéo
+lại.</p>
+
 <h3 style="color:{ink}">Ba điều chương trình không bao giờ làm</h3>
 <p>Không tự mở NX · không tự đóng NX · không bấm hộ vào giao diện NX. Mọi việc
 đi qua API. Tài liệu đang mở trong NX <b>không sạch</b> thì chương trình

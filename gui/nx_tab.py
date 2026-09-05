@@ -58,8 +58,15 @@ CHU_THICH_COT = {
 
 DAT, HONG, CHUA = 'ĐẠT', 'HỎNG', 'chưa chạy'
 
+#: Ba tệp nguồn (.mct → .mcb → Beam Force) không cùng một mô hình. Không phải
+#: ĐẠT, cũng không phải HỎNG: cả hai chữ đó đều là câu về **hai bản Midas**,
+#: còn đây là câu về **tệp trên đĩa** — và việc phải làm cũng khác hẳn (sinh
+#: lại MCT rồi chạy lại Civil 2022, chứ không phải đi soi khối MCT nào sai).
+NGHI = 'KHÔNG KẾT LUẬN'
 
-def hang(kq: dict, ok: bool, cu: bool = False, lac_hau: bool = False) -> list:
+
+def hang(kq: dict, ok: bool, cu: bool = False, lac_hau: bool = False,
+         nguon=()) -> list:
     """Một hàng của bảng, dạng chuỗi — **không** đụng tới Qt.
 
     Tách ra khỏi widget để phần trình bày kiểm được bằng `pytest` thường: đây
@@ -90,7 +97,11 @@ def hang(kq: dict, ok: bool, cu: bool = False, lac_hau: bool = False) -> list:
     if kq.get('qua_dung_sai_bao'):
         bao += f' · {kq["qua_dung_sai_bao"]:,} quá ngưỡng'
 
-    ket = DAT if ok else HONG
+    # Nguồn không cùng một mô hình thì phép so không đo được điều nó sinh ra
+    # để đo, nên KHÔNG được mượn hai chữ ĐẠT/HỎNG. Lý do đi ngay trong ô để
+    # người đọc khỏi phải tự so dấu thời gian của ba tệp.
+    ket = ((NGHI + ' · ' + ' · '.join(nguon)) if nguon
+           else (DAT if ok else HONG))
     if cu:
         # Nói rõ đây là kết quả của LƯỢT TRƯỚC đọc lại từ đĩa, không phải lượt
         # vừa chạy. Không ghi thì mở app hôm sau thấy một bảng toàn ĐẠT và
@@ -232,8 +243,13 @@ class NXTab(QWidget):
         loi = self._loi()
         if loi is not None:
             for ten, mcb, xls in loi.tim(out):
+                # Tính lại từ tệp đang có chứ không lấy `nguon_lac_hau` đã ghi
+                # trong JSON: JSON nói về lúc chạy, còn dòng này phải nói về
+                # lúc NHÌN. Sinh lại MCT sau lượt kiểm là lý do mới xuất hiện
+                # mà tệp kết quả không thể biết.
                 self._viec.append({'ten': ten, 'mcb': mcb, 'xls': xls,
-                                   'ra': os.path.join(out, ten)})
+                                   'ra': os.path.join(out, ten),
+                                   'nguon': loi.nguon_lac_hau(ten, mcb, xls)})
                 if ten not in self._kq:
                     cu = self._doc_ket_qua_cu(out, self._viec[-1], loi)
                     if cu is not None:
@@ -285,22 +301,31 @@ class NXTab(QWidget):
     def _fill(self):
         t = self.table
         t.setRowCount(len(self._viec))
-        n_dat = n_hong = n_chua = n_lac = 0
+        n_dat = n_hong = n_chua = n_lac = n_nghi = 0
         for i, v in enumerate(self._viec):
             ten = v['ten']
             got = self._kq.get(ten)
             if got is None:
-                cells = [ten, '—', '—', '—', '—', '—', CHUA]
-                mau = None
+                # Chưa chạy lần nào, nhưng lý do nguồn thì biết được ngay từ
+                # dấu thời gian — nói luôn, đừng bắt người dùng chạy 45 giây
+                # rồi mới biết phép so đó không dùng được.
+                nguon = v.get('nguon') or ()
+                cells = [ten, '—', '—', '—', '—', '—',
+                         (CHUA + ' · ' + ' · '.join(nguon)) if nguon else CHUA]
+                mau = 'warn' if nguon else None
                 n_chua += 1
             else:
                 kq, ok, cu, lac_hau = got
-                cells = hang(kq, ok, cu, lac_hau)
+                nguon = v.get('nguon') or ()
+                cells = hang(kq, ok, cu, lac_hau, nguon)
                 # Lạc hậu thì tô VÀNG dù kết quả cũ là ĐẠT — xanh lá đọc thành
-                # "yên tâm", mà đó chính là điều không được nói ở đây.
-                mau = 'warn' if lac_hau else ('ok' if ok else 'err')
-                n_dat += bool(ok and not lac_hau)
-                n_hong += (not ok)
+                # "yên tâm", mà đó chính là điều không được nói ở đây. Nguồn
+                # không cùng mô hình cũng vàng, và cùng lý do.
+                mau = ('warn' if (lac_hau or nguon)
+                       else ('ok' if ok else 'err'))
+                n_nghi += bool(nguon)
+                n_dat += bool(ok and not lac_hau and not nguon)
+                n_hong += bool(not ok and not nguon)
                 n_lac += bool(lac_hau)
             for j, s in enumerate(cells):
                 it = QTableWidgetItem(s)
@@ -316,6 +341,8 @@ class NXTab(QWidget):
             bits.append(f'{n_dat} đạt')
         if n_hong:
             bits.append(f'{n_hong} hỏng')
+        if n_nghi:
+            bits.append(f'{n_nghi} không kết luận (nguồn khác mô hình)')
         if n_lac:
             bits.append(f'{n_lac} kết quả cũ, mô hình đã đổi')
         if n_chua:
@@ -433,7 +460,19 @@ class NXTab(QWidget):
             'dừng và báo, không đè lên.<br><br>'
             'Khoảng 10–20 giây mỗi mặt cắt. Chuột và bàn phím <b>không</b> bị '
             'chiếm.')
-        box.setDetailedText('\n'.join(f'{v["ten"]}  ←  {v["mcb"]}' for v in viec))
+        canh = [f'{v["ten"]}: {c}' for v in viec for c in (v.get('nguon') or ())]
+        if canh:
+            # Chạy vẫn được — người dùng có thể muốn xem con số. Nhưng phải
+            # biết TRƯỚC rằng kết quả sẽ không kết luận được điều gì, thay vì
+            # đọc một bảng HỎNG rồi đi tìm lỗi trong MCT.
+            box.setInformativeText(
+                box.informativeText() + '<br><br><b>' + str(len(canh)) +
+                ' mặt cắt có nguồn không cùng một mô hình</b> — kết quả sẽ '
+                'không kết luận được. Sinh lại MCT rồi chạy lại Civil 2022 '
+                'trước thì phép so mới có nghĩa.')
+        box.setDetailedText('\n'.join(
+            [f'{v["ten"]}  ←  {v["mcb"]}' for v in viec] +
+            ([''] + canh if canh else [])))
         go = box.addButton('Chạy', QMessageBox.ButtonRole.AcceptRole)
         box.addButton('Huỷ', QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(box.buttons()[-1])

@@ -60,8 +60,15 @@ def tim(output_dir='output', chon=()) -> list:
         thu_muc = os.path.join(output_dir, ten)
         if not os.path.isdir(thu_muc):
             continue
-        mcb = os.path.join(thu_muc, f'{ten}_frame.mcb')
-        if not os.path.exists(mcb):
+        # Thứ tự ưu tiên theo TÊN, không theo bảng chữ cái. `output/S1` có cả
+        # `1.mcb` (mô hình rời của một lượt chạy tay tháng 4, tổ hợp còn tên
+        # `LCB1..LCB15`) lẫn `S1.mcb`; `sorted(...)[0]` lấy đúng cái sai, rồi
+        # phép so báo 3.532 bản ghi chỉ có ở một bên như thể hai bản Midas
+        # bất đồng.
+        mcb = next((c for c in (os.path.join(thu_muc, f'{ten}_frame.mcb'),
+                                os.path.join(thu_muc, f'{ten}.mcb'))
+                    if os.path.exists(c)), '')
+        if not mcb:
             cand = sorted(glob.glob(os.path.join(thu_muc, '*.mcb')))
             if not cand:
                 continue
@@ -71,6 +78,69 @@ def tim(output_dir='output', chon=()) -> list:
                     if os.path.exists(c)), '')
         if xls:
             ra.append((ten, mcb, xls))
+    return ra
+
+
+# Dấu thời gian của ba tệp nguồn phải theo đúng thứ tự quy trình sinh ra
+# chúng. Cho phép lệch vài giây vì một lượt chạy ghi cả ba gần như cùng lúc và
+# độ phân giải dấu thời gian của FAT/exFAT chỉ tới 2 s.
+KHE_THOI_GIAN = 5.0
+
+
+def _khoang(giay: float) -> str:
+    giay = int(abs(giay))
+    if giay < 60:
+        return f'{giay} giây'
+    if giay < 3600:
+        return f'{giay // 60} phút'
+    return f'{giay // 3600} giờ {giay % 3600 // 60} phút'
+
+
+def nguon_lac_hau(ten, mcb, xls, thu_muc='') -> list:
+    """Vì sao KHÔNG nên tin phép so của mặt cắt này — câu đọc được, hoặc rỗng.
+
+    Quy trình sinh ra ba tệp theo đúng một thứ tự::
+
+        <ten>_frame.mct  →  .mcb  →  Beam Force.xls
+        (app sinh)          (Civil 2022 giải)   (xuất bảng)
+
+    Dấu thời gian đảo ngược nghĩa là ba tệp **không cùng một mô hình**. Lúc đó
+    phép so không còn đo "hai bản Midas giải khác nhau" nữa — nó đo "ta đưa cho
+    NX một mô hình khác với mô hình đã sinh ra bảng đối chứng", mà hai điều đó
+    dẫn tới hai việc phải làm hoàn toàn khác nhau.
+
+    Đây là lỗi đã xảy ra thật, và nó **đội lốt một phát hiện kỹ thuật**:
+    `output/S1` có `.mcb` đề 14:27 còn `.mct` đề 15:34 cùng ngày, tức MCT được
+    sinh lại sau khi giải. Chạy kiểm chéo trên cặp đó cho ra 9/10 trường hợp
+    tải cơ bản trùng tới **0,0000** và riêng `Prestress` lệch **146/148** bản
+    ghi tới **9,97 kN·m** — dáng vẻ y hệt "NX và Civil 2022 hiểu khối `*TDN-*`
+    khác nhau", trong khi thật ra chỉ là hai mô hình khác cáp. Không có phép
+    soát này thì kết luận sai đó được ghi vào tài liệu.
+    """
+    # Chỉ nhận MCT mang đúng tên mặt cắt. Vơ lấy `glob('*.mct')[0]` thì gặp
+    # đúng cái bẫy phép soát này sinh ra để chặn — một tệp lạc trong thư mục
+    # sẽ dựng lên một lời cảnh báo về mô hình mà nó không hề nói tới. Không
+    # tìm thấy thì im lặng: thà bỏ sót còn hơn báo bừa, vì lời báo này KHOÁ
+    # cả kết luận đạt/hỏng.
+    thu_muc = thu_muc or os.path.dirname(mcb)
+    mct = next((c for c in (os.path.join(thu_muc, f'{ten}_frame.mct'),
+                            os.path.join(thu_muc, f'{ten}.mct'))
+                if os.path.exists(c)), '')
+
+    def khi(p):
+        return os.path.getmtime(p) if p and os.path.exists(p) else None
+
+    ten_tep = os.path.basename
+    t_mct, t_mcb, t_xls = khi(mct), khi(mcb), khi(xls)
+    ra = []
+    if t_mct and t_mcb and t_mct - t_mcb > KHE_THOI_GIAN:
+        ra.append(f'{ten_tep(mct)} mới hơn {ten_tep(mcb)} '
+                  f'{_khoang(t_mct - t_mcb)} — MCT đã sinh lại SAU khi giải, '
+                  f'nên .mcb không còn là mô hình đang có')
+    if t_mcb and t_xls and t_mcb - t_xls > KHE_THOI_GIAN:
+        ra.append(f'{ten_tep(mcb)} mới hơn {ten_tep(xls)} '
+                  f'{_khoang(t_mcb - t_xls)} — bảng Beam Force xuất từ một '
+                  f'lượt giải trước đó')
     return ra
 
 
@@ -94,7 +164,12 @@ def mot_mat_cat(nx: NX, ten, mcb, xls, dung_sai, dung_sai_bao,
     kq.update({'ten': ten, 'mcb': mcb, 'xls': xls,
                'n_2022': len(cu_recs), 'n_nx': len(nx_recs),
                'dung_sai': dung_sai, 'dung_sai_bao': dung_sai_bao,
-               'tai_co_ban': sorted(co_ban)})
+               'tai_co_ban': sorted(co_ban),
+               # Ghi thẳng vào tệp kết quả, không để người đọc phải tự đối
+               # chiếu dấu thời gian: mở lại `nx_crosscheck_<tên>.json` sau ba
+               # tháng thì `.mcb`/`.mct` có thể đã bị thay, mà câu "hai bên
+               # không cùng một mô hình" thì phải đi cùng con số nó nói về.
+               'nguon_lac_hau': nguon_lac_hau(ten, mcb, xls)})
 
     # Tên file ra suy thẳng từ tên mặt cắt — không hỏi, không tham số.
     os.makedirs(thu_muc_ra, exist_ok=True)
@@ -139,6 +214,8 @@ def main() -> int:
     if a.list:
         for ten, mcb, xls in viec:
             print(f'  {ten:8s} {os.path.basename(mcb):24s} {os.path.basename(xls)}')
+            for ly_do in nguon_lac_hau(ten, mcb, xls):
+                print(f'    ! {ly_do}')
         return 0
 
     # Số nút/phần tử của MỌI mặt cắt trong output/, không chỉ những mặt cắt
@@ -170,7 +247,7 @@ def main() -> int:
     print(f'NX sẵn sàng · đơn vị {don_vi.get("1", {})}')
     print(f'hộp cát: {HOP_CAT}\n')
 
-    dat_, hong = [], []
+    dat_, hong, nghi = [], [], []
     for ten, mcb, xls in viec:
         print(f'── {ten} ' + '─' * 46)
         try:
@@ -181,7 +258,16 @@ def main() -> int:
             hong.append(ten)
             continue
         ok = dat(kq)
-        (dat_ if ok else hong).append(ten)
+        ly_do = kq['nguon_lac_hau']
+        if ly_do:
+            # Ba tệp nguồn không cùng một mô hình → phép so này không đo được
+            # điều nó sinh ra để đo. Nói ĐẠT là sai, mà nói HỎNG cũng sai: cả
+            # hai đều là câu về hai bản Midas, còn đây là câu về tệp trên đĩa.
+            nghi.append(ten)
+        else:
+            (dat_ if ok else hong).append(ten)
+        for c in ly_do:
+            print(f'  ! {c}')
         print(f'  2022 {kq["n_2022"]} · NX {kq["n_nx"]} · ghép {kq["ghep"]}'
               f' · chỉ 2022 {kq["chi_a"]} · chỉ NX {kq["chi_b"]}')
         print(f'  tải cơ bản  lệch lớn nhất My {kq["max_My"]:.4f} kN.m · '
@@ -190,12 +276,17 @@ def main() -> int:
               f'{kq["max_bao_tuong_doi"] * 100:.2f}% · '
               f'quá {a.dung_sai_bao * 100:.0f}%: {kq["qua_dung_sai_bao"]} '
               f'(không tính đạt/hỏng)')
-        print(f'  {"ĐẠT" if ok else "HỎNG"} → {kq["file"]}')
+        ket = 'KHÔNG KẾT LUẬN' if ly_do else ('ĐẠT' if ok else 'HỎNG')
+        print(f'  {ket} → {kq["file"]}')
 
-    print(f'\n{len(dat_)} đạt · {len(hong)} hỏng')
+    print(f'\n{len(dat_)} đạt · {len(hong)} hỏng · '
+          f'{len(nghi)} không kết luận')
     if hong:
         print('hỏng: ' + ' · '.join(hong))
-    return 1 if hong else 0
+    if nghi:
+        print('không kết luận (nguồn không cùng một mô hình — sinh lại MCT '
+              'rồi chạy lại Midas): ' + ' · '.join(nghi))
+    return 1 if (hong or nghi) else 0
 
 
 if __name__ == '__main__':
