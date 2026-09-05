@@ -147,3 +147,117 @@ def test_da_co_ten_file_thi_khong_chan():
     nx.post = lambda ep, body=None, han=None: goi.append(ep) or {}
     nx.giai()
     assert goi == ['doc/ANAL'], 'đã có tên file mà vẫn không gọi doc/ANAL'
+
+
+# ── MAPI-Key và địa chỉ đọc từ registry ──────────────────────────────────
+
+def test_base_url_dung_tu_registry(monkeypatch):
+    """Đổi chế độ API trong NX là đổi được địa chỉ, không phải sửa mã.
+
+    Ghim cứng máy chủ Seoul là ngầm giả định NX luôn ở chế độ MOA. Hộp *API
+    Settings* còn `Local API` và `SAS API`, và khi người dùng đổi sang chúng
+    thì `URI`/`PORT` trong registry đổi theo.
+    """
+    from src import midas_nx as nx
+
+    monkeypatch.setattr(nx, 'doc_registry', lambda: {
+        'URI': '127.0.0.1', 'PORT': '10024', 'HTTPS': '0', 'TYPE': 2})
+    assert nx.base_url() == 'http://127.0.0.1:10024/civil'
+
+    monkeypatch.setattr(nx, 'doc_registry', lambda: {
+        'URI': 'moa-engineers.midasit.com', 'PORT': '443', 'HTTPS': '1'})
+    assert nx.base_url() == nx.BASE, (
+        'chế độ MOA phải cho ra ĐÚNG địa chỉ ghim cứng cũ — nếu không thì bản '
+        'sửa này âm thầm đổi đích của mọi lệnh')
+
+
+def test_khong_doc_duoc_registry_thi_lui_ve_mac_dinh(monkeypatch):
+    from src import midas_nx as nx
+    monkeypatch.setattr(nx, 'doc_registry', dict)
+    assert nx.base_url() == nx.BASE
+
+
+def test_doc_registry_khong_bao_gio_nem(monkeypatch):
+    """Đây là nguồn tiện lợi; hỏng thì các nguồn khai tay vẫn phải dùng được."""
+    from src import midas_nx as nx
+
+    monkeypatch.setattr(os, 'name', 'posix')
+    assert nx.doc_registry() == {}
+
+
+def test_registry_duoc_uu_tien_hon_file_khai_tay(monkeypatch, tmp_path):
+    """`mapikey.txt` dán sẵn rất dễ là key của phiên NX TRƯỚC, đã chết."""
+    from src import midas_nx as nx
+
+    tep = tmp_path / 'mapikey.txt'
+    tep.write_text('KEY-CU-DA-CHET', encoding='utf-8')
+    monkeypatch.delenv('MAPI_KEY', raising=False)
+    monkeypatch.setattr(nx, 'NOI_DE_KEY', [('tep thu', str(tep))])
+    monkeypatch.setattr(nx, 'doc_registry', lambda: {'Key': 'KEY-DANG-SONG'})
+
+    assert nx.doc_key() == 'KEY-DANG-SONG'
+
+    # Registry rong thi van phai lui ve file
+    monkeypatch.setattr(nx, 'doc_registry', dict)
+    assert nx.doc_key() == 'KEY-CU-DA-CHET'
+
+
+def test_bien_moi_truong_van_thang_tat_ca(monkeypatch):
+    """Đường ghi đè bằng tay phải còn, để còn trỏ sang một phiên NX khác."""
+    from src import midas_nx as nx
+
+    monkeypatch.setenv('MAPI_KEY', 'KEY-GO-TAY')
+    monkeypatch.setattr(nx, 'doc_registry', lambda: {'Key': 'KEY-REGISTRY'})
+    assert nx.doc_key() == 'KEY-GO-TAY'
+
+
+def test_khong_co_key_o_dau_thi_bao_cach_lay(monkeypatch):
+    from src import midas_nx as nx
+
+    monkeypatch.delenv('MAPI_KEY', raising=False)
+    monkeypatch.setattr(nx, 'NOI_DE_KEY', [])
+    monkeypatch.setattr(nx, 'doc_registry', dict)
+    with pytest.raises(nx.NXError) as e:
+        nx.doc_key()
+    chu = str(e.value)
+    assert 'API Settings' in chu and 'Connect' in chu, \
+        'thông báo không chỉ đường lấy key'
+
+
+def test_dia_chi_chot_mot_lan_cho_ca_phien(monkeypatch):
+    """Đổi chế độ giữa chừng không được làm nửa lượt chạy đi đường khác."""
+    from src import midas_nx as nx
+
+    monkeypatch.setattr(nx, 'doc_registry', lambda: {
+        'URI': 'a.example', 'PORT': '443', 'HTTPS': '1', 'Key': 'K'})
+    phien = nx.NX(log=lambda *a: None)
+    dau = phien.base
+
+    monkeypatch.setattr(nx, 'doc_registry', lambda: {
+        'URI': 'b.example', 'PORT': '80', 'HTTPS': '0', 'Key': 'K'})
+    assert phien.base == dau, 'địa chỉ đổi giữa phiên'
+
+
+def test_phien_lay_dia_chi_tu_registry_chu_khong_ghim_cung(monkeypatch):
+    """`NX.base` phải đi qua `base_url()`, không lấy thẳng hằng `BASE`.
+
+    Thiếu bài này thì việc ghim cứng lại địa chỉ vẫn lọt: bài "chốt một lần"
+    ở trên chỉ kiểm địa chỉ không đổi giữa phiên, mà một hằng thì cũng không
+    đổi.
+    """
+    from src import midas_nx as nx
+
+    monkeypatch.setattr(nx, 'doc_registry', lambda: {
+        'URI': '127.0.0.1', 'PORT': '10024', 'HTTPS': '0', 'Key': 'K'})
+    phien = nx.NX(log=lambda *a: None)
+    assert phien.base == 'http://127.0.0.1:10024/civil', (
+        f'phiên đang trỏ tới {phien.base!r} — không đọc registry, nên đổi sang '
+        f'Local API trong NX sẽ không có tác dụng')
+    assert phien.base != nx.BASE
+
+
+def test_truyen_thang_base_thi_thang_tat_ca(monkeypatch):
+    from src import midas_nx as nx
+    monkeypatch.setattr(nx, 'doc_registry', lambda: {'Key': 'K'})
+    phien = nx.NX(log=lambda *a: None, base='http://vi-du:1/civil')
+    assert phien.base == 'http://vi-du:1/civil'

@@ -25,10 +25,33 @@ không phải bộ giải chạy nền — đóng NX là key chết.
 
 ### MAPI-Key
 
-- Lấy ở NX: `Apps → API Settings → Disconnect → Refresh → Connect → Copy`
-- **Chết mỗi lần MIDAS khởi động lại.** Phải lấy lại sau mỗi lần mở NX.
-- `src/midas_nx.doc_key()` tìm theo thứ tự: biến `MAPI_KEY` → `%MAPI_KEY_FILE%`
-  → `%TEMP%\mapikey.txt` → `%USERPROFILE%\mapikey.txt`.
+- **Chết mỗi lần MIDAS khởi động lại** — nhưng **không phải copy-paste bằng
+  tay**. NX tự ghi key vào registry mỗi lần bấm *Connect*:
+
+      HKCU\SOFTWARE\MIDAS\CVLwNX_US\CONNECTION     Key · URI · PORT · HTTPS · TYPE
+
+  `src/midas_nx.doc_key()` đọc thẳng từ đó. Thư viện Python chính thức của
+  MIDAS cũng lấy ở đúng chỗ ấy. Người dùng chỉ cần mở NX và bấm
+  `Apps → API Settings → Connect`.
+
+- Thứ tự tìm: biến `MAPI_KEY` → **registry** → `%MAPI_KEY_FILE%` →
+  `%TEMP%\mapikey.txt` → `%USERPROFILE%\mapikey.txt`.
+
+  Registry đứng **trước** các file khai tay là có chủ ý: một `mapikey.txt` dán
+  sẵn rất dễ là key của phiên NX **trước**, đã chết, và triệu chứng của nó
+  (`401`) không gợi ra rằng key đã cũ. Biến môi trường vẫn thắng tất cả, để
+  còn trỏ sang một phiên NX khác khi cần.
+
+- Cùng khoá registry đó mang `URI`/`PORT`/`HTTPS`, nên `base_url()` **dựng địa
+  chỉ từ registry** thay vì ghim cứng máy chủ Seoul. Đổi sang `Local API` trong
+  hộp *API Settings* là dùng được ngay, không phải sửa mã. Ở chế độ MOA nó cho
+  ra đúng bằng hằng `BASE` cũ — `tests/test_midas_nx.py` khoá điều đó, vì nếu
+  lệch thì bản sửa này âm thầm đổi đích của mọi lệnh.
+
+- Địa chỉ **chốt một lần cho cả phiên** (`NX.base`). Đọc lại registry ở mỗi
+  lệnh thì người dùng đổi chế độ giữa chừng sẽ làm nửa lượt chạy đi một đường,
+  nửa kia đi đường khác, mà bảng kết quả không nói ra điều đó.
+
 - **Không để key trong thư mục dự án.** Nó là bí mật ngắn hạn; lọt vào git là
   phải xoay lại.
 

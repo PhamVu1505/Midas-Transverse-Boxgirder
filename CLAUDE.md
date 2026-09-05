@@ -478,8 +478,18 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
   `VL, lane` cùng trỏ một làn**. Không lan sang `str_all`/`ser_all` (≤0,25 kN·m)
   nên không đụng con số bảng kiểm toán đọc.
 - **API đi qua máy chủ MIDAS ở Seoul**, không phải cổng cục bộ; NX phải đang
-  chạy và đã Connect. **MAPI-Key chết mỗi lần MIDAS khởi động lại** — đọc từ
-  `MAPI_KEY` hoặc `%USERPROFILE%\mapikey.txt`, **không để trong thư mục dự án**.
+  chạy và đã Connect. **MAPI-Key chết mỗi lần MIDAS khởi động lại**, nhưng
+  **không phải copy-paste bằng tay**: NX tự ghi `Key`/`URI`/`PORT`/`HTTPS` vào
+  `HKCU\SOFTWARE\MIDAS\CVLwNX_US\CONNECTION` mỗi lần bấm Connect, và
+  `doc_key()` đọc thẳng từ đó — thư viện Python chính thức của MIDAS cũng lấy ở
+  đúng chỗ ấy. Registry đứng **trước** các file khai tay vì `mapikey.txt` dán
+  sẵn rất dễ là key của phiên trước đã chết, mà triệu chứng (`401`) không gợi
+  ra điều đó. **Không để key trong thư mục dự án.**
+- **`base_url()` dựng địa chỉ từ registry**, không ghim cứng Seoul: hộp *API
+  Settings* còn `Local API` và `SAS API`, đổi sang chúng là `URI`/`PORT` đổi
+  theo. Ở chế độ MOA nó cho ra **đúng bằng** hằng `BASE` cũ — đã đo, và test
+  khoá lại; lệch là bản sửa âm thầm đổi đích của mọi lệnh. Địa chỉ chốt một
+  lần cho cả phiên, đừng đọc lại registry ở từng lệnh.
 - **`"command complete"` không có nghĩa là xong**: `/doc/IMPORT` trả đúng câu đó
   cho MCT của ta rồi nạp về 0 nút. Mọi lệnh đổi mô hình phải đọc lại `db/NODE`.
 - **MCT nạp được qua API bằng `/doc/IMPORTMXT`, và phải có khối `*VERSION`.**

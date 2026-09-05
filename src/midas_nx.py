@@ -17,10 +17,16 @@ Trên S16 đã đối chiếu đủ 7.656 bản ghi, lệch lớn nhất `My` 0,
 
 Bốn sự thật phải nhớ
 ────────────────────
-1. **MAPI-Key CHẾT mỗi lần MIDAS khởi động lại.** Lấy lại ở NX: `Apps → API
-   Settings → Disconnect → Refresh → Connect → Copy`. Key **không** được để trong
-   mã nguồn hay trong thư mục dự án — đọc từ biến `MAPI_KEY` hoặc file
-   `%USERPROFILE%\\mapikey.txt`.
+1. **MAPI-Key CHẾT mỗi lần MIDAS khởi động lại.** Nhưng KHÔNG phải copy-paste
+   bằng tay: NX tự ghi key vào registry (`HKCU\\SOFTWARE\\MIDAS\\CVLwNX_US\\
+   CONNECTION`) mỗi lần bấm **Connect**, và `doc_key()` đọc thẳng từ đó — thư
+   viện Python chính thức của MIDAS cũng lấy ở đúng chỗ ấy. Registry đứng
+   TRƯỚC các file khai tay, vì một `mapikey.txt` dán sẵn rất dễ là key của
+   phiên trước đã chết. Key **không** được để trong mã nguồn hay thư mục dự án.
+
+   Cùng khoá đó còn mang `URI`/`PORT`/`HTTPS`, nên `base_url()` dựng địa chỉ từ
+   registry thay vì ghim cứng máy chủ Seoul: đổi sang `Local API` trong hộp
+   *API Settings* là dùng được ngay, không phải sửa mã.
 
 2. **"command complete" KHÔNG có nghĩa là xong.** `/doc/IMPORT` trả đúng câu đó
    cho một file `.mct` rồi nạp về **0 nút**. Mọi lệnh làm đổi mô hình ở đây đều
@@ -71,21 +77,83 @@ class NXError(RuntimeError):
     """Lỗi có tên, để chỗ gọi in thẳng cho người dùng."""
 
 
+REG_CONNECTION = r'SOFTWARE\MIDAS\CVLwNX_US\CONNECTION'
+
+
+def doc_registry() -> dict:
+    """Thông số kết nối NX tự ghi vào registry: `Key`, `URI`, `PORT`, `HTTPS`.
+
+    NX ghi sẵn những trị này mỗi lần người dùng bấm **Connect**, và thư viện
+    Python chính thức của MIDAS cũng lấy từ đúng chỗ đó. Nhờ vậy không phải bắt
+    người dùng đi copy-paste key sau **mỗi lần** khởi động lại NX — rào cản lớn
+    nhất của cả đường NX, vì key chết theo phiên.
+
+    Trả về dict rỗng khi không đọc được (không phải Windows, chưa cài NX, hoặc
+    chưa Connect lần nào). Không bao giờ ném: đây là một nguồn tiện lợi, các
+    nguồn khai bằng tay vẫn phải dùng được.
+    """
+    if os.name != 'nt':
+        return {}
+    try:
+        import winreg
+    except ImportError:
+        return {}
+    ra = {}
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, REG_CONNECTION) as k:
+            for ten in ('Key', 'URI', 'PORT', 'HTTPS', 'TYPE'):
+                try:
+                    ra[ten] = winreg.QueryValueEx(k, ten)[0]
+                except OSError:
+                    pass
+    except OSError:
+        return {}
+    return ra
+
+
+def base_url() -> str:
+    """Địa chỉ API, dựng từ registry nếu có, không thì lấy mặc định.
+
+    Ghim cứng một địa chỉ là ngầm giả định NX luôn ở chế độ MOA (máy chủ MIDAS
+    ở Seoul). Hộp *API Settings* còn hai chế độ khác — `Local API` và `SAS API`
+    — và khi người dùng đổi sang chúng thì `URI`/`PORT` trong registry đổi
+    theo. Đọc từ đó thì đổi chế độ là dùng được ngay, không phải sửa mã.
+    """
+    r = doc_registry()
+    uri = str(r.get('URI') or '').strip()
+    if not uri:
+        return BASE
+    cong = str(r.get('PORT') or '').strip() or '443'
+    so_do = 'https' if str(r.get('HTTPS', '1')).strip() not in ('0', '') else 'http'
+    return f'{so_do}://{uri}:{cong}/civil'
+
+
 def doc_key() -> str:
-    """MAPI-Key, tìm theo `NOI_DE_KEY`. Không thấy thì báo cách lấy."""
+    """MAPI-Key. Ưu tiên registry của NX, rồi tới các nguồn khai bằng tay."""
     key = (os.environ.get('MAPI_KEY') or '').strip()
     if key:
         return key
+
+    # Registry đứng TRƯỚC các file khai tay: file `mapikey.txt` do người dùng
+    # dán vào rất dễ là key của phiên NX TRƯỚC, đã chết. Registry thì NX tự ghi
+    # lại mỗi lần Connect nên luôn là key của phiên đang chạy.
+    k = str(doc_registry().get('Key') or '').strip()
+    if k:
+        return k
+
     for _ten, p in NOI_DE_KEY:
         if p and os.path.isfile(p):
             k = open(p, encoding='utf-8-sig').read().strip()
             if k:
                 return k
     raise NXError(
-        'không tìm thấy MAPI-Key. Trong MIDAS CIVIL NX: Apps → API Settings → '
-        'Disconnect → Refresh → Connect → Copy, rồi lưu vào '
-        '%USERPROFILE%\\mapikey.txt (hoặc đặt biến môi trường MAPI_KEY). '
-        'Key CHẾT mỗi lần MIDAS khởi động lại nên phải lấy lại sau mỗi lần mở.')
+        'không tìm thấy MAPI-Key. Mở MIDAS CIVIL NX rồi bấm Apps → API '
+        'Settings → Connect: NX tự ghi key vào registry và phần mềm đọc thẳng '
+        'từ đó, không phải copy-paste gì.\n'
+        'Đường dự phòng: lưu key vào %USERPROFILE%\\mapikey.txt, hoặc đặt biến '
+        'môi trường MAPI_KEY.\n'
+        'Key CHẾT mỗi lần MIDAS khởi động lại — đó là lý do nên để phần mềm '
+        'đọc registry thay vì giữ một bản chép tay.')
 
 
 class NX:
@@ -96,8 +164,12 @@ class NX:
     cả hai đều đi qua `kiem_tai_lieu_sach()`.
     """
 
-    def __init__(self, key: str = None, log=print):
+    def __init__(self, key: str = None, log=print, base: str = None):
         self.key = key or doc_key()
+        # Chốt địa chỉ MỘT LẦN cho cả phiên. Đọc lại registry ở mỗi lệnh thì
+        # người dùng đổi chế độ API giữa chừng sẽ làm nửa lượt chạy đi một
+        # đường, nửa kia đi đường khác — và bảng kết quả không nói ra điều đó.
+        self.base = base or base_url()
         self.log = log
         # Đường dẫn tài liệu đang mở, theo dõi trong phiên. MAPI **không** có
         # endpoint nào trả tên file (`db/PROJINFO`, `db/FILENAME` đều 404), nên
@@ -109,7 +181,7 @@ class NX:
     def _goi(self, method, ep, body=None, han=300):
         h = {'MAPI-Key': self.key, 'Content-Type': 'application/json'}
         try:
-            r = requests.request(method, f'{BASE}/{ep.lstrip("/")}', headers=h,
+            r = requests.request(method, f'{self.base}/{ep.lstrip("/")}', headers=h,
                                  json=body if body is not None else {},
                                  timeout=han)
         except requests.RequestException as e:
