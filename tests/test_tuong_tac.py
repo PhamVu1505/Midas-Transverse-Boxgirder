@@ -310,3 +310,114 @@ def test_phim_tat_dung_khong_cuop_esc_cua_khung_xem(qt):
     doan = than[i:i + 400]
     assert "'Esc'" not in doan, 'mục Dừng đang chiếm phím Esc của khung xem'
     assert 'Shift+Esc' in doan
+
+
+# ── B-13 ──────────────────────────────────────────────────────────────────
+
+def _dieu_phoi(qt):
+    """`GenerateController` trần, không dựng cả cửa sổ."""
+    from gui.generate_tab import GenerateController
+    from src.project import Project
+
+    class TrangThai:
+        def showMessage(self, *a, **k):
+            pass
+
+    c = GenerateController(TrangThai(), Project(), None)
+    c._total, c._done = 5, 0
+    return c
+
+
+def test_nguoi_dung_chon_thi_phan_mem_thoi_gianh_khung_xem(qt):
+    """Đổi mặt cắt giữa lúc chạy: cây một đằng, khung xem một nẻo."""
+    c = _dieu_phoi(qt)
+    da_hien = []
+    c.show_section = da_hien.append
+
+    c._on_done('S1', '')                      # chua ai chon gi -> tu nhay
+    assert da_hien == ['S1'], 'không tự nhảy khi người dùng chưa chọn gì'
+
+    c.nguoi_dung_da_chon('S9')                # nguoi dung tu bam trong cay
+    c._on_done('S2', '')
+    c._on_done('S3', '')
+    assert da_hien == ['S1'], (
+        'người dùng đã tự chọn S9 mà phần mềm vẫn giành khung xem cho S2/S3 — '
+        'cây một đằng, khung xem và dock một nẻo')
+
+
+def test_tieng_vong_cua_chinh_no_khong_tinh_la_nguoi_dung_chon(qt):
+    """`show_section` phát lại `section_shown`, đừng nhầm đó là người dùng."""
+    c = _dieu_phoi(qt)
+    da_hien = []
+    c.show_section = da_hien.append
+
+    c._on_done('S1', '')
+    c.nguoi_dung_da_chon('S1')                # dung ten ma no vua tu nhay toi
+    c._on_done('S2', '')
+    assert da_hien == ['S1', 'S2'], (
+        'tiếng vọng của chính nó bị tính là người dùng chọn, nên tắt mất phản '
+        'hồi tự nhảy ngay từ mặt cắt đầu')
+
+
+def test_moi_luot_chay_bat_dau_lai_viec_tu_nhay(qt):
+    c = _dieu_phoi(qt)
+    c.nguoi_dung_da_chon('S9')
+    assert not c._theo_duoc
+    c._theo_duoc, c._tu_nhay = True, ''       # dung nhu `generate()` dat lai
+    assert c._theo_duoc
+
+
+# ── B-24 ──────────────────────────────────────────────────────────────────
+
+def test_mat_cat_bi_bo_giua_chung_thi_khong_tao_file(qt, tmp_path):
+    from gui.worker import GenerateWorker
+
+    dxf = _dxf_that()
+    jobs = [{'name': n, 'dxf': dxf, 'excel': '', 'include_pt': True}
+            for n in ('S1', 'DA_BO', 'S3')]
+    con = {'S1', 'S3'}                        # DA_BO khong con trong project
+    w = GenerateWorker(jobs, str(tmp_path), con_can=lambda t: t in con)
+
+    xong, nhat_ky = [], []
+    w.section_info.connect(lambda n, d: xong.append(n))
+    w.log.connect(nhat_ky.append)
+    w.run()
+
+    assert 'DA_BO' not in xong
+    assert not (tmp_path / 'DA_BO' / 'DA_BO_frame.mct').exists(), (
+        'vẫn tạo MCT cho mặt cắt đã bị bỏ khỏi project — để lại thư mục mồ côi')
+    assert any('DA_BO' in d and 'Bỏ qua' in d for d in nhat_ky), \
+        'bỏ qua trong im lặng, không dòng nào nói vì sao'
+    assert set(xong) == {'S1', 'S3'}
+
+
+def test_khong_truyen_con_can_thi_chay_het_nhu_cu(qt, tmp_path):
+    """Giữ nguyên hành vi cũ khi người gọi không quan tâm."""
+    from gui.worker import GenerateWorker
+
+    dxf = _dxf_that()
+    jobs = [{'name': n, 'dxf': dxf, 'excel': '', 'include_pt': True}
+            for n in ('S1', 'S2')]
+    w = GenerateWorker(jobs, str(tmp_path))
+    xong = []
+    w.section_info.connect(lambda n, d: xong.append(n))
+    w.run()
+    assert set(xong) == {'S1', 'S2'}
+
+
+# ── B-22 ──────────────────────────────────────────────────────────────────
+
+def test_doi_the_thi_dat_lai_dong_chi_tiet(qt):
+    import inspect
+    from gui.main_window import MainWindow
+
+    assert hasattr(MainWindow, 'TAB_HINT'), 'không có câu mở đầu cho từng thẻ'
+    assert len(MainWindow.TAB_HINT) == len(MainWindow.VIEW_TABS), \
+        'thiếu câu cho một thẻ nào đó'
+
+    than = inspect.getsource(MainWindow._on_view_tab)
+    i_dat = than.index('TAB_HINT')
+    i_stack = than.index('setCurrentIndex')
+    assert i_dat < i_stack, (
+        'phải đặt lại dòng chi tiết TRƯỚC khi đổi thẻ, để phần dưới còn ghi đè '
+        'bằng câu cụ thể hơn nếu có')

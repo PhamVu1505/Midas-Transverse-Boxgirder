@@ -31,6 +31,9 @@ class GenerateController(QObject):
         self.include_pt = True
         self._total = self._done = 0
         self._current = ''
+        # Còn tự nhảy theo mặt cắt vừa tạo xong hay không (xem `_on_done`).
+        self._theo_duoc = True
+        self._tu_nhay = ''
 
     # ─────────────────────────────────────────
     @property
@@ -228,8 +231,13 @@ class GenerateController(QObject):
         self._total, self._done = len(jobs), 0
         self.progress_changed.emit(0, self._total)
         self.status_bar.showMessage(f'Đang tạo {self._total} mặt cắt…')
+        # Mỗi lượt chạy bắt đầu lại: lần trước người dùng có tự chọn thì
+        # cũng không nên làm câm phản hồi của lượt này.
+        self._theo_duoc, self._tu_nhay = True, ''
 
-        self.worker = GenerateWorker(jobs, self.project.output_dir or 'output')
+        self.worker = GenerateWorker(
+            jobs, self.project.output_dir or 'output',
+            con_can=lambda ten: self.project.find(ten) is not None)
         if self.log_area:
             self.worker.log.connect(self.log_area.append_auto)
         self.worker.section_info.connect(self._on_info)
@@ -253,7 +261,25 @@ class GenerateController(QObject):
         self._done += 1
         self.progress_changed.emit(self._done, self._total)
         self.status_bar.showMessage(f'Đã tạo: {name}')
-        self.show_section(name)
+
+        # Chỉ tự nhảy theo mặt cắt vừa xong khi NGƯỜI DÙNG chưa tự chọn gì
+        # trong lượt chạy này.
+        #
+        # Tự nhảy là phản hồi tốt khi người dùng ngồi nhìn, nhưng nếu họ bấm
+        # một mặt cắt khác trong cây để xem hình trong lúc chờ thì phần mềm
+        # giành lấy lựa chọn: cây tô mặt cắt họ chọn, còn khung xem và dock
+        # nhảy sang mặt cắt vừa tạo xong, rồi tiếp tục nhảy sau mỗi mặt cắt —
+        # và xong lượt thì ba chỗ vẫn lệch nhau, không tự về lại. Đúng loại
+        # lệch mà luật "chỉ có MỘT mặt cắt đang chọn cho cả app" sinh ra để
+        # tránh; chỉ khác là ở đây phần mềm mới là bên giành.
+        if self._theo_duoc:
+            self._tu_nhay = name
+            self.show_section(name)
+
+    def nguoi_dung_da_chon(self, name):
+        """Người dùng tự chọn một mặt cắt — thôi tự nhảy cho hết lượt này."""
+        if name and name != getattr(self, '_tu_nhay', ''):
+            self._theo_duoc = False
 
     def _on_finished(self, count):
         self.worker = None

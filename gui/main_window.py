@@ -165,9 +165,24 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
         self.steps.set_state(0, ACTIVE)
 
+    # Câu mở đầu cho từng thẻ. Đổi thẻ mà để nguyên dòng chi tiết cũ thì câu ấy
+    # thành sai ngay: bấm F6 trên project rỗng ra câu "Chưa mặt cắt nào sẵn
+    # sàng…", bấm tiếp F7 — một thao tác chỉ chuyển thẻ — thì câu đó vẫn nằm
+    # đó, đọc như thể vừa được nói về việc kiểm toán.
+    TAB_HINT = {
+        0: 'Khung xem mô hình — rê chuột lên node để tra',
+        1: 'Hình dạng tiết diện theo chiều dày thật',
+        2: 'Tô theo bộ phận',
+        3: 'Bảng nội lực và biểu đồ bao',
+        4: 'Kiểm toán tiết diện theo TCVN 11823-5',
+        5: 'Nội dung file MCT đã sinh',
+    }
+
     def _on_view_tab(self, idx):
         if not (0 <= idx < len(self.VIEW_TABS)):
             return
+        # Đặt trước, để phần dưới còn ghi đè bằng câu cụ thể hơn nếu có.
+        self.status.showMessage(self.TAB_HINT.get(idx, ''))
         _, page, mode = self.VIEW_TABS[idx]
         self.stack.setCurrentIndex(page)
         if mode:
@@ -464,6 +479,9 @@ class MainWindow(QMainWindow):
         self._restyle_chrome()
 
     def _connect(self):
+        # Người dùng tự chọn trong cây thì phần mềm thôi giành khung xem cho
+        # tới hết lượt chạy — xem `GenerateController._on_done`.
+        self.panel.section_selected.connect(self.gen_tab.nguoi_dung_da_chon)
         self.panel.section_selected.connect(self.gen_tab.show_section)
         self.panel.section_selected.connect(self._on_section_selected)
         self.panel.layer_toggled.connect(self.viewer.view.set_layer)
@@ -902,7 +920,7 @@ class MainWindow(QMainWindow):
             return
         w.xin_dung()
         self.log.warning(f'Đã xin dừng: {ten} — sẽ dừng sau mặt cắt đang chạy.')
-        self.status_bar.showMessage(f'Đang dừng {ten}…')
+        self.status.showMessage(f'Đang dừng {ten}…')
         self._sync_stop_action()
 
     def _sync_stop_action(self):
@@ -1254,7 +1272,7 @@ class MainWindow(QMainWindow):
                 return
 
             w.xin_dung()
-            self.status_bar.showMessage(f'Đang dừng {ten}…')
+            self.status.showMessage(f'Đang dừng {ten}…')
             QApplication.processEvents()
             # Chờ có giới hạn. Một mặt cắt Midas mất 1–3 phút; quá thì buông
             # tay nhưng nói thẳng, đừng để cửa sổ treo vô hạn.

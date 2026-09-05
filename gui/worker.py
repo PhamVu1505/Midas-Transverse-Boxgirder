@@ -31,10 +31,14 @@ class GenerateWorker(QThread):
     section_error = pyqtSignal(str, str)     # name, thông báo lỗi
     finished_all = pyqtSignal(int)
 
-    def __init__(self, jobs: list, output_dir: str):
+    def __init__(self, jobs: list, output_dir: str, con_can=None):
         super().__init__()
         self.jobs = jobs
         self.output_dir = output_dir
+        # `con_can(tên) -> bool`: mặt cắt còn nằm trong project không. Người gọi
+        # giữ project, worker thì không — nên hỏi ngược ra thay vì để worker
+        # ôm thêm một tham chiếu tới thứ nó không sở hữu.
+        self.con_can = con_can
 
     def xin_dung(self):
         """Xin dừng tác vụ này.
@@ -65,6 +69,18 @@ class GenerateWorker(QThread):
                 break
 
             name = job['name']
+
+            # Mặt cắt bị bỏ khỏi project GIỮA lượt chạy thì đừng làm nữa.
+            #
+            # Trước đây vẫn tạo đủ `.mct`, `_topo.json`, `.svg` cho nó; kết quả
+            # không ghi được vào project (mặt cắt đâu còn) nên chuyện đó diễn ra
+            # hoàn toàn im lặng, chỉ để lại một thư mục mồ côi, mà câu tổng kết
+            # vẫn đếm nó là một mặt cắt đã tạo.
+            if self.con_can is not None and not self.con_can(name):
+                self.log.emit(f'[{name}] Bỏ qua — mặt cắt đã bị bỏ khỏi project '
+                              f'trong lúc chạy.')
+                continue
+
             dxf_path = job['dxf']
             excel = job.get('excel') or None
             include_pt = job.get('include_pt', True)
