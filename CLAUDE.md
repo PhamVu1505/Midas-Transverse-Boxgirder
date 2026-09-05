@@ -664,10 +664,44 @@ Cả quy trình đứng trên **một** phép giải. Thẻ này cho MIDAS CIVIL
 - **CHƯA kiểm phần gọi API thật** trên máy phát triển hiện tại: NX cài rồi
   nhưng chưa Connect lần nào trong phiên kiểm.
 
+### Bỏ template Excel — đã đo, chưa làm (VuPQ yêu cầu 2026-09-05)
+
+VuPQ muốn thôi nạp file Excel, khai số liệu thẳng trong app. Đã đo trước khi
+làm, và **phép đo đổi hẳn hình dạng việc**:
+
+- **40 khoá không phải 40 số liệu độc lập.** `SPEC` có 38 khoá + 2 hằng. Nhưng
+  **6 trị hoạt tải tái lập được hoàn toàn** từ `S`, `X`, `IM` theo TCVN 11823-4
+  Bảng 4.6.2.1.3-1 — tính lại và so với ô Excel: lệch **≤ 7·10⁻¹⁵**, tức bằng
+  không. Chúng là *kết quả tính*, không phải số liệu người dùng gõ.
+- **Hai khoá xếp nhầm chỗ.** `impact` xuất hiện **0 lần** trong
+  `mct_frame_writer.py` (nó đã nằm trong trị xe). `d_L`/`d_R` cũng **0 lần** ở
+  đó nhưng **27 lần** trong `frame_builder.py` — chúng là **hình học** đặt node,
+  không phải tải trọng.
+- **Chỉ 9/40 khoá phụ thuộc mặt cắt** (7 hoạt tải + `d_L`/`d_R`). Đúng 9 khoá ấy
+  là nguồn của toàn bộ lớp lỗi đã biết: template chung khai `S = 6468 mm` làm
+  S20 thiếu 14% tải bánh, S10 thiếu 8%. 31 khoá còn lại là số liệu **công
+  trình**, không đổi theo mặt cắt, chưa gây lỗi nào.
+
+**Cái sẽ mất nếu bỏ hẳn Excel:** sheet `Load` mục 2.3 là một **mạch tính hiện
+công thức** (`E = 1140 + 0,833X`, `PD = 0,0006V²·At·Cd`) — thứ kỹ sư thẩm tra
+đọc để tin, và ký. Dựng 40 ô nhập trong app thì mất mạch đó mà **không sửa được
+lỗi nào**, vì S20 thiếu 14% không phải do gõ khó, mà do *một template dùng cho
+nhiều mặt cắt*.
+
+**Ba bước đề xuất**, mỗi bước tự nó đã có giá trị:
+1. **App tự tính 9 khoá phụ thuộc mặt cắt** từ hình học DXF. Một mình bước này
+   xoá hết lớp lỗi S10/S20, không cần giao diện mới nào.
+2. **Cửa sổ khai báo cho 31 khoá còn lại**, mang luôn mạch tính hiện công thức
+   sang app — không phải chỉ 31 ô trống.
+3. **Xuất ngược ra Excel** làm hồ sơ thẩm tra. Đảo chiều dòng dữ liệu: app là
+   nguồn, Excel là bản in. Đây chính là phần "tích hợp báo cáo" VuPQ hỏi.
+
 ## Current Sprint
 **Goal:** VuPQ chốt 2026-09-05: **tạm dừng nhánh Midas Civil 2022, tập trung vào Midas NX.** Ba việc đã làm: bật mặc định `*VERSION` · thẻ Kiểm chéo NX · đọc MAPI-Key từ registry. Còn chờ: thử chế độ `Local API` (cần người dùng tự bấm trong NX).
 
-**Trạng thái:** `pytest tests -q` **149/149** · `tools/check_gui.py` **34/34** · `tools/audit_gui.py` **54 đạt · 0 hỏng** (57 điều khiển) · kiểm chéo NX **4/4 đạt**. Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `4bf929c` (V1 QA, đã đẩy remote); phần giấy phép + chuột phải đang ở nhánh làm việc, **chưa merge**. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
+**Trạng thái (2026-09-05):** `pytest tests -q` **264 đạt** · `tools/check_gui.py` **42 đạt · 0 hỏng** · `tools/audit_gui.py` **63 điều khiển, 59 đạt · 0 hỏng**. Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` đi trước **15 commit**, **chưa đẩy remote, chưa merge**. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
+
+**Máy đang làm việc không phải máy phát triển.** Repo nằm trên ổ SSD ngoài `H:`, cắm qua lại giữa hai máy. `DESKTOP-NLCA550` (Windows 11) **không có** Inno Setup và **không có Midas Civil 2022** — chỉ có MIDAS CIVIL NX. Không có venv trong repo; dựng venv riêng ở `%TEMP%\mtbv` rồi chạy mọi thứ bằng nó, và **luôn đặt `MTB_DATA_DIR`** trỏ thư mục tạm để khỏi đốt ngày dùng thử của máy.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
@@ -701,10 +735,21 @@ Cả quy trình đứng trên **một** phép giải. Thẻ này cho MIDAS CIVIL
 `S1 8.140` · `S10 6.050` · `S16 7.260` · `S1_V2 12.430` · `S20 4.680` · `SLT 9.180` bản ghi. Cả 6 đủ 4 chuỗi `str_all`/`ser_all` và tập phần tử khớp topo. **Không** ghi vào `output/` — muốn dùng số này cho tab Kiểm toán thì phải sinh lại vào `output/<tên>/`.
 
 **Next Action cụ thể:**
-1. **Đóng gói v1.5.0** — `installer\build.bat` (bản khách) rồi
-   `installer\build_admin.bat` (công cụ cấp phép, giữ nội bộ). Chạy thật bản
-   đóng gói: mở app xem cổng giấy phép có chạy trong `sys.frozen` không, và
-   bấm chuột phải vào một `.dxf` xem mục menu trỏ đúng exe.
+
+0. **VIỆC CỦA NGƯỜI DÙNG, MỘT LẦN — đang chặn phần kiểm NX.** Trong MIDAS CIVIL
+   NX: `Apps → API Settings` → tích **Connect API on Startup** → `Connect`. Tích
+   ô đó thì mọi lần mở NX sau tự kết nối, khoá tự ghi vào registry và app đọc
+   thẳng. Xong bước này thì **toàn bộ phần gọi API thật** của thẻ Kiểm chéo NX
+   mới kiểm được — hiện chưa chạy thật lần nào trên máy này.
+   Muốn thoát máy chủ Seoul thì chọn **Local API** trước khi Connect, rồi chạy
+   `python tools/nx_thu_local_api.py`.
+
+1. **Đóng gói v1.5.0 — PHẢI làm trên máy phát triển** (máy hiện tại không có
+   Inno Setup). `installer\build.bat` rồi `installer\build_admin.bat`. Ba lỗi
+   chỉ-lộ-ở-bản-.exe đã vá và có test khoá, nhưng bước Inno Setup thì chưa chạy
+   lần nào. Chạy thật bản đóng gói: mở app xem cổng giấy phép có chạy trong
+   `sys.frozen` không (đã kiểm bằng bản PyInstaller: **đạt**), và bấm chuột
+   phải vào một `.dxf` xem mục menu trỏ đúng exe.
 2. **Sinh khoá phát hành thật** nếu khoá hiện tại chỉ là khoá thử —
    `python tools/gen_keypair.py --force` **đổi luôn `key_id`**, đừng giữ
    `mtb-v1` (xem luật trong `src/security/keys.py`). Cất khoá riêng ngoài máy
@@ -716,15 +761,26 @@ Cả quy trình đứng trên **một** phép giải. Thẻ này cho MIDAS CIVIL
    trên dock Properties. Không chặn phát hành.
 5. Thử **căng hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng như mong đợi.
 
-**Sau V1 — hướng Midas NX** (VuPQ chốt thứ tự 2026-08-20):
-6. **Khối `*VERSION` — XONG, không còn việc gì cho V1.** `write_mct(...,
-   mct_version=...)` + `run.py generate --nx`; mặc định **TẮT**, VuPQ đã chốt
-   giữ vậy cho V1. Phép đo A/B trên Civil 2022 thật: **6/6 trùng khít, 44.940
-   bản ghi, Δ = 0,0000**. Việc còn lại: bật mặc định (một dòng) cùng lúc với thẻ
-   Kiểm chéo NX. Xem mục *Phương ngữ MCT*.
-7. **Thẻ Kiểm chéo NX trong app** — chặng 1: nhận `.mcb` đã có, giải lại bằng
-   NX, hiện bảng đạt/hỏng. Lõi đã xong ở `tools/nx_crosscheck.py`.
-8. **Plugin NX** — chặng 2, sau khi có phương ngữ MCT.
+**Nhánh Midas NX** — VuPQ chốt 2026-09-05: **đây là nhánh chính, Civil 2022 tạm dừng.**
+6. **Khối `*VERSION` — XONG, đã bật mặc định** (`6bd8826`). MCT chênh đúng ba
+   dòng so với bản V1; `--khong-version` giữ đường tái lập file cũ.
+7. **Thẻ Kiểm chéo NX — XONG phần dựng** (`560f24f`, `0de6e6d`).
+   `gui/nx_tab.py` + `gui/nx_worker.py`, 14 bài test. **Phần gọi API thật chưa
+   kiểm** — xem việc 0.
+8. **Đọc MAPI-Key từ registry — XONG** (`9f7c84a`). Hết cảnh chép tay khoá sau
+   mỗi lần khởi động lại NX. `base_url()` cũng dựng từ registry nên đổi sang
+   `Local API` là chạy ngay, không phải sửa mã.
+9. **Thử chế độ `Local API`** — công cụ đã có (`tools/nx_thu_local_api.py`),
+   chờ người dùng bấm. Chạy được thì máy ngoài mạng vẫn kiểm chéo được và hồ sơ
+   không đi qua máy chủ ở Seoul.
+10. **Plugin NX — KHÔNG làm bây giờ.** Khảo sát 2026-09-04: NX **không có SDK
+    nhúng**; "Plug-in" của nó là ứng dụng Python gọi REST API nộp dưới dạng
+    `.zip`, tức gần đúng thứ ta đã có. Làm plugin thật sẽ **mất** khung xem
+    PyQt, thẻ Kiểm toán, hệ giấy phép lẫn đường Civil 2022, mà vẫn vấp chỗ chặn
+    cũ: vòng tròn JSON của NX không bảo toàn tổ hợp tải.
+11. **Bỏ template Excel, khai số liệu trong app** — VuPQ yêu cầu 2026-09-05.
+    Đã đo và báo cáo; xem mục *Số liệu đầu vào* để biết vì sao nên làm theo ba
+    bước chứ không dựng thẳng 40 ô nhập.
 
 **S20 — VuPQ chốt CHƯA tạo lại** (2026-07-29). Đã sinh thử ra thư mục tạm rồi so với `output/S20`: số hiệu node/phần tử **không đổi**, nhưng 8 node bản mặt đổi toạ độ (−5.75 → −5.8…), 32 dòng chiều dày tiết diện lệch (0.2686 → 0.2663), và ràng buộc gối cũ là `101000`/`001000` — tức bản S20 đang lưu **có trước cả bản sửa khoá Dy**. Tạo lại thì `Beam Force_S20.xls` hiện có hết khớp mô hình, phải chạy lại Midas. Hệ quả để nguyên: ô mặt cắt ở Results table của S20 trống (topo thiếu khối `geometry`), biểu đồ bao vẫn vẽ.
 
@@ -737,6 +793,7 @@ Cả quy trình đứng trên **một** phép giải. Thẻ này cho MIDAS CIVIL
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-09-05: **Nhánh NX thành nhánh chính; 23/23 lỗi của tập mô tả sản phẩm đã sửa.** Áp phương pháp *product description* (gist steveruizok) dựng `docs/product-description/` — mô tả hành vi từ ngoài vào, khuôn tám mục, bảng ngắt quãng cố định hỏi cùng bộ câu hỏi cho mọi tính năng. Nó lôi ra **23 lỗi**, phần lớn kiểm chứng bằng cách chạy thật, và cả 23 đã vá: bản vẽ mm đi lọt (71.059 phần tử, MCT 426 MB, nhật ký báo Xong) · tạo lại MCT thì nhận nội lực của mô hình cũ · template mất file thì sinh MCT rỗng ruột · không huỷ được việc đang chạy · Excel giữ tệp thì mất trọn kết quả · khung xem phóng lệch tâm 0,67 m mỗi nấc. Thêm cơ chế `Section.stale` dùng chung cho mọi thứ làm nội lực lạc hậu. Trước đó vá **ba lỗi chỉ lộ ở bản .exe** khiến build v1.5.0 chưa bao giờ chạy qua được, và **bốn lỗ ở cổng giấy phép** (chuột phải trong cây sinh được MCT với giấy phép đã thu hồi; hộp thoại giấy phép giết cả tiến trình khi chọn nhầm PDF). Nhánh NX: bật mặc định `*VERSION`, thẻ Kiểm chéo NX, đọc MAPI-Key từ registry. `pytest` **149 → 264**, `check_gui` **34 → 42**. Bài học lặp lại nhiều nhất trong phiên: **phép chứng minh quan trọng ngang bản vá** — ba lần tôi suýt tin một kết quả sai (bytecode `.pyc` cũ · dựng lại sai hành vi cũ · phép kiểm bắt đúng lỗi vì lý do sai).
 - 2026-08-21: **Giấy phép + theo dõi sử dụng + chặn, và mục chuột phải tạo MCT (v1.5.0).** Bê lối làm của `Mcoc_python` (token RSA ký bằng `pow()`, ràng `MachineGuid`, một cổng duy nhất) rồi làm thêm ba thứ Mcoc thiếu: **nhật ký sử dụng** (đếm số lần, không ghi nội dung công việc; người dùng xem được đúng thứ đang bị ghi), **điểm hẹn là một thư mục dùng chung** (nhịp tim ra, danh sách chặn ký số vào), và **thu hồi có hiệu lực trên máy khách** — Mcoc chỉ đánh dấu `Revoked` trong sổ, máy khách không bao giờ biết. Dùng thử **7 ngày** thay vì 3: một vòng DXF → MCT → Midas → kiểm toán của dự án này dài hơn. Công cụ quản trị `tools/license_admin.py` (4 thẻ: yêu cầu · giấy phép · máy đang dùng · điểm hẹn) chạy trên sổ SQLite, xuất CSV. Thêm mục **chuột phải vào .dxf → Tạo file MCT** (`SystemFileAssociations`, HKCU) mở một cửa sổ nhỏ dùng lại chính `GenerateWorker` — không viết đường sinh MCT thứ hai. Test bắt được một lỗi thật ngay trong lúc viết: ba biến `MTB_*_FILE` chỉ trỏ được một file nên `blocklist.cache` vẫn rơi vào `%ProgramData%` thật, một bài test cất bản sao ở đó rồi bài sau đọc trúng → thêm `MTB_DATA_DIR`, và ba công cụ giao diện nay cũng dùng nó để khỏi đốt mất ngày dùng thử của máy đang phát triển. `pytest` **149/149** · `check_gui` **34/34** · `audit_gui` **54/57 đạt, 0 hỏng**. Bump **v1.5.0**.
 - 2026-08-21: **Phương ngữ MCT — đo xong, hoá ra chỉ cần MỘT file.** VuPQ đề xuất sinh hai bản MCT (2022 / NX) theo lẽ "bản cao đọc được bản thấp". Lẽ đúng, nhưng bằng chứng bác chính phương án hai file: `9.1.0` là tag **chính Civil 2022 ghi ra khi export** (`output/TP_BL_test/S1/S1.mct` nằm cạnh `S1.mcb` + `S1.CA*` cùng lượt giải), tức ta ghi tag **thấp** và NX đọc xuống — hai file sẽ khác nhau đúng 0 dòng. Cài thành tham số `mct_version` mặc định TẮT, rồi **chạy A/B 12 lượt trên Civil 2022 thật**: 6/6 trùng khít, 44.940 bản ghi, `ΔMy = ΔVz = 0,0000`. VuPQ chốt V1 vẫn để TẮT, bật ở v1.5. Vá 3 lỗi lộ ra dọc đường: `nargs='?'` nuốt mất DXF đầu tiên · Midas **cắt tiêu đề cửa sổ ở 159 ký tự** làm driver từ chối chính sản phẩm của nó (hỏng dây chuyền cả loạt 6 mặt cắt) · NX và Civil 2022 **dùng chung lớp cửa sổ** nên driver đếm 2 rồi từ chối, mà nếu chỉ NX mở thì bám nhầm vào NX. `pytest` 113/113.
 - 2026-08-20: **Cảnh báo hoạt tải lên giao diện · dọn mã chết · kiểm chéo bằng Midas NX API.** VuPQ chốt không sửa template hộ mà báo rõ để người dùng tự sửa → khối *Dải tương đương* ở dock Properties, tra được bất cứ lúc nào. Dọn 13 chỗ mã chết (khối `__main__` hỏng của `material_reader`, khối "API công khai" viết hai lần trong `results_tab`, `PT_LAYER_RE` chặt hơn quy tắc thật…) — **MCT trùng khít từng byte cho cả 15 mặt cắt**. Xoá `tests/_check_web_logic.py` (script in ra màn hình, kỳ vọng đã lạc hậu) thay bằng bất biến bề dày bụng. **Dò xong API của MIDAS CIVIL NX** và kiểm chéo 4/4 đạt trên ~35.000 bản ghi; truy ra lệch 133% của S1_V2 là `mv2` — tải làn có sáu dòng `VL, lane` chồng nhau, chỗ đã biết từ trước. Bump **v1.4.1**.
