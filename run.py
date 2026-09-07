@@ -37,7 +37,8 @@ EXCEL_PATH = os.path.join(os.path.dirname(__file__),
 
 def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
                   pt_jacking: str = 'begin',
-                  mct_version: str = MCT_VERSION):
+                  mct_version: str = MCT_VERSION,
+                  auto_live_load: bool = False):
     """Generate MCT + SVG for one DXF file into output_dir/name/.
 
     include_pt: True/False/None (None = auto-detect from DXF layers).
@@ -45,6 +46,8 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
     mct_version: ghi khối *VERSION (vd '9.1.0'). MẶC ĐỊNH ghi, vì NX chỉ nạp
         được MCT khi có khối này. None = không ghi, cho ra file trùng khít bản
         đã kiểm trên Civil 2022. Xem MCT_VERSION ở mct_frame_writer.
+    auto_live_load: True = tính sáu trị tải bánh từ hình học mặt cắt thay vì
+        đọc từ template. Xem `_hoat_tai_tu_hinh_hoc` ở mct_frame_writer.
     """
     name = os.path.splitext(os.path.basename(dxf_path))[0]
     section_dir = os.path.join(output_dir, name)
@@ -85,15 +88,18 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
     mct_text, topo = write_mct(frame, name, excel,
                                pt_cables=pt_cables, pt_props=pt_props,
                                include_pt=include_pt, pt_jacking=pt_jacking,
-                               mct_version=mct_version)
+                               mct_version=mct_version,
+                               auto_live_load=auto_live_load)
 
+    for dong in topo.get('live_load', {}).get('lines', []):
+        print(f'[{name}] {dong}')
     for w in topo.get('pt_warnings', []):
         print(f'[{name}] WARNING: {w}')
     for w in topo.get('combo_warnings', []):
         print(f'[{name}] LỖI TỔ HỢP: {w}')
     # Hoạt tải của template tính theo dải tương đương cho MỘT mặt cắt — dùng lại
     # cho mặt cắt khác thì tải sai, mà sai về phía thiếu thì không gì khác lộ ra.
-    if excel:
+    if excel and not auto_live_load:
         from src.input_reader import read_inputs
         from src.input_check import frame_metrics, check_template
         try:
@@ -152,7 +158,8 @@ def cmd_generate(args):
         try:
             _generate_one(dxf_path, output_dir, include_pt=include_pt,
                           pt_jacking=getattr(args, 'pt_jacking', 'begin'),
-                          mct_version=getattr(args, 'mct_version', MCT_VERSION))
+                          mct_version=getattr(args, 'mct_version', MCT_VERSION),
+                          auto_live_load=getattr(args, 'auto_live_load', False))
         except Exception as e:
             print(f'  [ERROR] {dxf_path}: {e}')
             import traceback
@@ -444,6 +451,11 @@ def build_parser():
     gen_parser.add_argument('--pt-jacking', choices=('begin', 'both'),
                            default='begin',
                            help='Căng cáp một đầu (begin, mặc định) hay hai đầu (both)')
+    gen_parser.add_argument('--auto-live-load', '--hoat-tai-tu-dong',
+                            action='store_true',
+                            help='tính sáu trị tải bánh từ hình học mặt cắt '
+                                 'thay vì đọc từ template — xoá lớp lỗi một '
+                                 'template dùng cho nhiều mặt cắt')
 
     # results
     res_parser = subparsers.add_parser('results', help='Beam Force → check table + Excel')

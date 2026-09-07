@@ -152,7 +152,9 @@ class GenerateWorker(QThread):
                                            pt_cables=pt_cables, pt_props=pt_props,
                                            include_pt=include_pt,
                                            supports=job.get('supports') or None,
-                                           pt_jacking=job.get('pt_jacking', 'begin'))
+                                           pt_jacking=job.get('pt_jacking', 'begin'),
+                                           auto_live_load=job.get(
+                                               'auto_live_load', False))
                 mct_path = os.path.join(section_dir, f'{name}_frame.mct')
                 with open(mct_path, 'w', encoding='utf-8') as f:
                     f.write(mct_text)
@@ -168,6 +170,11 @@ class GenerateWorker(QThread):
                 except Exception:
                     svg_path = ''
 
+                # Mạch tính của tải bánh khi app tự tính — thứ mất đi khi
+                # thôi nạp Excel không phải sáu con số (tính lại được) mà là
+                # mạch tính hiện công thức người thẩm tra đọc để tin.
+                for dong in topo.get('live_load', {}).get('lines', []):
+                    self.log.emit(f'[{name}] {dong}')
                 for w in topo.get('pt_warnings', []):
                     self.log.emit(f'[{name}] WARNING: {w}')
                 # Tổ hợp trỏ tới trường hợp tải không tồn tại → Midas báo
@@ -177,7 +184,7 @@ class GenerateWorker(QThread):
                 # Hoạt tải trong template tính theo dải tương đương của MỘT mặt
                 # cắt cụ thể — dùng lại cho mặt cắt khác thì tải sai, mà sai về
                 # phía thiếu thì không có gì khác lộ ra.
-                if ld:
+                if ld and not job.get('auto_live_load', False):
                     from src.input_reader import read_inputs
                     from src.input_check import frame_metrics, check_template
                     try:

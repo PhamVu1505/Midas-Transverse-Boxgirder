@@ -78,6 +78,59 @@ def _write_constraint_block(blocks, bot_ids, bot_nodes, supports, defaults):
     return sorted(eff, key=lambda d: d['x'])
 
 
+def _hoat_tai_tu_hinh_hoc(ld: dict, frame: dict, bat: bool):
+    """Thay sáu trị tải bánh của template bằng trị tính từ hình học mặt cắt.
+
+    Sáu trị `truck_*`/`tandem_*` trong sheet `Load` **không phải số liệu người
+    dùng gõ** — chúng là kết quả tính từ cự ly sườn `S`, cánh hẫng `X` và hệ số
+    xung kích `IM` theo TCVN 11823-4 Bảng 1. Đo trên chính template của dự án:
+    tính lại từ `S`/`X` mà template dùng thì ra đúng sáu ô Excel, lệch
+    ≤ 7·10⁻¹⁵. Nên chúng nằm trong một file dùng chung cho nhiều mặt cắt là
+    **mời lỗi vào** — template chung khai `S = 6468 mm` làm S20 thiếu 13,6%
+    tải bánh (chiều KHÔNG an toàn), còn S16 lại dư 22% (tốn cốt thép thật).
+
+    `IM` và tải làn thì **vẫn lấy từ template**: chúng là trị của quy phạm,
+    người dùng có lý do đổi (ví dụ `IM = 0,75` ở khe co giãn), và không suy ra
+    được từ hình học.
+
+    Đặt ở đây, gọi từ **cả hai** nhánh một hộp / hai hộp — hai bản sao của cùng
+    phép thay thế thì sớm muộn cũng lệch nhau, và lệch ở chỗ không ai soi.
+
+    Sửa `ld` tại chỗ. `read_loads()` dựng dict mới mỗi lần gọi (bộ đệm giữ dữ
+    liệu thô, không giữ dict trả về) nên không đụng vào cache.
+
+    Returns:
+        dict của `live_load_from_geometry`, hoặc `None` khi không đổi gì —
+        `None` nghĩa là MCT ghi ra **trùng khít** bản dùng template.
+    """
+    if not (bat and ld):
+        return None
+    from .input_check import frame_metrics, live_load_from_geometry
+    auto = live_load_from_geometry(frame_metrics(frame), ld.get('impact'))
+    if not auto:
+        return None
+    ld.update(auto['loads'])
+    return auto
+
+
+def _mo_ta_hoat_tai(ld: dict, auto_ll: dict) -> dict:
+    """Hoạt tải của mô hình này đến từ đâu — ghi vào `topo.json`.
+
+    Cảnh báo chỉ tồn tại đúng lúc bấm Tạo MCT là lỗi dự án đã mất công vá một
+    lần (xem mục *Cảnh báo hoạt tải trên giao diện*). Nên chế độ đang chạy phải
+    **tra được bất cứ lúc nào**: mở lại project hôm sau vẫn đọc được tải bánh
+    lấy từ template hay do app tính, và tính từ `S`/`X` nào.
+    """
+    if auto_ll:
+        from .input_check import live_load_derivation
+        return {'source': 'geometry',
+                'S': round(auto_ll['S'], 1), 'X': round(auto_ll['X'], 1),
+                'im': auto_ll['im'],
+                'loads': {k: round(v, 6) for k, v in auto_ll['loads'].items()},
+                'lines': live_load_derivation(auto_ll)}
+    return {'source': 'template' if ld else 'none'}
+
+
 def _kiem_hinh_hoc(txt: str, section_name: str) -> None:
     """Soi *NODE/*ELEMENT của MCT vừa ghi: node trùng toạ độ, phần tử dài 0.
 
@@ -137,11 +190,16 @@ def write_mct(frame: dict, section_name: str = 'Section',
               include_pt: bool = None,
               supports: list = None,
               pt_jacking: str = 'begin',
-              mct_version: str = MCT_VERSION) -> str:
+              mct_version: str = MCT_VERSION,
+              auto_live_load: bool = False) -> str:
     """Tạo file MCT từ frame data.
 
     pt_jacking: 'begin' = căng một đầu · 'both' = căng hai đầu. Chỉ có nghĩa
     khi thực sự ghi khối cáp.
+
+    auto_live_load: True = tính sáu trị tải bánh từ hình học mặt cắt thay vì
+    đọc từ template — xem `_hoat_tai_tu_hinh_hoc`. Mặc định False cho ra MCT
+    trùng khít từng byte bản cũ.
 
     Node numbering:
       Bottom slab:  1 .. N_bot
@@ -170,7 +228,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
     if frame.get('section_type') == 'twin_box':
         return _write_mct_twin(frame, section_name, excel_path, pt_cables,
                                pt_props, include_pt, supports, pt_jacking,
-                               mct_version)
+                               mct_version, auto_live_load)
 
     # ── Material ──
     if excel_path and os.path.exists(excel_path):
@@ -564,6 +622,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
 
     # Đọc tải trọng TRƯỚC khi khai báo *STLDCASE — cần biết có template hay không.
     ld = read_loads(excel_path) if (excel_path and os.path.exists(excel_path)) else None
+    auto_ll = _hoat_tai_tu_hinh_hoc(ld, frame, auto_live_load)
 
     # ── STLDCASE ──
     # Chỉ khai báo các trường hợp tải khi THẬT SỰ ghi được dữ liệu tải trọng.
@@ -615,7 +674,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
         _write_moving_load(blocks, ld, top_nodes, top_ids,
                            eid_top_start, eid_top_end,
                            wL_insert_idx, wR_insert_idx,
-                           ll_L_idx, ll_R_idx)
+                           ll_L_idx, ll_R_idx, auto_ll=auto_ll)
 
     # ── Load combinations ──
     if ld:
@@ -642,6 +701,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
         'supports': eff_supports,
         'pt_warnings': pt_warnings,
         'combo_warnings': combo_warnings,
+        'live_load': _mo_ta_hoat_tai(ld, auto_ll),
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,
@@ -689,7 +749,8 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                     include_pt: bool = None,
                     supports: list = None,
                     pt_jacking: str = 'begin',
-                    mct_version: str = MCT_VERSION) -> tuple:
+                    mct_version: str = MCT_VERSION,
+                    auto_live_load: bool = False) -> tuple:
     """MCT cho mặt cắt 2 hộp: 3 bụng (ngoài L/R + vách giữa), bản đáy liên tục.
 
     Hàm riêng, chỉ `write_mct` gọi và luôn truyền đủ tham số — nên mặc định ở
@@ -1046,6 +1107,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
 
     # Đọc tải trọng TRƯỚC khi khai báo *STLDCASE — cần biết có template hay không.
     ld = read_loads(excel_path) if (excel_path and os.path.exists(excel_path)) else None
+    auto_ll = _hoat_tai_tu_hinh_hoc(ld, frame, auto_live_load)
 
     # Chỉ khai báo các trường hợp tải khi THẬT SỰ ghi được dữ liệu tải trọng.
     # Không có template mà vẫn khai báo thì *LOADCOMB phía dưới sẽ trỏ tới
@@ -1093,7 +1155,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                            eid_top_start, eid_top_end,
                            wL_insert_idx, wR_insert_idx,
                            ll_L_idx, ll_R_idx,
-                           n_int_floor=n_int_floor)
+                           n_int_floor=n_int_floor, auto_ll=auto_ll)
     if ld:
         _write_load_combinations(blocks, has_pt=pt_written)
     if pt_written:
@@ -1114,6 +1176,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
         'supports': eff_supports,
         'pt_warnings': pt_warnings,
         'combo_warnings': combo_warnings,
+        'live_load': _mo_ta_hoat_tai(ld, auto_ll),
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,
@@ -1314,7 +1377,8 @@ def _write_moving_load(blocks, ld, top_nodes, top_ids,
                        eid_top_start, eid_top_end,
                        wL_insert_idx, wR_insert_idx,
                        ll_L_idx, ll_R_idx,
-                       n_int_floor: int = None):
+                       n_int_floor: int = None,
+                       auto_ll: dict = None):
     """Ghi moving load blocks: MVLDCODE, LINELANE, VEHICLE, VCLASS, MVLDCASE.
 
     Lane phân chia (TCVN 11823 — bánh xe cách mép trong lan can ≥ 0.3m):
@@ -1323,6 +1387,11 @@ def _write_moving_load(blocks, ld, top_nodes, top_ids,
       cantilever2:  từ web_junc_R → liveload_edge_R
 
     n_int_floor: số làn tối thiểu cho xe HL93 (twin box: INT(B_total/3.5)).
+
+    auto_ll: kết quả `live_load_from_geometry` khi tải bánh được app tính thay
+    cho template. Mạch tính được ghi thành **chú thích ngay trên khối
+    `*VEHICLE`** — thứ mất đi khi thôi nạp Excel không phải sáu con số (tính
+    lại được) mà là mạch tính hiện công thức mà người thẩm tra đọc để tin.
     """
     list(range(eid_top_start, eid_top_end + 1))
 
@@ -1386,6 +1455,10 @@ def _write_moving_load(blocks, ld, top_nodes, top_ids,
     blocks.append('')
 
     # ── VEHICLE ──
+    if auto_ll:
+        from .input_check import live_load_derivation
+        for dong in live_load_derivation(auto_ll):
+            blocks.append(f'; {dong}')
     blocks.append('*VEHICLE    ; Vehicles')
 
     # lane (distributed)

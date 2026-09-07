@@ -705,7 +705,7 @@ chúng **đội lốt một phát hiện kỹ thuật**.
 - **S1 vẫn chưa kết luận được** — muốn xong thì phải sinh lại MCT rồi chạy lại
   **Civil 2022**, mà máy này không có. Việc của máy phát triển.
 
-### Bỏ template Excel — đã đo, chưa làm (VuPQ yêu cầu 2026-09-05)
+### Bỏ template Excel — bước 1 ĐÃ LÀM (VuPQ yêu cầu 2026-09-05)
 
 VuPQ muốn thôi nạp file Excel, khai số liệu thẳng trong app. Đã đo trước khi
 làm, và **phép đo đổi hẳn hình dạng việc**:
@@ -730,17 +730,100 @@ lỗi nào**, vì S20 thiếu 14% không phải do gõ khó, mà do *một templ
 nhiều mặt cắt*.
 
 **Ba bước đề xuất**, mỗi bước tự nó đã có giá trị:
-1. **App tự tính 9 khoá phụ thuộc mặt cắt** từ hình học DXF. Một mình bước này
-   xoá hết lớp lỗi S10/S20, không cần giao diện mới nào.
+1. ~~**App tự tính 9 khoá phụ thuộc mặt cắt** từ hình học DXF.~~ **ĐÃ LÀM
+   2026-09-07** — nhưng là **6 khoá, không phải 9**: `d_L`/`d_R` không có lớp
+   nào trong bản vẽ mang thông tin, `impact`/`lane_load` là trị quy phạm. Xem
+   mục *App tự tính tải bánh từ hình học* ngay dưới.
 2. **Cửa sổ khai báo cho 31 khoá còn lại**, mang luôn mạch tính hiện công thức
    sang app — không phải chỉ 31 ô trống.
 3. **Xuất ngược ra Excel** làm hồ sơ thẩm tra. Đảo chiều dòng dữ liệu: app là
    nguồn, Excel là bản in. Đây chính là phần "tích hợp báo cáo" VuPQ hỏi.
 
+### App tự tính tải bánh từ hình học — N3 bước 1 (2026-09-07)
+
+Sáu trị `truck_*`/`tandem_*` của sheet `Load` **không phải số liệu người dùng
+gõ** — chúng là kết quả tính từ cự ly sườn `S`, cánh hẫng `X` và `IM` theo TCVN
+11823-4 Bảng 1. Tự đo lại trước khi làm: tính xuôi từ `S`/`X` mà template dùng
+thì ra **đúng sáu ô Excel, lệch lớn nhất 7,1·10⁻¹⁵**. Nên để chúng trong một
+file dùng chung cho nhiều mặt cắt là **mời lỗi vào**, và app đã phải mọc thêm cả
+một lớp cảnh báo chỉ để nói rằng con số đó sai.
+
+`src/input_check.py` giữ **cả hai chiều cạnh nhau**: `template_strip_geometry()`
+suy ngược, `live_load_from_geometry()` tính xuôi, `live_load_derivation()` viết
+mạch tính ra dòng đọc được. Đi xuôi rồi suy ngược lại phải ra đúng `S`/`X` đã
+vào — `tests/test_input_check.py` khoá, vì hai chiều nằm cùng file mà lệch nhau
+thì dock nói một số, MCT ghi một số khác.
+
+**Chỉ SÁU trong "chín khoá phụ thuộc mặt cắt" là làm được, không phải chín:**
+
+| Khoá | Xử lý | Vì sao |
+|---|---|---|
+| 6 trị `truck_*`/`tandem_*` | **app tính** | kết quả tính từ `S`/`X`/`IM`, đã đo là tái lập khít |
+| `impact` · `lane_load` | **vẫn từ template** | trị của quy phạm, không suy từ hình học; người dùng có lý do đổi (`IM = 0,75` ở khe co giãn) |
+| `d_L` · `d_R` | **vẫn từ template** | bề rộng đoạn lan can — **bản vẽ không có lớp nào mang thông tin này** (quy ước chỉ có `OUTPOLY`/`INPOLY`/`PT-*`, đã soi layer của S16 và S20). Không suy được, chấm hết. |
+
+**Mức đổi đã đo, và nó HAI CHIỀU** (template khai `S = 6468` · `X = 3632`):
+
+| | tải bánh phải đổi |
+|---|---|
+| **S20** | `+M` **+13,6%** · cánh hẫng +5,4% — chiều KHÔNG an toàn, đây là lỗi thật |
+| **S10** | cánh hẫng **+7,6%**; nhưng `+M` lại dư 6,2% |
+| **S1 · S16 · SLT** | template **dư 11–22%** — thiên an toàn, nhưng tốn cốt thép thật |
+| **S1_V2** | cánh hẫng dư 14,8% |
+
+- **Mặc định TẮT** (`auto_live_load=False`), và MCT ra **trùng khít từng byte**:
+  so md5 với worktree ở HEAD, cùng một lượt chạy, **7/7 mặt cắt trùng** (S1 ·
+  S7 · S10 · S16 · S20 · S1_V2 · SLT). Cờ này đổi tải bánh của **mọi** mặt cắt,
+  kể cả những mặt cắt đã đi trọn chu trình QA trên Midas thật — bật mặc định là
+  đổi kết quả sau lưng người dùng. Cùng lối `pt_jacking` và `*VERSION` đã đi.
+- **Bật thì diff chỉ gồm hai thứ**: 10 dòng chú thích mạch tính, và đúng các
+  con số trong `*VEHICLE`. Không dòng nào khác đổi — `tests/test_input_check.py`
+  khoá điều đó, vì phép thay thế lọt sang chỗ khác thì Midas mới chối, không
+  phải `pytest`.
+- **Mạch tính phải đi kèm con số.** Thứ mất đi khi thôi nạp Excel không phải
+  sáu con số — chúng tính lại được — mà là **mạch tính hiện công thức** ở sheet
+  `Load` mục 2.3, thứ người thẩm tra đọc để tin và ký. Nên `live_load_derivation()`
+  ghi `S`, `X`, `IM`, cả ba công thức `E`, luật `E_tandem`, rồi sáu trị — vào
+  **chú thích trong chính file MCT**, vào nhật ký GUI, và vào
+  `topo['live_load']`. Viết **không dấu** vì nó vào file MCT.
+- `topo['live_load']['source']` = `geometry` | `template` | `none` — chế độ
+  **tra được bất cứ lúc nào**, mở lại project hôm sau vẫn đọc được. Cảnh báo
+  chỉ sống trong khoảnh khắc bấm Tạo MCT là lỗi dự án đã vá một lần rồi.
+- **Ô tích ở mức PROJECT, không mức mặt cắt** (`Project.auto_live_load`, dock
+  trái → THIẾT LẬP). Một hồ sơ trộn hai phương pháp giữa các mặt cắt thì người
+  thẩm tra không có cách nào biết mặt cắt nào theo đường nào.
+- **Đổi cờ thì mọi kết quả đang có thành lạc hậu.** `set_auto_live_load()` đánh
+  dấu `Section.stale` cho mặt cắt đã có Beam Force, và **so trước/sau rồi mới
+  đánh dấu** — chọn lại đúng trị đang dùng không phải là thay đổi.
+- Bật cờ thì **thôi in cảnh báo đối chiếu template**: nó đang so template với
+  chính hình học vừa sinh ra con số, luôn khớp, nói ra chỉ làm nhiễu. Bù lại
+  `tests/test_input_check.py` khoá đúng chiều ngược: sau khi app tự tính,
+  `live_load_compare` phải báo `ratio = 1,0` — đây là chỗ hai chiều bắt tay
+  nhau, lệch nghĩa là một trong hai sai mà không phép kiểm nào khác nhìn thấy.
+- CLI: `run.py generate --auto-live-load` (`--hoat-tai-tu-dong`).
+
+**Phép chứng minh**: `pytest` **282 → 285**; dựng lại **6 biến thể lỗi** (bỏ luật
+`E_tandem`, mặc định bật cờ, lấy nhịp dài nhất, lấy cánh hẫng dài hơn, thiếu dữ
+liệu thì lấy mặc định, gõ nhầm `0,55` thành `0,5`) — **bắt 6/6**.
+`tools/check_gui.py::kiem_o_tu_tinh_tai_banh` dựng lại **4 biến thể** — bắt 4/4.
+
+**Hai biến thể đầu tiên "lọt lưới", và cả hai là biến thể DỰNG SAI** — đúng cái
+bẫy đã ghi ở `[[ky-luat-chung-minh-ban-va]]`, nên ghi lại để lần sau đỡ mất
+công:
+
+- `Project` là **dataclass**: `__init__` đã nướng cứng trị mặc định lúc tạo lớp,
+  nên vá `__dataclass_fields__['auto_live_load'].default` sau đó **không ăn**.
+  Phải bọc `Project.__init__`.
+- Chiều "nạp project không được tự đánh dấu lạc hậu" là một khẳng định **không
+  bao giờ đỏ được**: `set_auto_live_load` so trước/sau, nên qua đường nạp
+  project thì `stale` không thể bẩn. Đã nhắm lại vào thứ quan sát được —
+  `set_project` không được phát `settings_changed`. Một khẳng định không thể sai
+  là nhiễu, không phải phép kiểm.
+
 ## Current Sprint
 **Goal:** VuPQ chốt 2026-09-05: **DỪNG nhánh Midas Civil 2022, làm Midas NX.** Bốn việc đã làm: bật mặc định `*VERSION` · thẻ Kiểm chéo NX (đã chạy thật, 4/4 ĐẠT) · đọc MAPI-Key từ registry · phép soát ba tệp nguồn có cùng một mô hình không. Việc chờ cuối cùng đã khép: `Local API` **không chạy được** (đo 2026-09-07 — NX báo `Connected` nhưng không mở cổng nào, registry không đổi), nên giữ nguyên đường MOA qua máy chủ MIDAS ở Seoul.
 
-**Trạng thái (2026-09-05):** `pytest tests -q` **268 đạt** · `tools/check_gui.py` **42 đạt · 0 hỏng** · `tools/audit_gui.py` **63 điều khiển, 59 đạt · 0 hỏng**. Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` đi trước **17 commit**, **chưa đẩy remote, chưa merge**. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
+**Trạng thái (2026-09-07):** `pytest tests -q` **285 đạt** · `tools/check_gui.py` **44 đạt · 0 hỏng** (22 phép kiểm × 2 bảng màu) · `tools/audit_gui.py` **63 điều khiển, 59 đạt · 0 hỏng**. Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` **đã đẩy remote 2026-09-07**, đi trước **22 commit**, chưa merge. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
 
 **Máy đang làm việc không phải máy phát triển.** Repo nằm trên ổ SSD ngoài `H:`, cắm qua lại giữa hai máy. `DESKTOP-NLCA550` (Windows 11) **không có** Inno Setup và **không có Midas Civil 2022** — chỉ có MIDAS CIVIL NX. Không có venv trong repo; dựng venv riêng ở `%TEMP%\mtbv` rồi chạy mọi thứ bằng nó, và **luôn đặt `MTB_DATA_DIR`** trỏ thư mục tạm để khỏi đốt ngày dùng thử của máy.
 
@@ -796,9 +879,20 @@ N2. **Plugin NX — KHÔNG làm bây giờ.** Khảo sát 2026-09-04: NX **khôn
     PyQt, thẻ Kiểm toán và hệ giấy phép, mà vẫn vấp chỗ chặn cũ: vòng tròn
     JSON của NX không bảo toàn tổ hợp tải.
 N3. **Bỏ template Excel, khai số liệu trong app** — VuPQ yêu cầu 2026-09-05.
-    Đã đo và báo cáo; xem mục *Bỏ template Excel* để biết vì sao nên làm theo
-    ba bước chứ không dựng thẳng 40 ô nhập. Việc này **không phụ thuộc NX hay
-    Civil 2022** nên làm được bất cứ lúc nào.
+    **Bước 1 XONG 2026-09-07**: app tự tính sáu trị tải bánh từ hình học mặt
+    cắt, mặc định TẮT, ô tích ở dock trái → THIẾT LẬP. Xem mục *App tự tính
+    tải bánh từ hình học*. Còn hai bước, và **một câu chờ VuPQ**:
+
+    * **Có bật mặc định không?** Rủi ro kỹ thuật đã bằng không (7/7 mặt cắt
+      trùng khít khi tắt; bật thì diff chỉ gồm chú thích + con số tải bánh).
+      Nhưng bật là **đổi nội lực của mọi mặt cắt**, kể cả 6 mặt cắt đã đi trọn
+      chu trình QA trên Civil 2022. Đúng khuôn quyết định của `*VERSION`: giới
+      thiệu TẮT → đo → VuPQ chốt bật. **Đừng tự bật.**
+    * **Bước 2** — cửa sổ khai báo cho 31 khoá còn lại, mang mạch tính hiện
+      công thức sang app.
+    * **Bước 3** — xuất ngược ra Excel làm hồ sơ thẩm tra.
+
+    Việc này **không phụ thuộc NX hay Civil 2022** nên làm được bất cứ lúc nào.
 
 Đã xong trên nhánh NX: khối `*VERSION` bật mặc định (`6bd8826`) · thẻ Kiểm chéo
 NX (`560f24f`, `0de6e6d`) · MAPI-Key + `base_url()` đọc từ registry (`9f7c84a`)
@@ -843,6 +937,7 @@ việc mới** cho nó. Hai việc bị treo theo, mở lại khi nào VuPQ cầ
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-09-07: **Khép `Local API`, rồi app tự tính tải bánh từ hình học (N3 bước 1).** VuPQ bấm `Local API` → `Connect` trong NX và hộp thoại báo `Connected`, nhưng **không có máy chủ cục bộ nào tồn tại**: registry `CONNECTION` không đổi, `CVLw.exe` không lắng nghe cổng nào, cả nhánh registry `MIDAS` không có một trị `localhost`, trong lúc CVLw vẫn giữ hai kết nối HTTPS ra AWS Seoul. Không sửa được từ trong mã — giữ nguyên đường MOA và **nói ra trong hồ sơ** rằng kiểm chéo NX gửi mô hình qua hạ tầng MIDAS ở nước ngoài. Việc chờ cuối cùng của nhánh NX thế là khép. Sang **N3 bước 1**: tự đo lại trước khi làm và công thức xuôi tái lập **đúng sáu ô Excel, lệch 7,1·10⁻¹⁵** — sáu trị tải bánh là *kết quả tính* từ `S`/`X`/`IM`, không phải số liệu người dùng gõ. Nhưng phép đo cũng cắt scope xuống: **6 khoá chứ không phải 9** — bản vẽ không có lớp nào mang bề rộng đoạn lan can (`d_L`/`d_R`), còn `impact`/`lane_load` là trị quy phạm. Mức đổi **hai chiều**: S20 thiếu **+13,6%** (chiều không an toàn) nhưng S16 lại **dư 22%**, tốn cốt thép thật. Mặc định TẮT và **7/7 mặt cắt trùng md5** với worktree ở HEAD; bật thì diff chỉ gồm 10 dòng chú thích mạch tính + đúng các con số `*VEHICLE`. Mạch tính (`S`, `X`, `IM`, ba công thức `E`, luật `E_tandem`) đi vào **chú thích trong chính file MCT** — thứ mất đi khi thôi nạp Excel không phải sáu con số mà là mạch tính người thẩm tra đọc để tin. `pytest` **282 → 285**, 6/6 biến thể lỗi bị bắt; `check_gui` **42 → 44 lượt** (21 → 22 phép kiểm), 4/4 biến thể bị bắt. **Hai biến thể đầu "lọt lưới" và cả hai là biến thể DỰNG SAI** — dataclass nướng cứng trị mặc định nên vá `__dataclass_fields__` không ăn, và một chiều của phép kiểm là khẳng định *không bao giờ đỏ được* (đã nhắm lại vào tín hiệu `settings_changed`). Đúng bài học `[[ky-luat-chung-minh-ban-va]]` lặp lại lần thứ tư.
 - 2026-09-05 (chiều): **Thẻ Kiểm chéo NX chạy thật lần đầu — 4/4 ĐẠT, và mặt cắt thứ năm lôi ra một lỗi đội lốt phát hiện kỹ thuật.** NX đã được Connect nên `NXWorker.run()` chạy được qua API thật: S16 · S10 · S1_V2 · SLT đều ĐẠT, đúng bằng loạt CLI 20/8. **S1** thì báo `Prestress` lệch **146/148** bản ghi tới **9,97 kN·m** trong khi **9/10 tải cơ bản còn lại trùng tới 0,0000** — dáng vẻ y hệt *"NX hiểu khối `*TDN-*` khác Civil 2022"*. Không phải: S10/S16/S1_V2 đều có cáp thật và trùng khít. Thứ sai là **dấu thời gian** — `output/S1/S1.mcb` đề 14:27 còn `S1_frame.mct` đề 15:34 cùng ngày, tức MCT sinh lại **sau** khi giải; và trước đó `tim()` còn lấy nhầm `1.mcb` (mô hình tháng 4, tổ hợp còn tên `LCB1..LCB15`) vì chọn `.mcb` bằng `sorted(glob)[0]`. Thêm `nguon_lac_hau()` soát thứ tự `.mct` → `.mcb` → `.xls`, và kết quả lúc đó là **`KHÔNG KẾT LUẬN`** chứ không mượn hai chữ ĐẠT/HỎNG — chúng là câu về hai bản Midas, còn đây là câu về tệp trên đĩa. `pytest` **264 → 268**, cả bốn bài mới đã chứng minh bắt được lỗi bằng cách dựng lại hành vi cũ.
 - 2026-09-05: **Nhánh NX thành nhánh chính; 23/23 lỗi của tập mô tả sản phẩm đã sửa.** Áp phương pháp *product description* (gist steveruizok) dựng `docs/product-description/` — mô tả hành vi từ ngoài vào, khuôn tám mục, bảng ngắt quãng cố định hỏi cùng bộ câu hỏi cho mọi tính năng. Nó lôi ra **23 lỗi**, phần lớn kiểm chứng bằng cách chạy thật, và cả 23 đã vá: bản vẽ mm đi lọt (71.059 phần tử, MCT 426 MB, nhật ký báo Xong) · tạo lại MCT thì nhận nội lực của mô hình cũ · template mất file thì sinh MCT rỗng ruột · không huỷ được việc đang chạy · Excel giữ tệp thì mất trọn kết quả · khung xem phóng lệch tâm 0,67 m mỗi nấc. Thêm cơ chế `Section.stale` dùng chung cho mọi thứ làm nội lực lạc hậu. Trước đó vá **ba lỗi chỉ lộ ở bản .exe** khiến build v1.5.0 chưa bao giờ chạy qua được, và **bốn lỗ ở cổng giấy phép** (chuột phải trong cây sinh được MCT với giấy phép đã thu hồi; hộp thoại giấy phép giết cả tiến trình khi chọn nhầm PDF). Nhánh NX: bật mặc định `*VERSION`, thẻ Kiểm chéo NX, đọc MAPI-Key từ registry. `pytest` **149 → 264**, `check_gui` **34 → 42**. Bài học lặp lại nhiều nhất trong phiên: **phép chứng minh quan trọng ngang bản vá** — ba lần tôi suýt tin một kết quả sai (bytecode `.pyc` cũ · dựng lại sai hành vi cũ · phép kiểm bắt đúng lỗi vì lý do sai).
 - 2026-08-21: **Giấy phép + theo dõi sử dụng + chặn, và mục chuột phải tạo MCT (v1.5.0).** Bê lối làm của `Mcoc_python` (token RSA ký bằng `pow()`, ràng `MachineGuid`, một cổng duy nhất) rồi làm thêm ba thứ Mcoc thiếu: **nhật ký sử dụng** (đếm số lần, không ghi nội dung công việc; người dùng xem được đúng thứ đang bị ghi), **điểm hẹn là một thư mục dùng chung** (nhịp tim ra, danh sách chặn ký số vào), và **thu hồi có hiệu lực trên máy khách** — Mcoc chỉ đánh dấu `Revoked` trong sổ, máy khách không bao giờ biết. Dùng thử **7 ngày** thay vì 3: một vòng DXF → MCT → Midas → kiểm toán của dự án này dài hơn. Công cụ quản trị `tools/license_admin.py` (4 thẻ: yêu cầu · giấy phép · máy đang dùng · điểm hẹn) chạy trên sổ SQLite, xuất CSV. Thêm mục **chuột phải vào .dxf → Tạo file MCT** (`SystemFileAssociations`, HKCU) mở một cửa sổ nhỏ dùng lại chính `GenerateWorker` — không viết đường sinh MCT thứ hai. Test bắt được một lỗi thật ngay trong lúc viết: ba biến `MTB_*_FILE` chỉ trỏ được một file nên `blocklist.cache` vẫn rơi vào `%ProgramData%` thật, một bài test cất bản sao ở đó rồi bài sau đọc trúng → thêm `MTB_DATA_DIR`, và ba công cụ giao diện nay cũng dùng nó để khỏi đốt mất ngày dùng thử của máy đang phát triển. `pytest` **149/149** · `check_gui` **34/34** · `audit_gui` **54/57 đạt, 0 hỏng**. Bump **v1.5.0**.

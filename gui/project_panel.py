@@ -127,6 +127,23 @@ class ProjectPanel(QWidget):
         sv.addWidget(r1)
         sv.addWidget(r2)
         self.ed_out.textChanged.connect(self._out_typed)
+
+        # Tải bánh: đọc từ template hay app tự tính. Đặt ngay dưới ô template
+        # vì nó nói đúng về ô đó — bật lên là sáu trị hoạt tải của template
+        # không còn được dùng nữa.
+        self.ck_auto_ll = QCheckBox('Tự tính tải bánh từ hình học mặt cắt')
+        self.ck_auto_ll.setStyleSheet('font-size: 9pt;')
+        self.ck_auto_ll.setToolTip(
+            'Sáu trị tải bánh trong template (truck/tandem × cánh hẫng/+M/−M)\n'
+            'là KẾT QUẢ TÍNH từ cự ly sườn S, cánh hẫng X và hệ số xung kích\n'
+            'IM theo TCVN 11823-4 Bảng 1 — không phải số liệu người dùng gõ.\n\n'
+            'Bật: app tính từ hình học của ĐÚNG mặt cắt đó, và ghi cả mạch\n'
+            'tính vào nhật ký lẫn chú thích trong file MCT.\n'
+            'Tắt: đọc từ template — một template dùng cho nhiều mặt cắt thì\n'
+            'chỉ đúng cho MỘT mặt cắt (S20 thiếu 14% tải bánh, S16 dư 22%).\n\n'
+            'IM và tải làn vẫn lấy từ template.')
+        self.ck_auto_ll.toggled.connect(self._auto_ll_toggled)
+        sv.addWidget(self.ck_auto_ll)
         lay.addWidget(setb)
 
         from .frame_view import DEFAULT_LAYERS
@@ -240,6 +257,22 @@ class ProjectPanel(QWidget):
         if folder:
             self._set_path(self.ed_out, folder)
 
+    def _auto_ll_toggled(self, on: bool):
+        """Đổi nguồn tải bánh — và nói ra rằng kết quả cũ vừa hết hiệu lực."""
+        lac_hau = self.project.set_auto_live_load(on)
+        if on:
+            self._log('Tải bánh: app TỰ TÍNH từ hình học mặt cắt '
+                      '(TCVN 11823-4 Bảng 1). IM và tải làn vẫn lấy từ '
+                      'template.', 'success')
+        else:
+            self._log('Tải bánh: đọc từ template Excel.')
+        if lac_hau:
+            self._log(f'{lac_hau} mặt cắt đã có kết quả — nội lực đang gán '
+                      f'tính từ tải bánh cũ. Hãy tạo lại MCT và chạy lại '
+                      f'Midas.', 'warning')
+        self.refresh()
+        self.settings_changed.emit()
+
     def _out_typed(self, text):
         if self.project.output_dir != text:
             self.project.output_dir = text
@@ -254,6 +287,13 @@ class ProjectPanel(QWidget):
         self._add_note, self._add_warn = '', False
         self._set_path(self.ed_tpl, project.template)
         self._set_path(self.ed_out, project.output_dir)
+        # Dựng lại ô tích theo project vừa nạp thì KHÔNG được phát tín hiệu —
+        # nếu không nó gọi `set_auto_live_load` và đánh dấu lạc hậu cho những
+        # mặt cắt vốn đã sinh đúng bằng lựa chọn đó. Cùng khuôn với
+        # `textActivated` thay cho `currentTextChanged` ở ô chọn mặt cắt.
+        self.ck_auto_ll.blockSignals(True)
+        self.ck_auto_ll.setChecked(project.auto_live_load)
+        self.ck_auto_ll.blockSignals(False)
         self.refresh()
 
     def selected_names(self) -> list:

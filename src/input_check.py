@@ -45,6 +45,7 @@ import os
 
 # Nửa trục thiết kế HL93 — TCVN 11823-3 Điều 3.6.1.2 (kN)
 P_TRUCK = 72.5      # nửa trục 145 kN của xe tải
+P_TANDEM = 55.0     # nửa trục 110 kN của xe hai trục
 
 # Câu mở đầu chung cho mọi cảnh báo về số liệu template. Đặt ngay đầu dòng để
 # quét mắt qua cửa sổ Messages là thấy ngay việc phải làm, không phải đọc hết
@@ -169,6 +170,108 @@ def strip_width(S=None, X=None):
     if X is not None:
         return 1140.0 + 0.833 * X
     return {'pos': 660.0 + 0.55 * S, 'neg': 1220.0 + 0.25 * S}
+
+
+def strip_width_tandem(e_truck: float) -> float:
+    """Bề rộng dải cho xe HAI TRỤC — `E = (E_truck + 1200)/2`.
+
+    Sheet `Load` **không ghi công thức này**, phải truy ngược mới ra. Nó là cách
+    xử lý hai trục cách nhau 1,2 m: tổng bề rộng phân bố là `E_truck + 1200`,
+    chia đôi cho mỗi trục.
+    """
+    return (e_truck + 1200.0) / 2.0
+
+
+def live_load_from_geometry(metrics: dict, im) -> dict:
+    """Sáu trị tải bánh trên dải 1 m, tính từ **hình học mặt cắt**.
+
+    Đây là chiều XUÔI của `template_strip_geometry` — cùng một bộ công thức,
+    nên phải nằm cạnh nhau trong cùng file. Đi xuôi rồi suy ngược lại phải ra
+    đúng `S`/`X` đã vào, và `tests/test_input_check.py` khoá điều đó.
+
+    Vì sao cần
+    ──────────
+    Sáu trị này **không phải số liệu người dùng gõ** — chúng là kết quả tính từ
+    `S`, `X`, `IM`. Đã đo trên chính template của dự án: tính lại từ `S`/`X` mà
+    template dùng thì ra đúng sáu ô Excel, lệch ≤ 7·10⁻¹⁵. Nên để chúng trong
+    một file dùng chung cho nhiều mặt cắt là **mời lỗi vào**: template chung
+    khai `S = 6468 mm` làm S20 thiếu tới 13,6% tải bánh, còn S16 lại dư 22%.
+
+    Quy ước chọn `S` và `X`
+    ───────────────────────
+    Nhiều nhịp thì lấy nhịp **ngắn nhất**, hai cánh hẫng thì lấy cánh **ngắn
+    nhất** — dải hẹp nhất cho tải bánh lớn nhất. Cùng quy ước với
+    `live_load_compare`, và đây là chiều thiên về an toàn. Hệ quả phải biết:
+    mặt cắt có hai cánh hẫng lệch nhau thì cánh dài hơn đang nhận tải hơi dư,
+    vì mô hình chỉ khai **một** bộ xe cho cả hai cánh.
+
+    Args:
+        metrics: kết quả `frame_metrics` — mm.
+        im: hệ số xung kích `IM` (0,33 theo TCVN 11823-3 Đ.3.6.2). Đây vẫn là
+            số liệu người dùng khai, không suy được từ hình học.
+
+    Returns:
+        `{}` nếu thiếu dữ liệu. Ngược lại::
+
+            {'loads': {6 khoá}, 'S', 'X', 'E_can', 'E_pos', 'E_neg', 'im'}
+    """
+    if not metrics:
+        return {}
+    try:
+        im = float(im)
+        S = min(metrics['spans_centre'])
+        X = min(metrics['cantilever_left'], metrics['cantilever_right'])
+    except (KeyError, TypeError, ValueError):
+        return {}
+    if not (S > 0 and X > 0) or im < 0:
+        return {}
+
+    mid = strip_width(S=S)
+    E = {'can': strip_width(X=X), 'pos': mid['pos'], 'neg': mid['neg']}
+
+    loads = {}
+    for vi_tri in ('can', 'pos', 'neg'):
+        loads[f'truck_{vi_tri}'] = P_TRUCK * (1.0 + im) * 1000.0 / E[vi_tri]
+        loads[f'tandem_{vi_tri}'] = (P_TANDEM * (1.0 + im) * 1000.0
+                                     / strip_width_tandem(E[vi_tri]))
+    return {'loads': loads, 'S': S, 'X': X, 'im': im,
+            'E_can': E['can'], 'E_pos': E['pos'], 'E_neg': E['neg']}
+
+
+def live_load_derivation(auto: dict) -> list:
+    """Mạch tính của `live_load_from_geometry`, viết ra thành dòng đọc được.
+
+    Thứ mất đi khi thôi nạp template Excel **không phải sáu con số** — chúng
+    tính lại được. Thứ mất đi là **mạch tính hiện công thức** ở sheet `Load`
+    mục 2.3, mà người thẩm tra đọc để tin, và ký. Nên app tính hộ thì phải
+    trình ra bằng ấy: các dòng này đi vào **chú thích trong chính file MCT** và
+    vào nhật ký, để con số nào cũng truy được về công thức quy phạm.
+
+    Viết **không dấu**: chúng đi vào file MCT, mà MCT ghi UTF-8 còn Midas đọc
+    theo codepage hệ thống — cùng lý do tên tổ hợp tải không mang dấu.
+    """
+    if not auto:
+        return []
+    L = auto['loads']
+    return [
+        'Hoat tai HL93 tinh tu hinh hoc mat cat'
+        ' (TCVN 11823-4 D.6.2.1.3, Bang 1)',
+        f"  S = {auto['S']:.0f} mm (cu ly suon tim-tim, nhip ngan nhat)"
+        f"   X = {auto['X']:.0f} mm (canh hang toi tim suon, canh ngan nhat)"
+        f"   IM = {auto['im']:.2f}",
+        f"  Be rong dai: canh hang E = 1140 + 0.833X = {auto['E_can']:.0f} mm",
+        f"               giua (+M)  E = 660 + 0.55S  = {auto['E_pos']:.0f} mm",
+        f"               giua (-M)  E = 1220 + 0.25S = {auto['E_neg']:.0f} mm",
+        '  Xe hai truc:   E = (E_truck + 1200)/2  (hai truc cach nhau 1.2 m)',
+        '  Tai banh tren dai 1 m = P(1+IM)/E,'
+        ' P = 72.5 kN (xe tai) / 55.0 kN (xe hai truc)',
+        f"  truck_can  = {L['truck_can']:8.4f} kN"
+        f"   tandem_can  = {L['tandem_can']:8.4f} kN",
+        f"  truck_(+M) = {L['truck_pos']:8.4f} kN"
+        f"   tandem_(+M) = {L['tandem_pos']:8.4f} kN",
+        f"  truck_(-M) = {L['truck_neg']:8.4f} kN"
+        f"   tandem_(-M) = {L['tandem_neg']:8.4f} kN",
+    ]
 
 
 def live_load_compare(data: dict, metrics: dict) -> dict:

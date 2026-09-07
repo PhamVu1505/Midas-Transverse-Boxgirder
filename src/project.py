@@ -114,6 +114,12 @@ class Project:
     template: str = ''
     sections: list = field(default_factory=list)
 
+    # Tải bánh: lấy từ template Excel (False) hay app tự tính từ hình học mặt
+    # cắt (True). Đặt ở mức project chứ không mức mặt cắt — nó là lựa chọn
+    # PHƯƠNG PHÁP, mà một hồ sơ trộn hai phương pháp giữa các mặt cắt thì
+    # người thẩm tra không có cách nào biết mặt cắt nào theo đường nào.
+    auto_live_load: bool = False
+
     path: str = ''             # đường dẫn .mtbproj (rỗng = chưa lưu)
     _dirty: bool = False
 
@@ -242,6 +248,31 @@ class Project:
         s.pt_jacking = jacking
         self._dirty = True
 
+    def set_auto_live_load(self, bat: bool) -> int:
+        """Đổi nguồn tải bánh: template Excel ↔ app tự tính từ hình học.
+
+        Đổi trị này đổi **tải bánh của mọi mặt cắt**, tức đổi nội lực. Mặt cắt
+        đã có Beam Force thì bảng nội lực và bảng kiểm toán đang hiện thuộc về
+        một mô hình khác — đúng khuôn lỗi mà `Section.stale` sinh ra để chặn, và
+        cùng lý do `set_supports` đánh dấu lạc hậu.
+
+        So trước/sau rồi mới đánh dấu: chọn lại đúng trị đang dùng không phải
+        là thay đổi, mà cảnh báo kêu vô cớ thì người dùng thôi đọc.
+
+        Returns:
+            số mặt cắt vừa bị đánh dấu lạc hậu.
+        """
+        bat = bool(bat)
+        if bat == self.auto_live_load:
+            return 0
+        self.auto_live_load = bat
+        self._dirty = True
+        ly_do = ('Nguồn tải bánh đã đổi ('
+                 + ('app tự tính từ hình học' if bat else 'template Excel')
+                 + ') sau khi có kết quả — nội lực đang gán tính từ tải bánh '
+                   'cũ. Hãy tạo lại MCT và chạy lại Midas.')
+        return sum(1 for s in self.sections if self.mark_stale(s.name, ly_do))
+
     def set_check_opts(self, name: str, opts: dict):
         s = self.find(name)
         if s is None:
@@ -315,6 +346,7 @@ class Project:
             'name': self.name,
             'output_dir': self.output_dir,
             'template': self.template,
+            'auto_live_load': self.auto_live_load,
             'sections': [
                 {k: v for k, v in asdict(s).items() if not k.startswith('_')}
                 for s in self.sections
@@ -346,6 +378,9 @@ class Project:
             name=d.get('name', 'Project'),
             output_dir=d.get('output_dir', 'output'),
             template=d.get('template', ''),
+            # File .mtbproj cũ không có khoá này — phải lui về đường template,
+            # đúng cách nó đã sinh ra kết quả đang lưu trong file đó.
+            auto_live_load=bool(d.get('auto_live_load', False)),
             sections=[Section(**{k: v for k, v in s.items() if k in fields})
                       for s in d.get('sections', [])],
         )

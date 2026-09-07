@@ -20,9 +20,12 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.input_check import (CHECK_TEMPLATE, P_TRUCK, check_shared_template,
-                             check_template, frame_metrics, live_load_compare,
-                             strip_width, template_strip_geometry)
+from src.input_check import (CHECK_TEMPLATE, P_TANDEM, P_TRUCK,
+                             check_shared_template, check_template,
+                             frame_metrics, live_load_compare,
+                             live_load_derivation, live_load_from_geometry,
+                             strip_width, strip_width_tandem,
+                             template_strip_geometry)
 from src.mct_frame_writer import _write_tendon_prestress_block
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -370,3 +373,269 @@ def test_old_project_file_defaults_to_one_end(tmp_path):
         'sections': [{'name': 'S1', 'dxf': 'a.dxf'}],
     }), encoding='utf-8')
     assert Project.load(str(path)).find('S1').pt_jacking == 'begin'
+
+
+# ─────────────────────────────────────────────────────────────
+# Chiều XUÔI: app tự tính sáu trị tải bánh từ hình học mặt cắt
+#
+# Sáu trị `truck_*`/`tandem_*` không phải số liệu người dùng gõ — chúng là kết
+# quả tính từ `S`, `X`, `IM`. Ba điều được khoá ở đây:
+#
+#   1. Chiều xuôi tái lập ĐÚNG sáu ô của template thật (lệch ≤ 1e-9), tức công
+#      thức trong app và mạch tính trong Excel là một.
+#   2. Xuôi rồi nghịch lại ra đúng `S`/`X` đã vào — hai chiều nằm cùng file thì
+#      không được phép lệch nhau.
+#   3. Cờ TẮT cho ra MCT trùng khít từng byte; cờ BẬT chỉ đổi đúng các con số
+#      tải bánh và thêm khối chú thích mạch tính.
+# ─────────────────────────────────────────────────────────────
+
+def test_xuoi_tai_lap_dung_sau_o_cua_template_that():
+    """Tính từ `S`/`X` mà template dùng phải ra đúng sáu ô Excel.
+
+    Đây là căn cứ cho phép app thôi đọc sáu ô đó. Không có phép kiểm này thì
+    "app tự tính" chỉ là một công thức khác, không phải cùng một công thức.
+    """
+    from src.input_reader import read_inputs
+    if not os.path.exists(TEMPLATE):
+        pytest.skip('thiếu template')
+    d = read_inputs(TEMPLATE, strict=False)
+    tpl = template_strip_geometry(d)
+    assert tpl and tpl['consistent']
+
+    auto = live_load_from_geometry(
+        _metrics(tpl['S'], tpl['X']), d['impact'])
+    assert auto
+    for k, v in auto['loads'].items():
+        assert v == pytest.approx(float(d[k]), abs=1e-9), k
+
+
+@pytest.mark.parametrize('S,X', [(6468.0, 3632.0), (5550.0, 3375.0),
+                                 (8650.0, 3845.0), (16311.0, 3834.0)])
+def test_xuoi_roi_nghich_lai_ra_dung_S_va_X(S, X):
+    """Hai chiều phải gặp nhau, nếu không thì dock và MCT nói hai chuyện."""
+    auto = live_load_from_geometry(_metrics(S, X), 0.33)
+    back = template_strip_geometry({**auto['loads'], 'impact': auto['im']})
+    assert back['consistent']
+    assert back['S'] == pytest.approx(S, abs=1e-6)
+    assert back['X'] == pytest.approx(X, abs=1e-6)
+
+
+def test_xe_hai_truc_dung_dai_rong_hon_xe_tai():
+    """`E_tandem = (E_truck + 1200)/2` — sheet Load không ghi, phải truy ngược.
+
+    Lấy nhầm `E_truck` cho xe hai trục thì tải xe hai trục sai theo, mà nó là
+    xe TRỘI ở mọi vị trí (xem mục *Hoạt tải* trong CLAUDE.md) — tức sai đúng
+    con số đang quyết định kết quả.
+    """
+    assert strip_width_tandem(2000.0) == pytest.approx(1600.0)
+    auto = live_load_from_geometry(_metrics(6468.0, 3632.0), 0.33)
+    E_pos = strip_width(S=6468.0)['pos']
+    assert auto['loads']['tandem_pos'] == pytest.approx(
+        P_TANDEM * 1.33 * 1000.0 / ((E_pos + 1200.0) / 2.0), abs=1e-9)
+    # KHÔNG được bằng trị tính bằng E của xe tải
+    assert auto['loads']['tandem_pos'] != pytest.approx(
+        P_TANDEM * 1.33 * 1000.0 / E_pos, abs=1e-3)
+
+
+def test_nhieu_nhip_va_hai_canh_hang_lech_thi_lay_ben_ngan():
+    """Dải hẹp nhất cho tải bánh lớn nhất — chiều thiên về an toàn."""
+    m = {'B': 20000.0, 'n_webs': 3,
+         'spans_centre': [8000.0, 5000.0], 'spans_clear': [7500.0, 4500.0],
+         'cantilever_left': 4000.0, 'cantilever_right': 3000.0}
+    auto = live_load_from_geometry(m, 0.33)
+    assert auto['S'] == pytest.approx(5000.0)
+    assert auto['X'] == pytest.approx(3000.0)
+
+
+def test_thieu_du_lieu_thi_khong_doan():
+    """Không có hình học thì trả rỗng, tuyệt đối không lấy trị mặc định."""
+    assert live_load_from_geometry({}, 0.33) == {}
+    assert live_load_from_geometry(None, 0.33) == {}
+    assert live_load_from_geometry(_metrics(6468.0, 3632.0), None) == {}
+    assert live_load_from_geometry({'spans_centre': [0.0],
+                                    'cantilever_left': 1.0,
+                                    'cantilever_right': 1.0}, 0.33) == {}
+    assert live_load_derivation({}) == []
+
+
+def _mct_hai_luot(dxf_rel):
+    """Sinh MCT cho một DXF hai lượt: cờ tắt và cờ bật."""
+    import ezdxf
+    from src.dxf_reader import (_get_polyline_vertices, read_inpolys,
+                                section_type_from_inpolys)
+    from src.frame_builder import build_frame, build_twin_frame
+    from src.input_reader import read_loads
+    from src.mct_frame_writer import write_mct
+
+    dxf = os.path.join(ROOT, dxf_rel)
+    if not (os.path.exists(dxf) and os.path.exists(TEMPLATE)):
+        pytest.skip(f'thiếu {dxf_rel} hoặc template')
+    msp = ezdxf.readfile(dxf).modelspace()
+    out = _get_polyline_vertices(msp, 'OUTPOLY')
+    ins = read_inpolys(msp)
+    ld = read_loads(TEMPLATE)
+    if section_type_from_inpolys(ins) == 'twin_box':
+        args = (out, ins[0], ins[1])
+        build = build_twin_frame
+    else:
+        args = (out, ins[0])
+        build = build_frame
+    frame = build(*args, d_L=ld['d_L'], d_R=ld['d_R'])
+    name = os.path.splitext(os.path.basename(dxf))[0]
+    tat, topo_tat = write_mct(frame, name, TEMPLATE)
+    bat, topo_bat = write_mct(frame, name, TEMPLATE, auto_live_load=True)
+    return frame, tat, bat, topo_tat, topo_bat
+
+
+@pytest.mark.parametrize('dxf_rel', ['input/dxf/S16.dxf',
+                                     'data/TP_BL/S1_V2.dxf'])
+def test_mac_dinh_la_TAT_va_van_ghi_tri_cua_template(dxf_rel):
+    """Mặc định phải giữ nguyên hành vi cũ — cả nhánh một hộp và hai hộp.
+
+    `auto_live_load` đổi tải bánh của MỌI mặt cắt, kể cả những mặt cắt đã chạy
+    trọn chu trình QA trên Midas thật. Mặc định bật là đổi kết quả sau lưng
+    người dùng, nên hai thứ được khoá: gọi không truyền cờ phải **giống từng
+    byte** gọi với `False`, và con số ghi ra phải là con số của **template**,
+    không phải trị tính từ hình học.
+    """
+    from src.input_reader import read_inputs
+    frame, tat, _, topo_tat, _ = _mct_hai_luot(dxf_rel)
+
+    from src.mct_frame_writer import write_mct
+    name = os.path.splitext(os.path.basename(dxf_rel))[0]
+    khong_truyen_co, _ = write_mct(frame, name, TEMPLATE)
+    voi_False, _ = write_mct(frame, name, TEMPLATE, auto_live_load=False)
+    assert khong_truyen_co == tat == voi_False
+    assert topo_tat['live_load'] == {'source': 'template'}
+
+    d = read_inputs(TEMPLATE, strict=False)
+    auto = live_load_from_geometry(frame_metrics(frame), d['impact'])
+    for k in auto['loads']:
+        assert f'{float(d[k]):.4f}' in tat, k          # trị template CÓ mặt
+        if abs(auto['loads'][k] - float(d[k])) > 0.001:
+            assert f'{auto["loads"][k]:.4f}' not in tat, k   # trị tính KHÔNG
+
+
+@pytest.mark.parametrize('dxf_rel', ['input/dxf/S16.dxf',
+                                     'data/TP_BL/S1_V2.dxf'])
+def test_co_bat_thi_chi_doi_con_so_tai_banh(dxf_rel):
+    """Bật cờ chỉ được đổi các con số trong `*VEHICLE` + thêm chú thích.
+
+    Đổi thêm bất cứ dòng nào khác nghĩa là phép thay thế đã lọt sang chỗ khác —
+    và MCT thì Midas mới chối, không phải `pytest`.
+    """
+    frame, tat, bat, _, topo_bat = _mct_hai_luot(dxf_rel)
+    auto = live_load_from_geometry(frame_metrics(frame),
+                                  topo_bat['live_load']['im'])
+    assert auto
+
+    only_tat = [l for l in tat.splitlines() if l not in bat.splitlines()]
+    only_bat = [l for l in bat.splitlines() if l not in tat.splitlines()]
+    # mọi dòng MỚI là chú thích mạch tính hoặc dòng số của *VEHICLE
+    for l in only_bat:
+        assert l.startswith(';') or l.strip()[0].isdigit(), l
+    for l in only_tat:
+        assert l.strip() and l.strip()[0].isdigit(), l
+
+    # mạch tính phải có mặt, đủ cả ba công thức bề rộng dải
+    assert 'TCVN 11823-4 D.6.2.1.3' in bat
+    for ct in ('1140 + 0.833X', '660 + 0.55S', '1220 + 0.25S',
+               '(E_truck + 1200)/2'):
+        assert ct in bat, ct
+
+    # và con số ghi ra phải đúng bằng trị tính từ hình học
+    for k, v in auto['loads'].items():
+        assert f'{v:.4f}' in bat, k
+    assert topo_bat['live_load']['source'] == 'geometry'
+
+
+def test_co_bat_thi_hai_chieu_bao_khong_con_lech():
+    """Sau khi app tự tính, phép đối chiếu template phải báo KHỚP.
+
+    Đây là chỗ hai chiều bắt tay nhau: `live_load_compare` suy ngược từ sáu trị
+    vừa ghi và phải tìm lại đúng `S`/`X` của chính mặt cắt đó. Lệch nghĩa là
+    một trong hai chiều sai, mà không phép kiểm nào khác nhìn thấy.
+    """
+    frame, _, _, _, topo_bat = _mct_hai_luot('input/dxf/S16.dxf')
+    m = frame_metrics(frame)
+    auto = live_load_from_geometry(m, topo_bat['live_load']['im'])
+    cmp = live_load_compare({**auto['loads'], 'impact': auto['im']}, m)
+    assert cmp
+    assert cmp['S']['off'] is False and cmp['X']['off'] is False
+    assert cmp['S']['ratio'] == pytest.approx(1.0, abs=1e-9)
+    assert cmp['X']['ratio'] == pytest.approx(1.0, abs=1e-9)
+
+
+def test_su_that_ve_template_chung_van_con_do():
+    """Template chung khai S = 6468 mm, không khớp mặt cắt nào.
+
+    Con số cụ thể được khoá lại vì nó là căn cứ của cả việc này: S20 thiếu tới
+    13,6% tải bánh, còn S16 dư 22%. Template đổi thì bài kiểm này đỏ, và đó
+    đúng là lúc phải đọc lại mục *Bỏ template Excel* trong CLAUDE.md.
+    """
+    from src.input_reader import read_inputs
+    if not os.path.exists(TEMPLATE):
+        pytest.skip('thiếu template')
+    d = read_inputs(TEMPLATE, strict=False)
+    tpl = template_strip_geometry(d)
+    assert tpl['S'] == pytest.approx(6468.0, abs=1.0)
+    assert tpl['X'] == pytest.approx(3632.0, abs=1.0)
+
+    # S20: nhịp 5550 mm — dải HẸP hơn template ⇒ tải bánh phải LỚN hơn
+    s20 = live_load_from_geometry(_metrics(5550.0, 3375.0), d['impact'])
+    assert s20['loads']['truck_pos'] > float(d['truck_pos'])
+    ty_le = s20['loads']['truck_pos'] / float(d['truck_pos'])
+    assert ty_le == pytest.approx(1.136, abs=0.005)
+
+
+def test_project_luu_va_nap_lai_nguon_tai_banh(tmp_path):
+    """Lựa chọn phương pháp phải đi theo file `.mtbproj`.
+
+    Nó ở mức PROJECT chứ không mức mặt cắt: một hồ sơ trộn hai phương pháp
+    giữa các mặt cắt thì người thẩm tra không có cách nào biết mặt cắt nào
+    theo đường nào.
+    """
+    from src.project import Project, Section
+    p = Project(sections=[Section(name='S1', dxf='a.dxf')])
+    assert p.auto_live_load is False
+    assert p.set_auto_live_load(True) == 0        # chưa mặt cắt nào có kết quả
+    assert p.auto_live_load is True
+    path = p.save(str(tmp_path / 'x.mtbproj'))
+    assert Project.load(path).auto_live_load is True
+
+
+def test_file_project_cu_lui_ve_duong_template(tmp_path):
+    """File `.mtbproj` cũ không có khoá này — phải lui về đường template.
+
+    Đó đúng là cách nó đã sinh ra kết quả đang lưu trong file ấy; lui về đường
+    khác là nói sai về chính số liệu đang mở.
+    """
+    import json
+    from src.project import Project
+    path = tmp_path / 'old.mtbproj'
+    path.write_text(json.dumps({
+        'format': 1, 'name': 'P', 'output_dir': 'output', 'template': '',
+        'sections': [{'name': 'S1', 'dxf': 'a.dxf'}],
+    }), encoding='utf-8')
+    assert Project.load(str(path)).auto_live_load is False
+
+
+def test_doi_nguon_tai_banh_thi_ket_qua_cu_thanh_lac_hau():
+    """Đổi trị này đổi tải bánh của MỌI mặt cắt, tức đổi nội lực.
+
+    Mặt cắt đã có Beam Force thì bảng nội lực và bảng kiểm toán đang hiện
+    thuộc về một mô hình khác — đúng khuôn lỗi `Section.stale` sinh ra để
+    chặn. Ba chiều được khoá: có kết quả thì bị đánh dấu · chưa có kết quả thì
+    không · chọn lại đúng trị đang dùng KHÔNG phải là thay đổi.
+    """
+    from src.project import Project, Section
+    p = Project(sections=[
+        Section(name='co_kq', dxf='a.dxf', beam_force='bf.xls'),
+        Section(name='chua_giai', dxf='b.dxf'),
+    ])
+    assert p.set_auto_live_load(True) == 1
+    assert 'tải bánh' in p.find('co_kq').stale
+    assert p.find('chua_giai').stale == ''
+
+    assert p.set_auto_live_load(True) == 0        # chọn lại: không đổi gì
+    assert p.set_auto_live_load(False) == 1      # tắt lại cũng là đổi

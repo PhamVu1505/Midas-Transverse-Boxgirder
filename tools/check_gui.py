@@ -331,6 +331,71 @@ def kiem_canh_bao_hoat_tai_tra_duoc_bat_ky_luc_nao(c):
     return ' · '.join(thay)
 
 
+def kiem_o_tu_tinh_tai_banh(c):
+    """Ô "Tự tính tải bánh" phải tắt sẵn, bấm được, và nói ra kết quả lạc hậu.
+
+    Bốn chiều được khoá, mỗi chiều là một cách hỏng thật:
+
+    1. **Tắt sẵn** — bật mặc định là đổi tải bánh của mọi mặt cắt sau lưng
+       người dùng, kể cả những mặt cắt đã chạy trọn chu trình QA trên Midas.
+    2. **Bấm thì ăn** — dự án đã mất một lần vì `PreferencesDialog` chặn tín
+       hiệu vĩnh viễn cho hai ô mới: bấm không có tác dụng, không lỗi, không
+       dấu vết, và `pytest` lẫn ảnh chụp đều im lặng.
+    3. **Đánh dấu lạc hậu** — mặt cắt đã có Beam Force thì nội lực đang gán
+       tính từ tải bánh cũ; im lặng thì bảng kiểm toán vẫn ra số đẹp của một
+       mô hình không còn tồn tại.
+    4. **Nạp lại project phải im tiếng** — dựng lại ô tích theo project không
+       được phát `settings_changed`, đúng khuôn `textActivated` thay cho
+       `currentTextChanged` ở ô chọn mặt cắt. Chiều này nhắm vào TÍN HIỆU chứ
+       không nhắm vào `stale`: `set_auto_live_load` so trước/sau rồi mới đánh
+       dấu, nên qua đường nạp project thì `stale` KHÔNG THỂ bẩn — khẳng định
+       vào đó là một khẳng định không bao giờ đỏ được, tức là nhiễu.
+    """
+    ck = c.w.panel.ck_auto_ll
+    assert ck.isEnabled(), 'ô bị khoá — không bấm được'
+    assert not ck.isChecked(), 'ô đang BẬT sẵn — phải tắt mặc định'
+    assert c.w.project.auto_live_load is False, 'project đang bật sẵn'
+
+    co_kq = [s.name for s in c.w.project if s.beam_force]
+
+    # bấm thật, không gọi thẳng hàm xử lý
+    ck.setChecked(True)
+    c.step()
+    assert c.w.project.auto_live_load is True, \
+        'bấm ô mà project không đổi — tín hiệu chưa được nối'
+    for n in co_kq:
+        s = c.w.project.find(n)
+        assert 'tải bánh' in (s.stale or ''), \
+            f'{n} đã có Beam Force mà không bị đánh dấu lạc hậu'
+
+    # cây mặt cắt phải hiện dấu ! cho mặt cắt lạc hậu
+    if co_kq:
+        chu = []
+        for i in range(c.w.panel.tree.topLevelItemCount()):
+            it = c.w.panel.tree.topLevelItem(i)
+            chu += [it.child(j).text(1) for j in range(it.childCount())]
+            chu.append(it.text(1))
+        assert any('!' in t for t in chu), \
+            'cây mặt cắt không hiện dấu ! nào — người dùng không thấy gì'
+
+    # tắt lại rồi nạp lại project: dựng lại ô tích phải IM TIẾNG
+    ck.setChecked(False)
+    c.step()
+    assert c.w.project.auto_live_load is False
+
+    keu = []
+    c.w.panel.settings_changed.connect(lambda: keu.append(1))
+    c.w.project.auto_live_load = True
+    c.w.panel.set_project(c.w.project)
+    c.step()
+    assert ck.isChecked(), 'nạp project bật mà ô tích không theo'
+    assert not keu, ('nạp lại project đã phát settings_changed — '
+                     'set_project không chặn tín hiệu của ô tích')
+
+    return (f'tắt sẵn · bấm ăn · {len(co_kq)} mặt cắt bị đánh dấu · '
+            f'nạp lại im tiếng')
+
+
 def kiem_bat_tat_duoc_tung_dock(c):
     """Ba mục `Xem → Panel…` phải bật/tắt được dock thật.
 
@@ -768,6 +833,7 @@ CHECKS = [
     kiem_tuy_chon_khong_chan_tin_hieu,
     kiem_preflight_hoi_truoc_khi_tao,
     kiem_canh_bao_hoat_tai_tra_duoc_bat_ky_luc_nao,
+    kiem_o_tu_tinh_tai_banh,
     kiem_bat_tat_duoc_tung_dock,
     kiem_khong_co_widget_mo_coi,
     kiem_thanh_trang_thai_khong_chong_chu,

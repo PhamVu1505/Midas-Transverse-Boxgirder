@@ -223,7 +223,8 @@ class GenerateController(QObject):
                  'excel': self.project.template_for(s),
                  'include_pt': self.include_pt and s.include_pt,
                  'supports': list(s.supports),
-                 'pt_jacking': s.pt_jacking}
+                 'pt_jacking': s.pt_jacking,
+                 'auto_live_load': self.project.auto_live_load}
                 for s in secs]
 
         if self.log_area:
