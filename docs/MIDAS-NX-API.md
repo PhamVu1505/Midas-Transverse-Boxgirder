@@ -43,8 +43,9 @@ không phải bộ giải chạy nền — đóng NX là key chết.
   còn trỏ sang một phiên NX khác khi cần.
 
 - Cùng khoá registry đó mang `URI`/`PORT`/`HTTPS`, nên `base_url()` **dựng địa
-  chỉ từ registry** thay vì ghim cứng máy chủ Seoul. Đổi sang `Local API` trong
-  hộp *API Settings* là dùng được ngay, không phải sửa mã. Ở chế độ MOA nó cho
+  chỉ từ registry** thay vì ghim cứng máy chủ Seoul — nên đổi chế độ trong hộp
+  *API Settings* thì không phải sửa mã. (Nhưng `Local API` **không chạy được**:
+  xem mục ngay dưới — nó không ghi gì vào registry cả.) Ở chế độ MOA nó cho
   ra đúng bằng hằng `BASE` cũ — `tests/test_midas_nx.py` khoá điều đó, vì nếu
   lệch thì bản sửa này âm thầm đổi đích của mọi lệnh.
 
@@ -56,6 +57,47 @@ không phải bộ giải chạy nền — đóng NX là key chết.
   phải xoay lại.
 
 ---
+
+### Chế độ `Local API` — ĐÃ THỬ, KHÔNG chạy được (2026-09-07) **[ĐO]**
+
+Đáng thử vì cả đường kiểm chéo hiện đi qua máy chủ MIDAS ở Seoul: máy ngoài
+mạng thì không kiểm chéo được, và mô hình cầu đi ra khỏi máy. Hộp *API
+Settings* có sẵn nút `Local API` kèm ô **Port** và hai nút **Change** /
+**Default**, `GC_api.dll` lại có chuỗi `localhost` — nên trông rất hứa hẹn.
+
+**VuPQ đã chọn `Local API` rồi bấm `Connect`, và hộp thoại báo `Connected`.
+Nhưng không có máy chủ cục bộ nào tồn tại.** Ba phép đo, cùng một kết luận:
+
+| Đo gì | Kết quả |
+|---|---|
+| khoá registry `CONNECTION` của NX | **không đổi**: `TYPE=1` · `URI=moa-engineers.midasit.com` · `PORT=443` · `HTTPS=1` |
+| cổng TCP `CVLw.exe` (PID 27508) lắng nghe | **không cổng nào** — và trên **cả máy** không có cổng nào của MIDAS; hai tiến trình con duy nhất của NX là `msedgewebview2.exe` của giao diện |
+| quét toàn nhánh registry `MIDAS` tìm `localhost` / `127.0.0.1` | **không trị nào**; `mods-url` vẫn ghi `civil-moa-backend-baseurl-us = moa-engineers.midasit.com` |
+
+Trong lúc đó `CVLw` vẫn giữ kết nối HTTPS ra `43.203.33.189` (AWS Seoul) và
+`35.71.179.156`. Nên chữ **`Connected`** trong hộp thoại đang nói về **kết nối
+MOA vẫn còn sống**, không phải về một máy chủ trên máy này.
+
+**Hệ quả cho mã:** dù có một endpoint cục bộ ẩn ở đâu đó thì `doc_key()` /
+`base_url()` cũng không tới được — chúng đọc khoá `CONNECTION`, mà khoá đó
+không đổi. Thư viện Python chính thức của MIDAS đọc đúng chỗ ấy nên cũng vậy.
+**Đây không phải chỗ sửa được từ trong mã.**
+
+[SUY] `Local API` nhiều khả năng dành cho bản triển khai tại chỗ (đi cùng
+`SAS API`) và cần một gói máy chủ cài riêng mà bản này không có. Chưa kiểm —
+muốn kiểm thì phải hỏi MIDAS, không phải đọc thêm registry.
+
+**Việc phải làm: giữ nguyên đường MOA.** Không mất gì so với hiện nay, nhưng
+**phải nói ra trong hồ sơ** rằng phép kiểm chéo NX gửi mô hình qua hạ tầng
+MIDAS ở nước ngoài — và với hồ sơ có ràng buộc bảo mật thì bỏ hẳn bước kiểm
+chéo, đừng tưởng có đường cục bộ để lui về.
+
+Một ô **chưa đọc**: ô *Base URL* của hộp thoại lúc đang ở `Local API`. Nó chỉ
+phân biệt được *"nút radio không ăn"* với *"NX định đi cục bộ nhưng thiếu máy
+chủ"* — tức chỉ đổi cách giải thích, không đổi việc phải làm.
+
+---
+
 
 ## 2. Hai kiểu 404 — dùng để dò đường
 

@@ -738,7 +738,7 @@ nhiều mặt cắt*.
    nguồn, Excel là bản in. Đây chính là phần "tích hợp báo cáo" VuPQ hỏi.
 
 ## Current Sprint
-**Goal:** VuPQ chốt 2026-09-05: **DỪNG nhánh Midas Civil 2022, làm Midas NX.** Bốn việc đã làm: bật mặc định `*VERSION` · thẻ Kiểm chéo NX (đã chạy thật, 4/4 ĐẠT) · đọc MAPI-Key từ registry · phép soát ba tệp nguồn có cùng một mô hình không. Còn chờ đúng **một** việc: thử chế độ `Local API` — cần người dùng tự bấm trong NX.
+**Goal:** VuPQ chốt 2026-09-05: **DỪNG nhánh Midas Civil 2022, làm Midas NX.** Bốn việc đã làm: bật mặc định `*VERSION` · thẻ Kiểm chéo NX (đã chạy thật, 4/4 ĐẠT) · đọc MAPI-Key từ registry · phép soát ba tệp nguồn có cùng một mô hình không. Việc chờ cuối cùng đã khép: `Local API` **không chạy được** (đo 2026-09-07 — NX báo `Connected` nhưng không mở cổng nào, registry không đổi), nên giữ nguyên đường MOA qua máy chủ MIDAS ở Seoul.
 
 **Trạng thái (2026-09-05):** `pytest tests -q` **268 đạt** · `tools/check_gui.py` **42 đạt · 0 hỏng** · `tools/audit_gui.py` **63 điều khiển, 59 đạt · 0 hỏng**. Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` đi trước **17 commit**, **chưa đẩy remote, chưa merge**. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
 
@@ -777,14 +777,19 @@ nhiều mặt cắt*.
 
 **Next Action — NHÁNH MIDAS NX (việc đang làm):**
 
-N1. **Thử chế độ `Local API` — việc duy nhất còn chờ, và chờ NGƯỜI DÙNG bấm.**
-    Trong NX: `Apps → API Settings` → chọn **Local API** → `Connect`, rồi chạy
-    `python tools/nx_thu_local_api.py`. Chạy được thì cả quy trình thoát khỏi
-    máy chủ MIDAS ở Seoul: máy ngoài mạng vẫn kiểm chéo được, và mô hình cầu
-    không đi ra khỏi máy. Công cụ **không** điều khiển NX — chỉ gọi một lệnh
-    đọc `db/UNIT` rồi báo ĐẠT/CHƯA.
-    Tiện thể tích luôn **Connect API on Startup** để khỏi bấm lại sau mỗi lần
-    mở NX.
+N1. **Thử chế độ `Local API` — ĐÃ THỬ 2026-09-07, KHÔNG chạy được. Khép lại.**
+    VuPQ chọn `Local API` rồi bấm `Connect`, hộp thoại báo `Connected`, nhưng
+    **không có máy chủ cục bộ nào tồn tại**: khoá registry `CONNECTION` không
+    đổi (vẫn `moa-engineers.midasit.com:443`), `CVLw.exe` **không lắng nghe
+    cổng nào** và cả máy không có cổng MIDAS nào, quét toàn nhánh registry
+    `MIDAS` không thấy một trị `localhost` nào. Chữ `Connected` đang nói về
+    kết nối MOA vẫn còn sống. **Không sửa được từ trong mã** — `base_url()`
+    đọc đúng khoá mà NX không ghi. Giữ nguyên đường MOA, và **nói ra trong hồ
+    sơ** rằng kiểm chéo NX gửi mô hình qua hạ tầng MIDAS ở nước ngoài; hồ sơ
+    có ràng buộc bảo mật thì bỏ hẳn bước kiểm chéo. Chi tiết ba phép đo:
+    `docs/MIDAS-NX-API.md` mục 1.
+    Vẫn nên tích **Connect API on Startup** để khỏi bấm Connect lại sau mỗi
+    lần mở NX.
 N2. **Plugin NX — KHÔNG làm bây giờ.** Khảo sát 2026-09-04: NX **không có SDK
     nhúng**; "Plug-in" của nó là ứng dụng Python gọi REST API nộp dưới dạng
     `.zip`, tức gần đúng thứ ta đã có. Làm plugin thật sẽ **mất** khung xem
