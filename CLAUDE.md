@@ -823,7 +823,7 @@ công:
 ## Current Sprint
 **Goal:** VuPQ chốt 2026-09-05: **DỪNG nhánh Midas Civil 2022, làm Midas NX.** Bốn việc đã làm: bật mặc định `*VERSION` · thẻ Kiểm chéo NX (đã chạy thật, 4/4 ĐẠT) · đọc MAPI-Key từ registry · phép soát ba tệp nguồn có cùng một mô hình không. Việc chờ cuối cùng đã khép: `Local API` **không chạy được** (đo 2026-09-07 — NX báo `Connected` nhưng không mở cổng nào, registry không đổi), nên giữ nguyên đường MOA qua máy chủ MIDAS ở Seoul.
 
-**Trạng thái (2026-09-07):** `pytest tests -q` **285 đạt** · `tools/check_gui.py` **44 đạt · 0 hỏng** (22 phép kiểm × 2 bảng màu) · `tools/audit_gui.py` **63 điều khiển, 59 đạt · 0 hỏng**. Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` **đã đẩy remote 2026-09-07**, đi trước **22 commit**, chưa merge. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
+**Trạng thái (2026-09-07):** `pytest tests -q` **285 đạt** · `tools/check_gui.py` **44 đạt · 0 hỏng** (22 phép kiểm × 2 bảng màu) · `tools/audit_gui.py` **65 điều khiển, 61 đạt · 0 hỏng** (ô tích tải bánh mới được bấm và ĐẠT). Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` **đã đẩy remote 2026-09-07**, đi trước **22 commit**, chưa merge. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
 
 **Máy đang làm việc không phải máy phát triển.** Repo nằm trên ổ SSD ngoài `H:`, cắm qua lại giữa hai máy. `DESKTOP-NLCA550` (Windows 11) **không có** Inno Setup và **không có Midas Civil 2022** — chỉ có MIDAS CIVIL NX. Không có venv trong repo; dựng venv riêng ở `%TEMP%\mtbv` rồi chạy mọi thứ bằng nó, và **luôn đặt `MTB_DATA_DIR`** trỏ thư mục tạm để khỏi đốt ngày dùng thử của máy.
 
