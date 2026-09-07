@@ -18,6 +18,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src import midas_driver as md  # noqa: E402
 from src.midas_driver import _la_tai_lieu_cua_driver as la_cua_driver  # noqa: E402
 
 
@@ -190,3 +191,55 @@ def test_tieu_de_bi_cat_khong_nhan_bua_mo_hinh_nguoi_dung():
     """
     assert not la_cua_driver(r'Civil 2022 - [D:\Cong trinh\Lach Tray',
                              [MCB_CUT])
+
+# ── ô nhập tên file: phải đi đường có phát EN_CHANGE ────────
+
+def test_dat_chu_dung_EM_REPLACESEL_chu_khong_phai_WM_SETTEXT():
+    """Hộp *Save As* của shell Windows 11 KHÔNG ghi nhận `WM_SETTEXT`.
+
+    Lỗi đã xảy ra thật (7/9/2026, Windows 10.0.26200): ô tên file hiện đúng
+    đường dẫn, `_doc()` đọc lại cũng đúng, mà Midas vẫn lưu ra `Untitled.mcb`
+    trong thư mục đích, rồi driver báo *"60 s mà S1_frame.OUT chưa xuất hiện —
+    phân tích KHÔNG khởi động"* và đổ lỗi cho mô hình. Không traceback, không
+    dấu vết: đúng loại hỏng mà chỉ chạy thật trên Midas mới lộ.
+
+    Nên khoá **cách gửi**, không phải kết quả — kết quả cần Midas mới đo được.
+    Ai đó dọn dẹp rồi đưa `WM_SETTEXT` trở lại là bài này đỏ ngay.
+    """
+    dich = 'H:/x/S1_frame.mcb'
+    goi = []
+
+    def gia_SendMessageW(hwnd, msg, wp, lp):
+        goi.append(msg)
+        return 1
+
+    def gia_SendMessageTimeoutW(hwnd, msg, wp, lp, co, ms, ra):
+        goi.append(msg)
+        return 1
+
+    that = (md.u32.SendMessageW, md.u32.SendMessageTimeoutW, md._doc)
+    md.u32.SendMessageW = gia_SendMessageW
+    md.u32.SendMessageTimeoutW = gia_SendMessageTimeoutW
+    md._doc = lambda h, *a, **k: dich
+    try:
+        assert md._dat(1234, dich) is True
+    finally:
+        md.u32.SendMessageW, md.u32.SendMessageTimeoutW, md._doc = that
+
+    assert md.WM_SETTEXT not in goi, (
+        'quay lại WM_SETTEXT — hộp Save As của Windows 11 bỏ qua nó, '
+        'và hỏng âm thầm')
+    assert md.EM_REPLACESEL in goi, 'phải ghi bằng EM_REPLACESEL'
+    # Bôi đen cả dải TRƯỚC, không thì chữ mới nối vào chữ cũ.
+    assert goi.index(md.EM_SETSEL) < goi.index(md.EM_REPLACESEL)
+
+
+def test_o_nhap_ten_file_phai_dang_HIEN():
+    """Hộp *Save As* còn một ô `Edit` **ẩn** của thanh địa chỉ (id 41477, rộng
+    703 px). Lọc theo bề rộng thôi thì có ngày trúng nó — lại đúng kiểu hỏng âm
+    thầm: đặt chữ vào thanh địa chỉ thì hộp thoại chuyển thư mục rồi giữ nguyên
+    cái tên cũ.
+    """
+    import inspect
+    ma = inspect.getsource(md.MidasSession._dat_duong_dan)
+    assert "c['hien']" in ma, 'phải bỏ qua ô Edit đang ẩn'

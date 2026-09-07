@@ -95,6 +95,8 @@ u32 = ctypes.WinDLL('user32', use_last_error=True)
 
 WM_NULL, WM_SETTEXT, WM_GETTEXT, WM_GETTEXTLENGTH = 0x0000, 0x000C, 0x000D, 0x000E
 WM_KEYDOWN, WM_KEYUP = 0x0100, 0x0101
+# Ô nhập: bôi đen cả dải rồi THAY chữ đang bôi đen. Vì sao không `WM_SETTEXT` — xem `_dat()`.
+EM_SETSEL, EM_REPLACESEL = 0x00B1, 0x00C2
 WM_CONTEXTMENU = 0x007B
 # Ô lưới của bảng kết quả (Stingray Objective Grid). Đây là ĐÍCH của menu ngữ
 # cảnh "Export to Excel..." — bám vào nó thì không còn phải đoán toạ độ.
@@ -169,15 +171,36 @@ def _doc(hwnd, ms=1000):
 
 
 def _dat(hwnd, s: str) -> bool:
-    """Đặt chữ rồi ĐỌC LẠI đối chiếu.
+    """Đặt chữ vào ô nhập rồi ĐỌC LẠI đối chiếu.
 
-    Đường dẫn đầy `\\`, `_` và chữ hoa — đúng loại chuỗi mà bộ gõ tiếng Việt hay
-    ăn mất nếu đi qua bàn phím. `WM_SETTEXT` không phát sự kiện phím nào nên bộ
-    gõ không chạm tới được. Đọc lại là để chắc, không phải cho có.
+    Không đi qua bàn phím: đường dẫn đầy dấu chéo ngược, `_` và chữ hoa —
+    đúng loại chuỗi mà bộ gõ tiếng Việt hay ăn mất. Đọc lại là để chắc, không
+    phải cho có.
+
+    **Nhưng `WM_SETTEXT` thì không đủ, và nó hỏng ÂM THẦM.** Hộp *Save As* của
+    shell Windows 11 (đo trên 10.0.26200) **không ghi nhận** chữ đặt bằng
+    `WM_SETTEXT`: ô hiện đúng đường dẫn, `_doc()` đọc lại cũng đúng, nhưng hộp
+    thoại vẫn dùng cái tên nó tự giữ trong bụng. Hệ quả đã xảy ra thật: MCT nạp
+    xong, bấm Save, Midas lưu ra **`Untitled.mcb`** trong thư mục đích rồi phân
+    tích không khởi động, còn driver báo *"60 s mà S1_frame.OUT chưa xuất hiện
+    — phân tích KHÔNG khởi động. Mở Midas xem mô hình có lỗi gì không"* — đổ
+    lỗi cho mô hình, trong khi mô hình không sai gì cả. Chạy lần hai còn tệ hơn:
+    `Untitled.mcb` đã có nên hộp *Confirm Save As* mọc lên và cả driver đứng đợi.
+
+    Cách đúng: bôi đen cả dải rồi `EM_REPLACESEL` — cùng đường mà một cú dán
+    thật đi, nên ô nhập phát `EN_CHANGE` và shell cập nhật trạng thái trong bụng
+    nó. Đã đo trên máy thật, cùng một lượt: `WM_SETTEXT` → file đích **không hề
+    xuất hiện**; `EM_REPLACESEL` → ra file, phân tích chạy, `.OUT` trùng đúng
+    kích cỡ bản làm tay.
+
+    Ô nhập của **hộp Open** thì `WM_SETTEXT` lại ăn — Enter làm shell đọc chữ đang
+    có trong ô. Chính vì vậy lỗi chỉ lộ ra ở bước LƯU, còn bước nạp MCT vẫn báo
+    "nạp xong" như thường.
     """
+    u32.SendMessageW(hwnd, EM_SETSEL, 0, -1)
     b = ctypes.create_unicode_buffer(s)
     kq = ctypes.c_ulong()
-    if not u32.SendMessageTimeoutW(hwnd, WM_SETTEXT, 0,
+    if not u32.SendMessageTimeoutW(hwnd, EM_REPLACESEL, 1,
                                    ctypes.cast(b, ctypes.c_void_p),
                                    SMTO_ABORTIFHUNG, 2000, ctypes.byref(kq)):
         return False
@@ -593,7 +616,10 @@ class MidasSession:
         driver đứng im cho tới hết thời hạn rồi báo "không xuất được file" — sai
         chỗ hoàn toàn, mà lại là tình huống thường gặp nhất (chạy lại lần hai).
         """
-        o = [c for c in _con(hop, self.pid) if c['lop'] == 'Edit' and c['rect'][2] > 100]
+        # `hien` là bắt buộc: hộp Save As còn một ô Edit **ẩn** của thanh địa
+        # chỉ (id 41477, rộng 703) — trúng nó thì lại là kiểu hỏng âm thầm.
+        o = [c for c in _con(hop, self.pid)
+             if c['lop'] == 'Edit' and c['rect'][2] > 100 and c['hien']]
         if not o:
             raise MidasError('không thấy ô nhập tên file trong hộp thoại')
         if not _dat(o[0]['hwnd'], path):

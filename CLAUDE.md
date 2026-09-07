@@ -415,6 +415,50 @@ là dấu hiệu khác hẳn ba lượt cùng hụt một chỗ.
 - `'TOTAL ELAPSED TIME'` là dấu hiệu giải xong, **không phải** `'OVERALL TIME LOG'` (Midas in chuỗi đó giãn ký tự). Chỗ này chính tài liệu Giai đoạn 0 tôi viết đã sai.
 - `chay_mot_mat_cat` tự dọn tài liệu **chỉ khi** tài liệu đang mở là của driver (đường dẫn dưới thư mục tạm) — `moi_tai_lieu()` trả lời **No** cho hộp hỏi lưu. Nhận biết phải `realpath` chứ không `abspath`: `gettempdir()` trả dạng 8.3 (`VUPQ~1.CIT`) còn tiêu đề Midas luôn là đường dẫn dài.
 
+**Hộp *Save As* của Windows 11 bỏ qua `WM_SETTEXT`** (đo 7/9/2026, build
+10.0.26200). `_dat()` đặt chữ vào ô tên file rồi **đọc lại đối chiếu** — cả hai
+đều báo đúng, mà hộp thoại vẫn dùng cái tên nó tự giữ trong bụng. Hệ quả: MCT
+nạp xong, bấm Save, Midas lưu ra **`Untitled.mcb`** trong đúng thư mục đích rồi
+phân tích **không khởi động**, còn driver báo *"60 s mà S1_frame.OUT chưa xuất
+hiện — phân tích KHÔNG khởi động. Mở Midas xem mô hình có lỗi gì không (thiếu
+ràng buộc, tổ hợp mồ côi…)"* — **đổ lỗi cho mô hình, trong khi mô hình đúng**.
+Chạy lần hai còn tệ hơn: `Untitled.mcb` đã có nên hộp *Confirm Save As* mọc lên
+và cả driver đứng đợi hết thời hạn.
+
+- Cách đúng: bôi đen cả dải (`EM_SETSEL`) rồi `EM_REPLACESEL` — cùng đường mà
+  một cú **dán thật** đi, nên ô nhập phát `EN_CHANGE` và shell cập nhật trạng
+  thái bên trong nó. Đo trên máy thật, cùng một lượt: `WM_SETTEXT` → file đích
+  **không hề xuất hiện**; `EM_REPLACESEL` → ra file, phân tích chạy, `.OUT`
+  **trùng đúng 1.174.399 byte** với bản làm tay 29/7.
+- **Ô của hộp Open thì `WM_SETTEXT` lại ăn** (Enter làm shell đọc chữ đang có
+  trong ô), nên lỗi chỉ lộ ra ở bước LƯU còn bước nạp MCT vẫn báo "nạp xong"
+  như thường. Đó là lý do nó sống sót qua loạt 6/6 ngày 30/7 trên máy khác.
+- `_dat_duong_dan()` nay đòi ô `Edit` phải **đang hiện**: hộp Save As còn một ô
+  Edit **ẩn** của thanh địa chỉ (id 41477, rộng 703 px) — trúng nó thì lại là
+  kiểu hỏng âm thầm y hệt.
+- Hai bài mới trong `tests/test_midas_driver.py` khoá **cách gửi** chứ không
+  khoá kết quả (kết quả cần Midas mới đo được), và **đã chứng minh bắt được**
+  bằng cách dựng lại đúng hành vi cũ: 2/2 đỏ.
+
+**Căng cáp hai đầu — ĐÃ ĐO trên Civil 2022 thật (7/9/2026).** A/B trên S1, hai
+MCT khác nhau **đúng một dòng** `JACKING` (`BEGIN` ↔ `BOTH`), cùng một phiên:
+
+- `BOTH` **làm GIẢM** hiệu ứng cáp, không tăng: `Prestress` ở phần tử 126–129
+  đổi `My` **192,94 → 182,97 kN·m** (−9,97, khoảng −5%). Cáp khai `ASB = ASE =
+  6 mm`, nên căng hai đầu là **chịu tụt neo hai lần**; với bó ngang dài 16,04 m
+  thì phần mất do tụt neo lớn hơn phần lợi do bớt ma sát. Nói cách khác: câu
+  "căng hai đầu thì ứng suất giữa bó tăng" **không đúng cho bó ngang của mặt
+  cắt này** — và đó là câu trả lời cho việc treo, không phải một lỗi.
+- Trường `JACKING` **có tác dụng thật**: mô hình đáp lại, `Su dung I` lệch tới
+  156,75 kN·m. Vậy `pt_jacking` chạy đúng đường; chỉ có chiều của hiệu ứng là
+  ngược với trực giác.
+- **Cảnh báo khi đọc số**: các hàng `(all)` là **bao**, và khi max/min gần bằng
+  nhau về trị tuyệt đối thì một thay đổi tí xíu **đảo cái được in ra**. Ở đây
+  `str_all(all)` phần tử 25 nhảy `−98,08 → +98,01` (lệch "196,09"!) trong khi
+  trị tuyệt đối không đổi. Đừng đọc con số đó là chênh lệch vật lý.
+- Kết luận chắc chắn về **ứng suất trong bó** thì phải xuất bảng *Tendon Stress*
+  của Midas — driver hiện chỉ xuất Beam Force, nên chưa đo được trực tiếp.
+
 ### Phương ngữ MCT: một file, không phải hai (2026-08-21)
 
 VuPQ đề xuất sinh **hai** bản MCT — một cho Civil 2022, một cho NX — theo lẽ
@@ -485,6 +529,21 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
   đúng chỗ ấy. Registry đứng **trước** các file khai tay vì `mapikey.txt` dán
   sẵn rất dễ là key của phiên trước đã chết, mà triệu chứng (`401`) không gợi
   ra điều đó. **Không để key trong thư mục dự án.**
+- **KHÔNG có "thao tác cài đặt MAPI" nào phải làm** (VuPQ hỏi 7/9/2026). Đã đo:
+  key trong `HKCU\SOFTWARE\MIDAS\CVLwNX_US\CONNECTION` **trùng đúng từng ký
+  tự** với key VuPQ đọc trên hộp API Settings, và `doc_key()` đọc thẳng từ đó —
+  `NX().song()` trả về đơn vị ngay, không khai gì thêm. Phần đầu key giải ra là
+  `{"ur": <email tài khoản>, "pg": "civil", "cn": <mã container>}`.
+- **Dán key vào app cũng KHÔNG bỏ được bước Connect** — và đây là chỗ dễ hiểu
+  sai. Key không phải giấy thông hành đứng một mình: API là đường **chuyển tiếp
+  tới phiên NX đang mở**, mà chính cú bấm *Connect* mới đăng ký phiên đó với máy
+  chủ MOA. Có key mà NX chưa Connect thì lệnh vẫn chết. Nên thêm ô nhập key vào
+  Tùy chọn là **thêm một chỗ để key cũ nằm lại**, đúng cái bẫy `401` đã ghi ở
+  trên, mà không tiết kiệm được thao tác nào.
+- Thứ **thật sự** bỏ được thao tác lặp lại là ô tích **`Connect API on Startup`**
+  của chính NX (tích một lần, mỗi lần mở NX tự Connect). App **không** bật hộ
+  được: quét cả nhánh `HKCU\SOFTWARE\MIDAS` không thấy khoá nào ứng với ô đó
+  (7/9/2026) — nó nằm trong cấu hình riêng của NX, không phải registry.
 - **`base_url()` dựng địa chỉ từ registry**, không ghim cứng Seoul: hộp *API
   Settings* còn `Local API` và `SAS API`, đổi sang chúng là `URI`/`PORT` đổi
   theo. Ở chế độ MOA nó cho ra **đúng bằng** hằng `BASE` cũ — đã đo, và test
@@ -702,8 +761,13 @@ chúng **đội lốt một phát hiện kỹ thuật**.
 - Bốn bài trong `tests/test_nx_tab.py` khoá lại, cả bốn **đã chứng minh bắt
   được lỗi** bằng cách dựng lại hành vi cũ (chọn `.mcb` theo glob · nới
   `KHE_THOI_GIAN` · bỏ nhánh `nguon` khỏi `hang()`/`_fill()`).
-- **S1 vẫn chưa kết luận được** — muốn xong thì phải sinh lại MCT rồi chạy lại
-  **Civil 2022**, mà máy này không có. Việc của máy phát triển.
+- **S1 ĐÃ KẾT LUẬN: ĐẠT** (7/9/2026). Sinh lại MCT từ `data/LT/S1.dxf` (mặc định
+  `begin`, có `*VERSION`) → giải lại trên Civil 2022 thật → kiểm chéo NX: ghép
+  **8.140/8.140** bản ghi, `chỉ 2022 = chỉ NX = 0`, tải cơ bản lệch lớn nhất
+  **0,0100 kN·m** (không bản ghi nào quá dung sai), bao 3,61%. `nguon_lac_hau`
+  rỗng. Diff MCT còn lộ ra lý do ba tệp từng lệch thứ tự: bản 29/7 sinh với
+  **`pt_jacking = both`** trong khi `.mcb` 14:27 là bản `begin` — hai thứ khác
+  mô hình, không chỉ khác dấu thời gian.
 
 ### Bỏ template Excel — bước 1 ĐÃ LÀM (VuPQ yêu cầu 2026-09-05)
 
@@ -735,7 +799,27 @@ nhiều mặt cắt*.
    nào trong bản vẽ mang thông tin, `impact`/`lane_load` là trị quy phạm. Xem
    mục *App tự tính tải bánh từ hình học* ngay dưới.
 2. **Cửa sổ khai báo cho 31 khoá còn lại**, mang luôn mạch tính hiện công thức
-   sang app — không phải chỉ 31 ô trống.
+   sang app — không phải chỉ 31 ô trống. **CHƯA LÀM** (7/9/2026): `grep` cả
+   `gui/` không có hộp thoại nào nhập số liệu đầu vào; đường duy nhất vẫn là
+   chọn file `.xls`.
+
+   **VuPQ thêm một ràng buộc (7/9/2026): sau này app lên web, người dùng khai
+   số liệu từ xa rồi nộp kèm một file DXF mặt cắt.** Ràng buộc này đổi hình
+   dạng bước 2, nên đừng dựng 31 ô nhập rồi đọc thẳng vào widget:
+
+   * Số liệu phải thành **một khối dữ liệu tự mang đủ nghĩa** (JSON hoặc
+     dataclass) ghi được vào `.mtbproj` và **gửi được qua HTTP**. Hộp thoại
+     PyQt và biểu mẫu web khi đó là **hai lối vào cùng một khối**, không phải
+     hai bản khai báo.
+   * `src/input_reader.py` phải nhận **cả** khối đó lẫn file Excel — Excel
+     thành *một trong các nguồn*, không còn là nguồn duy nhất. `SPEC` đã là
+     bảng khoá–toạ độ nên chỗ này vốn đã gần đúng hình.
+   * Mạch tính hiện công thức phải đi **cùng khối dữ liệu**, không nằm trong
+     mã vẽ giao diện, nếu không thì bản web mất nó — mà đó chính là thứ người
+     thẩm tra đọc để ký (xem `live_load_derivation()` ở bước 1: nó ghi mạch
+     tính vào MCT + nhật ký + `topo`, đúng lối cần nhân rộng).
+   * `run.py` nên có đường **nhận khối dữ liệu + 1 DXF → MCT** không qua GUI:
+     đó vừa là API cho bản web, vừa là cách kiểm bước 2 bằng `pytest`.
 3. **Xuất ngược ra Excel** làm hồ sơ thẩm tra. Đảo chiều dòng dữ liệu: app là
    nguồn, Excel là bản in. Đây chính là phần "tích hợp báo cáo" VuPQ hỏi.
 
@@ -823,9 +907,9 @@ công:
 ## Current Sprint
 **Goal:** VuPQ chốt 2026-09-05: **DỪNG nhánh Midas Civil 2022, làm Midas NX.** Bốn việc đã làm: bật mặc định `*VERSION` · thẻ Kiểm chéo NX (đã chạy thật, 4/4 ĐẠT) · đọc MAPI-Key từ registry · phép soát ba tệp nguồn có cùng một mô hình không. Việc chờ cuối cùng đã khép: `Local API` **không chạy được** (đo 2026-09-07 — NX báo `Connected` nhưng không mở cổng nào, registry không đổi), nên giữ nguyên đường MOA qua máy chủ MIDAS ở Seoul.
 
-**Trạng thái (2026-09-07):** `pytest tests -q` **285 đạt** · `tools/check_gui.py` **44 đạt · 0 hỏng** (22 phép kiểm × 2 bảng màu) · `tools/audit_gui.py` **65 điều khiển, 61 đạt · 0 hỏng** (ô tích tải bánh mới được bấm và ĐẠT). Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` **đã đẩy remote 2026-09-07**, đi trước **22 commit**, chưa merge. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
+**Trạng thái (2026-09-07):** `pytest tests -q` **287 đạt** · `tools/check_gui.py` **44 đạt · 0 hỏng** (22 phép kiểm × 2 bảng màu) · `tools/audit_gui.py` **65 điều khiển, 61 đạt · 0 hỏng** (ô tích tải bánh mới được bấm và ĐẠT). Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` **đã đẩy remote 2026-09-07**, đi trước **22 commit**, chưa merge. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
 
-**Máy đang làm việc không phải máy phát triển.** Repo nằm trên ổ SSD ngoài `H:`, cắm qua lại giữa hai máy. `DESKTOP-NLCA550` (Windows 11) **không có** Inno Setup và **không có Midas Civil 2022** — chỉ có MIDAS CIVIL NX. Không có venv trong repo; dựng venv riêng ở `%TEMP%\mtbv` rồi chạy mọi thứ bằng nó, và **luôn đặt `MTB_DATA_DIR`** trỏ thư mục tạm để khỏi đốt ngày dùng thử của máy.
+**Máy đang làm việc không phải máy phát triển.** Repo nằm trên ổ SSD ngoài `H:`, cắm qua lại giữa hai máy. `DESKTOP-NLCA550` (Windows 11 build 10.0.26200) **không có** Inno Setup, nhưng **CÓ cả Midas Civil 2022 và MIDAS CIVIL NX** — ghi chú cũ nói máy này chỉ có NX là **sai** (đo 7/9/2026: `C:\Program Files\MIDAS\midas Civil\CVLw.exe`, tiêu đề `Civil 2022 - [Untitled] - [MIDAS/Civil]`). Mở đồng thời hai bản là bình thường, và `_chon_civil()` lọc đúng. Không có venv trong repo; dựng venv riêng ở `%TEMP%\mtbv` rồi chạy mọi thứ bằng nó, và **luôn đặt `MTB_DATA_DIR`** trỏ thư mục tạm để khỏi đốt ngày dùng thử của máy.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
@@ -901,12 +985,16 @@ NX (`560f24f`, `0de6e6d`) · MAPI-Key + `base_url()` đọc từ registry (`9f7c
 **ĐÃ DỪNG — nhánh Midas Civil 2022** (VuPQ chốt 2026-09-05). Mã đường đó
 **không xoá, không sửa**: `src/midas_driver.py`, `gui/midas_worker.py` và 8 bài
 `tests/test_midas_driver.py` giữ nguyên, F8 vẫn chạy. Chỉ là **không làm thêm
-việc mới** cho nó. Hai việc bị treo theo, mở lại khi nào VuPQ cần:
+việc mới** cho nó. **Hai việc treo của nó đã KHÉP ngày 7/9/2026** — máy hiện
+tại hoá ra có sẵn Civil 2022, nên làm luôn:
 
-* **S1 kiểm chéo** — `output/S1` có `.mcb` (14:27) cũ hơn `.mct` (15:34) cùng
-  ngày 29/7, nên đang là `KHÔNG KẾT LUẬN`. Muốn xong phải sinh lại MCT rồi chạy
-  lại **Civil 2022** cho S1. Bốn mặt cắt kia đã ĐẠT nên **không chặn gì**.
-* **Thử căng cáp hai đầu** trên Midas xem ứng suất giữa bó có tăng đúng không.
+* **S1 kiểm chéo → ĐẠT**, 8.140/8.140 bản ghi. Xem mục *Ba tệp nguồn có cùng
+  một mô hình không*. Nay cả **5/5** mặt cắt từng chạy đều ĐẠT.
+* **Căng cáp hai đầu → đã đo**: `BOTH` làm **giảm** ~5% hiệu ứng cáp (tụt neo
+  hai lần), không tăng. Xem mục *Chạy Midas tự động*.
+
+Dọc đường lộ ra một lỗi **chặn cả nhánh** mà 4 công cụ kiểm đều mù: hộp *Save
+As* của Windows 11 bỏ qua `WM_SETTEXT`. Đã vá + 2 bài test.
 
 **Phát hành v1.5.0 — không thuộc nhánh nào, vẫn còn nguyên:**
 
@@ -937,6 +1025,27 @@ việc mới** cho nó. Hai việc bị treo theo, mở lại khi nào VuPQ cầ
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-09-07 (chiều): **Khép trọn nhánh Midas Civil 2022 — và một lỗi chặn cả
+  nhánh mà cả bốn công cụ kiểm đều mù.** Máy này hoá ra **có sẵn Civil 2022**
+  (ghi chú cũ nói chỉ có NX là sai), nên làm nốt hai việc treo. Chạy driver thì
+  nó báo *"60 s mà S1_frame.OUT chưa xuất hiện — phân tích KHÔNG khởi động. Mở
+  Midas xem mô hình có lỗi gì không"* — **đổ lỗi cho mô hình, trong khi mô hình
+  đúng**: hộp *Save As* của Windows 11 (build 10.0.26200) **bỏ qua chữ đặt bằng
+  `WM_SETTEXT`**, ô hiện đúng đường dẫn, `_doc()` đọc lại cũng đúng, mà Midas vẫn
+  lưu ra `Untitled.mcb`. Bôi đen cả dải rồi `EM_REPLACESEL` thì qua ngay — cùng
+  đường một cú dán thật đi, nên ô nhập phát `EN_CHANGE`. Lỗi này chỉ lộ ở bước
+  **LƯU** (hộp Open thì `WM_SETTEXT` vẫn ăn), nên nó sống sót qua loạt 6/6 ngày
+  30/7 trên máy khác. Xong rồi: **S1 kiểm chéo ĐẠT** (8.140/8.140 bản ghi, tải cơ
+  bản lệch 0,0100 kN·m), tức 5/5 mặt cắt đã kiểm chéo đều ĐẠT. Và **căng cáp hai
+  đầu: `BOTH` làm GIẢM ~5% hiệu ứng cáp, không tăng** — cáp khai tụt neo 6 mm ở
+  cả hai đầu nên căng hai đầu là chịu tụt neo hai lần, với bó ngang 16,04 m thì
+  phần mất lớn hơn phần lợi do bớt ma sát; trực giác "hai đầu thì giữa bó khoẻ
+  hơn" **không đúng ở đây**. Diff MCT còn giải thích luôn vì sao ba tệp của S1
+  từng lệch thứ tự: bản 29/7 sinh với `pt_jacking = both` còn `.mcb` là bản
+  `begin` — **khác mô hình**, không chỉ khác dấu thời gian. Về MAPI: **không có
+  gì phải cài** — key registry trùng đúng key VuPQ đọc được, `doc_key()` đã đọc
+  thẳng; dán key vào app cũng không bỏ được bước Connect vì chính cú Connect mới
+  đăng ký phiên NX với MOA. `pytest` **285 → 287**, 2/2 biến thể lỗi bị bắt.
 - 2026-09-07: **Khép `Local API`, rồi app tự tính tải bánh từ hình học (N3 bước 1).** VuPQ bấm `Local API` → `Connect` trong NX và hộp thoại báo `Connected`, nhưng **không có máy chủ cục bộ nào tồn tại**: registry `CONNECTION` không đổi, `CVLw.exe` không lắng nghe cổng nào, cả nhánh registry `MIDAS` không có một trị `localhost`, trong lúc CVLw vẫn giữ hai kết nối HTTPS ra AWS Seoul. Không sửa được từ trong mã — giữ nguyên đường MOA và **nói ra trong hồ sơ** rằng kiểm chéo NX gửi mô hình qua hạ tầng MIDAS ở nước ngoài. Việc chờ cuối cùng của nhánh NX thế là khép. Sang **N3 bước 1**: tự đo lại trước khi làm và công thức xuôi tái lập **đúng sáu ô Excel, lệch 7,1·10⁻¹⁵** — sáu trị tải bánh là *kết quả tính* từ `S`/`X`/`IM`, không phải số liệu người dùng gõ. Nhưng phép đo cũng cắt scope xuống: **6 khoá chứ không phải 9** — bản vẽ không có lớp nào mang bề rộng đoạn lan can (`d_L`/`d_R`), còn `impact`/`lane_load` là trị quy phạm. Mức đổi **hai chiều**: S20 thiếu **+13,6%** (chiều không an toàn) nhưng S16 lại **dư 22%**, tốn cốt thép thật. Mặc định TẮT và **7/7 mặt cắt trùng md5** với worktree ở HEAD; bật thì diff chỉ gồm 10 dòng chú thích mạch tính + đúng các con số `*VEHICLE`. Mạch tính (`S`, `X`, `IM`, ba công thức `E`, luật `E_tandem`) đi vào **chú thích trong chính file MCT** — thứ mất đi khi thôi nạp Excel không phải sáu con số mà là mạch tính người thẩm tra đọc để tin. `pytest` **282 → 285**, 6/6 biến thể lỗi bị bắt; `check_gui` **42 → 44 lượt** (21 → 22 phép kiểm), 4/4 biến thể bị bắt. **Hai biến thể đầu "lọt lưới" và cả hai là biến thể DỰNG SAI** — dataclass nướng cứng trị mặc định nên vá `__dataclass_fields__` không ăn, và một chiều của phép kiểm là khẳng định *không bao giờ đỏ được* (đã nhắm lại vào tín hiệu `settings_changed`). Đúng bài học `[[ky-luat-chung-minh-ban-va]]` lặp lại lần thứ tư.
 - 2026-09-05 (chiều): **Thẻ Kiểm chéo NX chạy thật lần đầu — 4/4 ĐẠT, và mặt cắt thứ năm lôi ra một lỗi đội lốt phát hiện kỹ thuật.** NX đã được Connect nên `NXWorker.run()` chạy được qua API thật: S16 · S10 · S1_V2 · SLT đều ĐẠT, đúng bằng loạt CLI 20/8. **S1** thì báo `Prestress` lệch **146/148** bản ghi tới **9,97 kN·m** trong khi **9/10 tải cơ bản còn lại trùng tới 0,0000** — dáng vẻ y hệt *"NX hiểu khối `*TDN-*` khác Civil 2022"*. Không phải: S10/S16/S1_V2 đều có cáp thật và trùng khít. Thứ sai là **dấu thời gian** — `output/S1/S1.mcb` đề 14:27 còn `S1_frame.mct` đề 15:34 cùng ngày, tức MCT sinh lại **sau** khi giải; và trước đó `tim()` còn lấy nhầm `1.mcb` (mô hình tháng 4, tổ hợp còn tên `LCB1..LCB15`) vì chọn `.mcb` bằng `sorted(glob)[0]`. Thêm `nguon_lac_hau()` soát thứ tự `.mct` → `.mcb` → `.xls`, và kết quả lúc đó là **`KHÔNG KẾT LUẬN`** chứ không mượn hai chữ ĐẠT/HỎNG — chúng là câu về hai bản Midas, còn đây là câu về tệp trên đĩa. `pytest` **264 → 268**, cả bốn bài mới đã chứng minh bắt được lỗi bằng cách dựng lại hành vi cũ.
 - 2026-09-05: **Nhánh NX thành nhánh chính; 23/23 lỗi của tập mô tả sản phẩm đã sửa.** Áp phương pháp *product description* (gist steveruizok) dựng `docs/product-description/` — mô tả hành vi từ ngoài vào, khuôn tám mục, bảng ngắt quãng cố định hỏi cùng bộ câu hỏi cho mọi tính năng. Nó lôi ra **23 lỗi**, phần lớn kiểm chứng bằng cách chạy thật, và cả 23 đã vá: bản vẽ mm đi lọt (71.059 phần tử, MCT 426 MB, nhật ký báo Xong) · tạo lại MCT thì nhận nội lực của mô hình cũ · template mất file thì sinh MCT rỗng ruột · không huỷ được việc đang chạy · Excel giữ tệp thì mất trọn kết quả · khung xem phóng lệch tâm 0,67 m mỗi nấc. Thêm cơ chế `Section.stale` dùng chung cho mọi thứ làm nội lực lạc hậu. Trước đó vá **ba lỗi chỉ lộ ở bản .exe** khiến build v1.5.0 chưa bao giờ chạy qua được, và **bốn lỗ ở cổng giấy phép** (chuột phải trong cây sinh được MCT với giấy phép đã thu hồi; hộp thoại giấy phép giết cả tiến trình khi chọn nhầm PDF). Nhánh NX: bật mặc định `*VERSION`, thẻ Kiểm chéo NX, đọc MAPI-Key từ registry. `pytest` **149 → 264**, `check_gui` **34 → 42**. Bài học lặp lại nhiều nhất trong phiên: **phép chứng minh quan trọng ngang bản vá** — ba lần tôi suýt tin một kết quả sai (bytecode `.pyc` cũ · dựng lại sai hành vi cũ · phép kiểm bắt đúng lỗi vì lý do sai).
