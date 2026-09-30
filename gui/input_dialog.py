@@ -78,12 +78,18 @@ class InputDialog(QDialog):
     # (đường dẫn, con số có đổi so với lúc mở / lần lưu trước không)
     saved = pyqtSignal(str, bool)
 
-    def __init__(self, source: str = '', theme: dict = None, parent=None):
+    def __init__(self, source: str = '', theme: dict = None, parent=None,
+                 report_ctx=None, app_version: str = ''):
         super().__init__(parent)
         self.t = theme or LIGHT
         self.setWindowTitle('Số liệu đầu vào')
         self.setMinimumSize(880, 600)
         self.source = source or ''
+        # Hồ sơ thẩm tra cần biết project có cho app tự tính tải bánh không —
+        # khi có thì sáu trị trong khối KHÔNG vào mô hình, và hồ sơ phải nói ra.
+        # `report_ctx()` trả (auto_live_load, [{'name', 'live_load'}…]).
+        self.report_ctx = report_ctx
+        self.app_version = app_version
         # Đường dẫn khối .json đang sửa. Nguồn là Excel thì chưa có — lần lưu
         # đầu tiên luôn hỏi chỗ ghi, không bao giờ ghi đè lên file Excel.
         self.block_path = source if input_data.is_block_path(source) else ''
@@ -162,6 +168,12 @@ class InputDialog(QDialog):
 
         row = QHBoxLayout()
         row.addStretch()
+        self.b_export = QPushButton('Xuất hồ sơ Excel…')
+        self.b_export.setToolTip(
+            'Hồ sơ thẩm tra: mỗi đại lượng tính được ghi thành CÔNG THỨC Excel\n'
+            'trỏ về ô đầu vào — người thẩm tra bấm vào ô là thấy mạch tính.')
+        self.b_export.clicked.connect(self.export_report)
+        row.addWidget(self.b_export)
         self.b_save_as = QPushButton('Lưu thành khối số liệu…')
         self.b_save_as.clicked.connect(self.save_as)
         self.b_save = QPushButton('Lưu')
@@ -325,6 +337,7 @@ class InputDialog(QDialog):
         ok = not miss and not self.bad and not lech
         self.b_save.setEnabled(ok and bool(self.block_path) and self.changed())
         self.b_save_as.setEnabled(ok)
+        self.b_export.setEnabled(ok)
         colour = self.t['err'] if (miss or self.bad or lech) else self.t['ink_3']
         self.lb_sum.setStyleSheet(f'color: {colour};')
 
@@ -394,6 +407,29 @@ class InputDialog(QDialog):
         if not input_data.is_block_path(path):
             path += input_data.EXT
         return self._write(path)
+
+    def export_report(self, path: str = None) -> bool:
+        """Xuất hồ sơ thẩm tra (.xlsx) từ số liệu ĐANG HIỆN trong bảng."""
+        from src.input_report import export_xlsx
+        if path is None:
+            base = self.block_path or self.source or 'so_lieu'
+            path, _ = QFileDialog.getSaveFileName(
+                self, 'Xuất hồ sơ thẩm tra số liệu',
+                os.path.splitext(base)[0] + '_ho_so.xlsx', 'Excel (*.xlsx)')
+            if not path:
+                return False
+        auto, secs = (self.report_ctx() if self.report_ctx else (False, []))
+        try:
+            export_xlsx(self.block(), path,
+                        source=os.path.basename(self.block_path or self.source),
+                        app_version=self.app_version,
+                        auto_live_load=auto, sections=secs)
+        except (InputError, OSError) as e:
+            QMessageBox.warning(self, 'Không xuất được', str(e))
+            return False
+        self.lb_src.setText(self.lb_src.text().split(' · Đã xuất')[0]
+                            + f' · Đã xuất {os.path.basename(path)}')
+        return True
 
     def _write(self, path) -> bool:
         try:

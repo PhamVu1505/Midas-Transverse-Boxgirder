@@ -6,6 +6,7 @@ Commands:
     python run.py generate input/dxf/                      # all DXF in folder
     python run.py generate S1.dxf --inputs so_lieu.json    # số liệu khai trong app
     python run.py inputs data/template.xls -o so_lieu.json # Excel → khối số liệu
+    python run.py inputs so_lieu.json --excel ho_so.xlsx   # khối → hồ sơ thẩm tra
     python run.py results  output/S20/                     # parse Beam Force → check table + Excel
     python run.py results  output/                         # batch all subfolders
 """
@@ -147,14 +148,40 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
     return section_dir
 
 
+def _app_version() -> str:
+    """Phiên bản app để in lên hồ sơ — đọc CHỮ trong gui/main_window.py chứ
+    không import nó: import là kéo cả PyQt6 vào một lệnh dòng lệnh, còn khai
+    thêm một hằng thứ sáu thì thêm một chỗ phải nhớ bump."""
+    import re
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               'gui', 'main_window.py'), encoding='utf-8') as f:
+            m = re.search(r"^VERSION = '([^']+)'", f.read(), re.M)
+        return m.group(1) if m else ''
+    except OSError:
+        return ''
+
+
 def cmd_inputs(args):
-    """Handle 'inputs': chuyển template Excel thành khối số liệu JSON."""
+    """Handle 'inputs': template Excel / khối → khối JSON và/hoặc hồ sơ Excel."""
     from src import input_data
-    if not input_data.is_block_path(args.output):
+    if not (args.output or args.excel):
+        raise SystemExit('Cần ít nhất một trong -o (khối .json) hoặc --excel (hồ sơ .xlsx)')
+    if args.output and not input_data.is_block_path(args.output):
         raise SystemExit(f'File ghi ra phải có đuôi {input_data.EXT}: {args.output}')
-    block = input_data.from_excel(args.source)
-    input_data.save(block, args.output)
-    print(f'Đã ghi {len(block["values"])} khoá số liệu → {args.output}')
+    if input_data.is_block_path(args.source):
+        block = input_data.load(args.source)
+        input_data.validate(block)
+    else:
+        block = input_data.from_excel(args.source)
+    if args.output:
+        input_data.save(block, args.output)
+        print(f'Đã ghi {len(block["values"])} khoá số liệu → {args.output}')
+    if args.excel:
+        from src.input_report import export_xlsx
+        export_xlsx(block, args.excel, source=os.path.basename(args.source),
+                    app_version=_app_version())
+        print(f'Đã ghi hồ sơ thẩm tra số liệu → {args.excel}')
 
 
 def cmd_generate(args):
@@ -512,9 +539,11 @@ def build_parser():
     # inputs: Excel → khối số liệu JSON
     inp_parser = subparsers.add_parser(
         'inputs', help='Template Excel → khối số liệu .json (khai trong app)')
-    inp_parser.add_argument('source', help='template .xls/.xlsx')
-    inp_parser.add_argument('-o', '--output', required=True,
-                            help='file .json ghi ra')
+    inp_parser.add_argument('source', help='template .xls/.xlsx hoặc khối .json')
+    inp_parser.add_argument('-o', '--output', default=None,
+                            help='khối số liệu .json ghi ra')
+    inp_parser.add_argument('--excel', '--ho-so', default=None, metavar='XLSX',
+                            help='hồ sơ thẩm tra .xlsx (công thức Excel thật)')
 
     # results
     res_parser = subparsers.add_parser('results', help='Beam Force → check table + Excel')

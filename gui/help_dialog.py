@@ -160,6 +160,13 @@ này nói còn thiếu gì để chương trình tính hộ. Template mẫu có 
 lớp phủ, diện tích lan can, S/X dải tương đương…) nên chuyển sang đủ cả 19 mạch.
 Template cũ chưa có mục đó thì chương trình chỉ tự suy những tham số suy được
 một nghĩa; phần còn lại bạn tự khai.</p>
+<p><b>Xuất hồ sơ Excel…</b> ghi toàn bộ số liệu ra một file <code>.xlsx</code> để
+nộp thẩm tra. Mỗi đại lượng tính được ghi thành <b>công thức Excel thật</b> trỏ
+về ô đầu vào — bấm vào ô là thấy mạch tính, sửa một đầu vào là Excel tính lại
+cả chuỗi. Nếu project cho chương trình tự tính tải bánh, hồ sơ có thêm sheet
+<i>Tải bánh theo mặt cắt</i> ghi đúng trị đã vào từng mô hình, và nói rõ mặt cắt
+nào chưa sinh lại MCT. Dòng lệnh: <code>python run.py inputs so_lieu.json
+--excel ho_so.xlsx</code>.</p>
 {note('Ô trống là <b>thiếu</b> — tô vàng, và nút Lưu khoá lại. Không có trị mặc '
       'định: số gợi ý chỉ hiện mờ bên cạnh. Sửa số liệu đang dùng sau khi đã '
       'có Beam Force thì các mặt cắt đó bị đánh dấu <b>lạc hậu</b>; chỉ chuyển '

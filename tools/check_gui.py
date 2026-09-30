@@ -458,6 +458,53 @@ def kiem_khai_so_lieu_trong_app(c):
     return f'mở từ dock · Ec {truoc} → {o_ec.text()} · {len(co_kq)} mặt cắt lạc hậu đúng lúc'
 
 
+def kiem_xuat_ho_so_so_lieu(c):
+    """Hồ sơ thẩm tra: mở từ dock Properties, công thức thật, nói đúng nguồn tải bánh.
+
+    1. **Nút ở tab Input data mở hộp thoại** — bảng ở đó chỉ đọc, lối sửa phải
+       nằm ngay cạnh.
+    2. **Khoá tính ghi thành công thức** — đọc chính file xuất ra, không đọc
+       biến của hộp thoại.
+    3. **Bật "tự tính tải bánh" mà chưa sinh lại MCT** thì hồ sơ phải nói các
+       MCT hiện có CHƯA tính theo hình học. Cờ là ý định cho lần sau, topo mới
+       là sự thật; hộp thoại không được cửa sổ chính trao bối cảnh thì hồ sơ
+       nói chung chung và người ký không biết gì.
+    """
+    import tempfile
+    import openpyxl
+    from gui import input_dialog as D
+    from src.input_report import SHEET, SHEET_LL, layout
+
+    mo, goc = [], D.InputDialog.exec
+    D.InputDialog.exec = lambda self: mo.append(self) or 0
+    tmp = tempfile.mkdtemp(prefix='kiem_ho_so_')
+    try:
+        c.w.props.b_inputs.click()
+        c.step()
+        assert mo, 'bấm nút ở tab Input data mà không hộp thoại nào mở'
+        d = mo[0]
+        p1 = os.path.join(tmp, 'a.xlsx')
+        assert d.b_export.isEnabled(), 'nút Xuất hồ sơ bị khoá với số liệu hợp lệ'
+        assert d.export_report(p1), 'xuất hồ sơ thất bại'
+        ws = openpyxl.load_workbook(p1)[SHEET]
+        o = ws[f'C{layout(d.block())[("v", "Ec")]}'].value
+        assert isinstance(o, str) and o.startswith('='), f'Ec ghi là {o!r}, không phải công thức'
+
+        c.w.panel.ck_auto_ll.setChecked(True)
+        c.step()
+        p2 = os.path.join(tmp, 'b.xlsx')
+        assert d.export_report(p2)
+        wb = openpyxl.load_workbook(p2)
+        a3 = wb[SHEET]['A3'].value or ''
+        assert 'CHƯA có' in a3, f'bật cờ mà hồ sơ không nói MCT hiện có chưa tính lại: {a3!r}'
+        assert SHEET_LL in wb.sheetnames, 'thiếu sheet tải bánh theo mặt cắt'
+        d._baseline = d._snapshot()
+        d.close()
+    finally:
+        D.InputDialog.exec = goc
+    return f'mở từ dock · Ec {o[:22]}… · bật cờ → "{a3[:40]}…"'
+
+
 def kiem_bat_tat_duoc_tung_dock(c):
     """Ba mục `Xem → Panel…` phải bật/tắt được dock thật.
 
@@ -897,6 +944,7 @@ CHECKS = [
     kiem_canh_bao_hoat_tai_tra_duoc_bat_ky_luc_nao,
     kiem_o_tu_tinh_tai_banh,
     kiem_khai_so_lieu_trong_app,
+    kiem_xuat_ho_so_so_lieu,
     kiem_bat_tat_duoc_tung_dock,
     kiem_khong_co_widget_mo_coi,
     kiem_thanh_trang_thai_khong_chong_chu,

@@ -164,6 +164,13 @@ trình tính hộ. Template mẫu có sẵn mục MẠCH TÍNH (tham số) trên
 chuyển sang đủ cả 19 mạch. Template cũ chưa có mục đó thì chương trình chỉ tự
 suy những tham số suy được một nghĩa; phần còn lại bạn tự khai.
 
+Xuất hồ sơ Excel… ghi toàn bộ số liệu ra một file .xlsx để nộp thẩm tra. Mỗi
+đại lượng tính được ghi thành công thức Excel thật trỏ về ô đầu vào — bấm vào
+ô là thấy mạch tính, sửa một đầu vào là Excel tính lại cả chuỗi. Nếu project
+cho chương trình tự tính tải bánh, hồ sơ có thêm sheet Tải bánh theo mặt cắt
+ghi đúng trị đã vào từng mô hình, và nói rõ mặt cắt nào chưa sinh lại MCT.
+Dòng lệnh: python run.py inputs so_lieu.json --excel ho_so.xlsx.
+
 LƯU Ý: Ô trống là thiếu — tô vàng, và nút Lưu khoá lại. Không có trị mặc định:
   số gợi ý chỉ hiện mờ bên cạnh. Sửa số liệu đang dùng sau khi đã có Beam
   Force thì các mặt cắt đó bị đánh dấu lạc hậu; chỉ chuyển Excel sang khối với

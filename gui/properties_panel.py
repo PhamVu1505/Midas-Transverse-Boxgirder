@@ -12,13 +12,16 @@ import os
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
-                             QLabel, QScrollArea, QFrame, QComboBox)
+                             QLabel, QScrollArea, QFrame, QComboBox,
+                             QPushButton)
 
 from .support_editor import SupportEditor
 from .theme import LIGHT, FONT_MONO
 
-# Ô JACKING của *TDN-PRESTRESS. Căng hai đầu thì tổn hao ma sát đối xứng và ứng
-# suất giữa bó cao hơn hẳn — khác biệt thật, nên để người dùng chọn thay vì ghim.
+# Ô JACKING của *TDN-PRESTRESS — khác biệt thật, nên để người dùng chọn thay vì
+# ghim. Chiều của nó KHÔNG như trực giác: đo trên Civil 2022 (7/9/2026), S1 căng
+# hai đầu làm GIẢM ~5% hiệu ứng cáp — tụt neo 6 mm bị chịu ở cả hai đầu, với bó
+# ngang ngắn thì mất nhiều hơn phần lợi do bớt ma sát (xem CLAUDE.md).
 JACKING = [('begin', 'Căng một đầu'), ('both', 'Căng hai đầu')]
 
 
@@ -41,14 +44,14 @@ class PropertiesPanel(QWidget):
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         self.body = self._scroll(with_supports=True)
-        self.input = self._scroll()
+        self.input = self._scroll(with_inputs_button=True)
         self.tabs.addTab(self.body[0], 'Properties')
         self.tabs.addTab(self.input[0], 'Input data')
         lay.addWidget(self.tabs)
 
         self.refresh()
 
-    def _scroll(self, with_supports=False):
+    def _scroll(self, with_supports=False, with_inputs_button=False):
         area = QScrollArea()
         area.setWidgetResizable(True)
         area.setFrameShape(QFrame.Shape.NoFrame)
@@ -67,9 +70,26 @@ class PropertiesPanel(QWidget):
             v.addWidget(self._pt_box())
             self.sup_editor = SupportEditor(self.t)
             v.addWidget(self.sup_editor)
+        if with_inputs_button:
+            # Bảng này chỉ đọc — lối sửa đặt ngay cạnh thứ nó sửa, không bắt
+            # người dùng đi tìm ở dock bên kia hay trong menu Tệp.
+            b = QPushButton('Khai / sửa số liệu trong app…')
+            b.setToolTip('Mở hộp thoại khai số liệu (Ctrl+I)')
+            b.clicked.connect(self._open_inputs)
+            wrap = QHBoxLayout()
+            wrap.setContentsMargins(11, 4, 11, 8)
+            wrap.addWidget(b)
+            wrap.addStretch()
+            v.addLayout(wrap)
+            self.b_inputs = b
         v.addStretch()
         area.setWidget(host)
         return area, lb
+
+    def _open_inputs(self):
+        mo = getattr(self.window(), 'open_inputs', None)
+        if mo:
+            mo()
 
     def _pt_box(self):
         """Hàng chọn cách căng cáp — chỉ mở khi mặt cắt thật sự có cáp.

@@ -874,12 +874,28 @@ class MainWindow(QMainWindow):
         """Hộp thoại khai số liệu — mở trên nguồn số liệu chung của project."""
         from .input_dialog import InputDialog
         try:
-            d = InputDialog(self.project.template, theme=self.t, parent=self)
+            d = InputDialog(self.project.template, theme=self.t, parent=self,
+                            report_ctx=self._report_ctx, app_version=VERSION)
         except Exception as e:
             QMessageBox.warning(self, 'Không đọc được nguồn số liệu', str(e))
             return
         d.saved.connect(self._inputs_saved)
         d.exec()
+
+    def _report_ctx(self):
+        """(auto_live_load, tải bánh ĐÃ VÀO mô hình của từng mặt cắt) cho hồ sơ
+        thẩm tra. Đọc `topo.json` — đúng mô hình đã ghi ra MCT, không tính lại."""
+        import json
+        secs = []
+        for s in self.project:
+            if s.topo and os.path.exists(s.topo):
+                try:
+                    with open(s.topo, encoding='utf-8') as f:
+                        secs.append({'name': s.name,
+                                     'live_load': json.load(f).get('live_load')})
+                except (OSError, ValueError):
+                    pass
+        return self.project.auto_live_load, secs
 
     def _inputs_saved(self, path: str, doi_so: bool):
         """Sau khi hộp thoại ghi một khối số liệu.

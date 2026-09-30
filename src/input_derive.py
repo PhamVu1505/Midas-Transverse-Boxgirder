@@ -44,7 +44,12 @@ from .input_check import (live_load_from_geometry, template_strip_geometry)
 REL_TOL = 1e-9
 
 Param = namedtuple('Param', 'name unit desc suggest group')
-Rule = namedtuple('Rule', 'key formula ref cell inputs fn group')
+# `xl` = cùng phép tính viết thành công thức Excel, `{tên}` là ô của đầu vào —
+# đặt ngay cạnh `fn` để hai lối viết không thể lệch nhau mà không ai thấy.
+# `input_report` ghi nó vào hồ sơ thẩm tra; `tests/test_input_report.py` mở
+# file đó bằng chính Excel, tính lại, rồi so với `fn`.
+Rule = namedtuple('Rule', 'key formula ref cell inputs fn group xl',
+                  defaults=('',))
 
 
 PARAMS = [
@@ -107,46 +112,62 @@ _WHEEL_CELL = {'truck_can': 'Load!I52', 'tandem_can': 'Load!J52',
                'truck_pos': 'Load!I53', 'tandem_pos': 'Load!J53',
                'truck_neg': 'Load!I54', 'tandem_neg': 'Load!J54'}
 
+def _wheel_xl(key):
+    """Công thức Excel của một trị tải bánh — dải gốc theo Bảng 1 rồi luật cự
+    ly trục, đúng bố cục ô `Load!F44:J54` của template."""
+    vi_tri = key.split('_')[1]
+    E = {'can': '(1140+0.833*{X_strip})', 'pos': '(660+0.55*{S_strip})',
+         'neg': '(1220+0.25*{S_strip})'}[vi_tri]
+    P, s = (72.5, 4300) if key.startswith('truck') else (55, 1200)
+    return f'{P}*(1+{{impact}})*1000/IF({E}>{s},({E}+{s})/2,{E})'
+
+
 # Thứ tự có nghĩa: luật sau được dùng trị luật trước vừa tính (Pj cần Ap, fpj).
 RULES = [
     Rule('Ec', "Ec = 0,043·γc^1,5·√f'c", 'TCVN 11823-5 Đ.5.4.2.4 (K1 = 1)',
          'General!H72', ('gamma_c', 'fc'),
-         lambda v: 0.043 * v['gamma_c'] ** 1.5 * math.sqrt(v['fc']), 'Vật liệu'),
+         lambda v: 0.043 * v['gamma_c'] ** 1.5 * math.sqrt(v['fc']), 'Vật liệu',
+         '0.043*{gamma_c}^1.5*SQRT({fc})'),
     Rule('pavement', 'w = t·γ_DW', '', 'Load!G9', ('t_dw', 'gamma_dw'),
-         lambda v: v['t_dw'] * v['gamma_dw'], 'Tĩnh tải'),
+         lambda v: v['t_dw'] * v['gamma_dw'], 'Tĩnh tải', '{t_dw}*{gamma_dw}'),
     Rule('barrier_left', 'p = (γ·A_lc + g_tv)/d_L', '', 'Load!I11',
          ('density', 'A_lc_L', 'g_tv_L', 'd_L'),
          lambda v: (v['density'] * v['A_lc_L'] + v['g_tv_L']) / v['d_L'],
-         'Tĩnh tải'),
+         'Tĩnh tải', '({density}*{A_lc_L}+{g_tv_L})/{d_L}'),
     Rule('barrier_right', 'p = (γ·A_lc + g_tv)/d_R', '', 'Load!I13',
          ('density', 'A_lc_R', 'g_tv_R', 'd_R'),
          lambda v: (v['density'] * v['A_lc_R'] + v['g_tv_R']) / v['d_R'],
-         'Tĩnh tải'),
+         'Tĩnh tải', '({density}*{A_lc_R}+{g_tv_R})/{d_R}'),
     Rule('ws_pd', 'PD = 0,0006·V²·Cd, V = VB·S', 'TCVN 11823-3 Đ.3.8.1',
          'Load!G69', ('VB', 'S_v', 'Cd'),
-         lambda v: 0.0006 * (v['VB'] * v['S_v']) ** 2 * v['Cd'], 'Gió'),
+         lambda v: 0.0006 * (v['VB'] * v['S_v']) ** 2 * v['Cd'], 'Gió',
+         '0.0006*({VB}*{S_v})^2*{Cd}'),
     Rule('ws_fx', 'F = PD·h_lc', '', 'Load!F71', ('ws_pd', 'h_lc'),
-         lambda v: v['h_lc'] * v['ws_pd'], 'Gió'),
+         lambda v: v['h_lc'] * v['ws_pd'], 'Gió', '{h_lc}*{ws_pd}'),
     Rule('ws_my', 'M = F·h_lc/2', '', 'Load!F72', ('ws_fx', 'h_lc'),
-         lambda v: v['ws_fx'] * v['h_lc'] / 2, 'Gió'),
+         lambda v: v['ws_fx'] * v['h_lc'] / 2, 'Gió', '{ws_fx}*{h_lc}/2'),
     Rule('wl_my', 'M = F·z_wl', 'TCVN 11823-3 Đ.3.8.1.3', 'Load!C75',
-         ('wl_fx', 'z_wl'), lambda v: v['wl_fx'] * v['z_wl'], 'Gió'),
+         ('wl_fx', 'z_wl'), lambda v: v['wl_fx'] * v['z_wl'], 'Gió',
+         '{wl_fx}*{z_wl}'),
 ] + [
     Rule(k, _WHEEL_F[k], _WHEEL_REF, _WHEEL_CELL[k],
-         ('S_strip', 'X_strip', 'impact'), _wheel(k), 'Hoạt tải HL93')
+         ('S_strip', 'X_strip', 'impact'), _wheel(k), 'Hoạt tải HL93',
+         _wheel_xl(k))
     for k in ('truck_can', 'tandem_can', 'truck_pos', 'tandem_pos',
               'truck_neg', 'tandem_neg')
 ] + [
     Rule('fpy', 'fpy = k_py·fpu', 'TCVN 11823-5 Bảng 5.4.4.1-1', 'General!H86',
-         ('k_py', 'fpu'), lambda v: v['k_py'] * v['fpu'], 'Cáp DƯL'),
+         ('k_py', 'fpu'), lambda v: v['k_py'] * v['fpu'], 'Cáp DƯL',
+         '{k_py}*{fpu}'),
     Rule('Aps', 'Aps theo Dp: 12,7 → 98,7 · 15,2 → 140 mm²', 'ASTM A416',
-         'General!H91', ('Dp',), _aps, 'Cáp DƯL'),
+         'General!H91', ('Dp',), _aps, 'Cáp DƯL',
+         'IF({Dp}=12.7,98.7,IF({Dp}=15.2,140,NA()))'),
     Rule('Ap', 'Ap = n·Aps', '', 'General!H93', ('n_strands', 'Aps'),
-         lambda v: v['n_strands'] * v['Aps'], 'Cáp DƯL'),
+         lambda v: v['n_strands'] * v['Aps'], 'Cáp DƯL', '{n_strands}*{Aps}'),
     Rule('fpj', 'fpj = k_pj·fpu', '', 'General!H94', ('k_pj', 'fpu'),
-         lambda v: v['k_pj'] * v['fpu'], 'Cáp DƯL'),
+         lambda v: v['k_pj'] * v['fpu'], 'Cáp DƯL', '{k_pj}*{fpu}'),
     Rule('Pj', 'Pj = Ap·fpj/1000', '', 'General!H95', ('Ap', 'fpj'),
-         lambda v: v['Ap'] * v['fpj'] / 1000.0, 'Cáp DƯL'),
+         lambda v: v['Ap'] * v['fpj'] / 1000.0, 'Cáp DƯL', '{Ap}*{fpj}/1000'),
 ]
 RULE_BY_KEY = {r.key: r for r in RULES}
 
