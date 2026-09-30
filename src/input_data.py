@@ -14,6 +14,7 @@ Khối là một file JSON::
       "format": "mtb-input",
       "schema": 1,
       "values": {"fc": 50.0, "Ec": 38006.99, ..., "nu": 0.2, "density": 24.5},
+      "params": {"gamma_c": 2500.0, "S_strip": 6468.0, ...},   # tuỳ chọn
       "units":  {"fc": "MPa", ...},            # chỉ để đọc, reader bỏ qua
       "meta":   {"from": "Midas-...xls", "created": "2026-09-30T10:00:00"}
     }
@@ -32,6 +33,11 @@ chủ ý: một chỗ đọc sót sang Excel trong khi nguồn là app thì cả
 Nguồn là **nguyên cả file**, không trộn từng khoá: người thẩm tra phải truy được
 mọi con số về một chỗ.
 
+`params` là đầu vào của **mạch tính** (`input_derive`): `γc` để tính `Ec`, `S`/`X`
+để tính tải bánh… Đủ tham số cho một luật thì trị trong `values` **phải** bằng
+trị tính — lệch là khối tự mâu thuẫn và bị từ chối, vì hai con số cho cùng một
+đại lượng trong cùng một file thì người thẩm tra không biết tin con số nào.
+
 Luật đọc giống hệt sheet `INPUT`: thiếu khoá → `InputError`, không tự điền mặc
 định. Chặt hơn ở một chỗ: khoá **lạ** cũng là lỗi — gõ nhầm `fC` thì khoá `fc`
 thật vẫn thiếu, nhưng thông báo phải chỉ ra chữ gõ nhầm chứ không chỉ nói thiếu.
@@ -41,6 +47,7 @@ import datetime
 import json
 import os
 
+from .input_derive import PARAM_BY_NAME, PARAMS, check, params_from_values
 from .input_reader import CONSTANTS, SPEC, InputError, _cast, read_inputs
 
 FORMAT = 'mtb-input'
@@ -63,14 +70,34 @@ def is_block_path(path) -> bool:
     return bool(path) and os.path.splitext(str(path))[1].lower() == EXT
 
 
-def make_block(values: dict, meta: dict = None) -> dict:
+def make_block(values: dict, meta: dict = None, params: dict = None) -> dict:
     """Dựng khối từ một dict giá trị. Kiểm luôn — khối sai thì không dựng."""
-    clean = validate({'format': FORMAT, 'schema': SCHEMA, 'values': values})
+    params = dict(params or {})
+    clean = validate({'format': FORMAT, 'schema': SCHEMA, 'values': values,
+                      'params': params})
     m = {'created': datetime.datetime.now().isoformat(timespec='seconds')}
     m.update(meta or {})
+    order = [p.name for p in PARAMS if p.name in params]
     return {'format': FORMAT, 'schema': SCHEMA,
             'values': {k: clean[k] for k in keys()},
+            'params': {k: float(params[k]) for k in order},
             'units': units(), 'meta': m}
+
+
+def _params(block) -> dict:
+    """Tham số mạch tính — tên lạ hay trị không phải số đều là lỗi."""
+    raw = block.get('params') or {}
+    if not isinstance(raw, dict):
+        raise InputError("Mục 'params' phải là một đối tượng JSON")
+    la = sorted(set(raw) - set(PARAM_BY_NAME))
+    if la:
+        raise InputError('Tham số mạch tính lạ (gõ nhầm tên?): ' + ', '.join(la))
+    out = {}
+    for k, v in raw.items():
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise InputError(f"Tham số '{k}': cần số, đang là {v!r}")
+        out[k] = float(v)
+    return out
 
 
 def validate(block, strict: bool = True) -> dict:
@@ -110,8 +137,16 @@ def validate(block, strict: bool = True) -> dict:
         raise InputError(f'Khối số liệu thiếu {len(missing)} khoá: '
                          + ', '.join(missing)
                          + '. Chương trình không tự điền mặc định.')
+    params = _params(block)
+    lech = [] if missing else check(out, params)
+    if lech and strict:
+        raise InputError('Khối số liệu tự mâu thuẫn — trị đang lưu khác trị '
+                         'tính từ mạch tính: ' + '; '.join(
+                             f"{e['key']} = {e['value']:.6g} nhưng "
+                             f"{e['formula']} ra {e['calc']:.6g}" for e in lech))
     out['_source'] = 'app'
     out['_missing'] = missing
+    out['_lech'] = [e['key'] for e in lech]
     return out
 
 
@@ -143,8 +178,14 @@ def from_excel(excel_path: str) -> dict:
 
     Đọc bằng `read_inputs(strict=True)`: template đang thiếu khoá thì dừng ngay ở
     đây, không đem một khối thiếu sang app rồi để lỗi lộ ra ở lần sinh MCT sau.
+
+    Mạch tính đi theo ở mức **suy ngược được một nghĩa** (`params_from_values`):
+    `γc`, `S`/`X` của dải tương đương… Phần không suy được (tốc độ gió, bề dày
+    lớp phủ) để trống — người dùng tự khai, app không bịa.
     """
     d = read_inputs(excel_path, strict=True)
-    return make_block({k: d[k] for k in keys()},
+    vals = {k: d[k] for k in keys()}
+    return make_block(vals,
                       {'from': os.path.basename(excel_path),
-                       'from_sheet': d['_source']})
+                       'from_sheet': d['_source']},
+                      params_from_values(vals))

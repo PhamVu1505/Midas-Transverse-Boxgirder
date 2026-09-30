@@ -35,6 +35,7 @@ pyinstaller --noconfirm --onedir --windowed ^
     --hidden-import "src.geometry" ^
     --hidden-import "src.input_check" ^
     --hidden-import "src.input_data" ^
+    --hidden-import "src.input_derive" ^
     --hidden-import "src.input_reader" ^
     --hidden-import "src.load_reader" ^
     --hidden-import "src.material_reader" ^
