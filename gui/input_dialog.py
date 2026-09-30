@@ -29,7 +29,8 @@ from PyQt6.QtWidgets import (QAbstractItemView, QDialog, QFileDialog,
                              QVBoxLayout)
 
 from src import input_data
-from src.input_derive import PARAMS, derive, params_from_values, resolve
+from src.input_derive import (PARAMS, RULE_BY_KEY, derive, params_from_values,
+                              resolve)
 from src.input_reader import InputError, read_inputs
 
 from .theme import FONT_MONO, LIGHT
@@ -58,6 +59,20 @@ def _parse(text: str):
     return float(t.replace(',', '.'))
 
 
+def _deps(key: str) -> set:
+    """Mọi đầu vào — trực tiếp lẫn qua khoá tính trung gian — của một khoá.
+    `Pj` phụ thuộc `Ap`, `fpj`, nên cũng phụ thuộc `n_strands`, `fpu`, `k_pj`…"""
+    out, todo = set(), [key]
+    while todo:
+        r = RULE_BY_KEY.get(todo.pop())
+        if r:
+            for n in r.inputs:
+                if n not in out:
+                    out.add(n)
+                    todo.append(n)
+    return out
+
+
 class InputDialog(QDialog):
     """Khai / sửa khối số liệu. Phát `saved(path)` sau mỗi lần ghi thành công."""
 
@@ -78,6 +93,13 @@ class InputDialog(QDialog):
         self._rows = {}              # ('v'|'p', tên) → hàng
         self._filling = False
         self._load(source)
+        # Khoá mà trị ĐANG LƯU khác trị mạch tính lúc mở (khối viết tay, bản
+        # web…). Giữ nguyên, không để `resolve` lặng lẽ viết lại khi người dùng
+        # sửa một ô chẳng liên quan — cho tới khi họ chạm vào chính khoá đó
+        # hoặc một đầu vào của nó. `validate` từ chối khối lệch, nên hộp thoại
+        # cũng không cho lưu khối lệch: hai lối vào, một luật.
+        self.hold = {e['key'] for e in derive(self.values, self.params)
+                     if e['status'] == 'lech'}
         self._baseline = self._snapshot()
         self._build()
         self._fill()
@@ -232,6 +254,7 @@ class InputDialog(QDialog):
                     val = self.values.get(name)
                     e = ent.get(name)
                     computed = e is not None and e['status'] == 'tinh'
+                    lech = e is not None and e['status'] == 'lech'
                     if (kind, name) not in self.bad:
                         it_v.setText(_fmt(val))
                     it_r.setText(self._rule_text(name, e))
@@ -240,7 +263,7 @@ class InputDialog(QDialog):
                     if not computed:
                         flags |= Qt.ItemFlag.ItemIsEditable
                     it_v.setFlags(flags)
-                    bg = (self.t['err_bg'] if (kind, name) in self.bad else
+                    bg = (self.t['err_bg'] if (kind, name) in self.bad or lech else
                           self.t['warn_bg'] if name in miss else
                           self.t['sunken'] if computed else None)
                     it_v.setToolTip('Tính từ mạch tính — sửa các đầu vào để đổi'
@@ -265,6 +288,10 @@ class InputDialog(QDialog):
         if e['status'] == 'tinh':
             ins = ', '.join(f'{n} = {_fmt(v)}' for n, v in e['inputs'].items())
             return f"{e['formula']}   [{ins}]"
+        if e['status'] == 'lech':
+            return (f"LỆCH: đang lưu {_fmt(e['value'])}, {e['formula']} ra "
+                    f"{_fmt(e['calc'])} — gõ vào ô để nhận trị tính, hoặc sửa "
+                    f"đầu vào")
         thieu = [n for n, v in e['inputs'].items() if v is None]
         if thieu:
             return f"{e['formula']} — khai {', '.join(thieu)} để app tính"
@@ -290,13 +317,16 @@ class InputDialog(QDialog):
             parts.append(f'THIẾU {len(miss)}: ' + ', '.join(miss))
         if self.bad:
             parts.append(f'{len(self.bad)} ô không phải số')
+        lech = [k for k, e in ent.items() if e['status'] == 'lech']
+        if lech:
+            parts.append(f'LỆCH mạch tính: ' + ', '.join(lech))
         if self.changed():
             parts.append('có thay đổi chưa lưu')
         self.lb_sum.setText(' · '.join(parts))
-        ok = not miss and not self.bad
+        ok = not miss and not self.bad and not lech
         self.b_save.setEnabled(ok and bool(self.block_path) and self.changed())
         self.b_save_as.setEnabled(ok)
-        colour = self.t['err'] if (miss or self.bad) else self.t['ink_3']
+        colour = self.t['err'] if (miss or self.bad or lech) else self.t['ink_3']
         self.lb_sum.setStyleSheet(f'color: {colour};')
 
     def changed(self) -> bool:
@@ -324,10 +354,16 @@ class InputDialog(QDialog):
             store[name] = int(round(x))
         else:
             store[name] = x
+        # Chạm vào khoá đang lệch, hoặc vào một đầu vào (kể cả gián tiếp) của
+        # nó, là người dùng đã xử lý nó — thôi giữ.
+        self.hold = {k for k in self.hold
+                     if k != name and name not in _deps(k)}
         # Đầu vào đổi thì mọi khoá tính phải theo — đừng để một `Ec` cũ nằm
-        # lại cạnh một `f'c` mới.
+        # lại cạnh một `f'c` mới. Riêng khoá đang giữ thì để nguyên trị đã lưu.
+        giu = {k: self.values[k] for k in self.hold if k in self.values}
         self.values = {k: v for k, v in resolve(self.values, self.params).items()
                        if v is not None}
+        self.values.update(giu)
         self._refresh()
 
     def set_value(self, kind: str, name: str, text: str):

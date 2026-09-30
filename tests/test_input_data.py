@@ -268,3 +268,32 @@ def test_luu_lai_cung_kich_thuoc_khong_doc_so_cu_tu_bo_dem(block_file):
     if os.path.getsize(block_file) != st.st_size:
         pytest.skip('kích thước đổi — khoá đệm tự khác, cảnh này không dựng được')
     assert read_inputs(block_file)['RH'] == 75.0
+
+
+@needs_template
+def test_results_dung_topo_da_ghi_khong_dung_lai_tu_template(block_file, tmp_path,
+                                                            monkeypatch, capsys):
+    """`run.py results` từng LUÔN dựng lại topo từ template mặc định trong data/.
+
+    Mặt cắt sinh bằng `--inputs` có `d_L` khác thì điểm kiểm toán bị phân loại
+    theo một mô hình khác hẳn mô hình Midas đã giải — không gì báo. Dựng lại
+    đúng cảnh đó: khối có `d_L` khác, rồi cấm đường dựng lại.
+    """
+    import shutil
+    import run
+    bf = os.path.join(ROOT, 'output', 'S16', 'Beam Force_S16.xls')
+    dxf = os.path.join(ROOT, 'input', 'dxf', 'S16.dxf')
+    if not (os.path.exists(bf) and os.path.exists(dxf)):
+        pytest.skip('thiếu Beam Force/DXF của S16')
+    b = _raw(block_file)
+    b['values']['d_L'] = 0.6
+    _write(block_file, b)
+    run._generate_one(dxf, str(tmp_path), inputs=block_file)
+    shutil.copy(bf, tmp_path / 'S16')
+
+    def cam(*_a, **_k):
+        raise AssertionError('đã dựng lại topo từ template mặc định')
+    monkeypatch.setattr(run, '_rebuild_topo', cam, raising=False)
+    capsys.readouterr()
+    run._process_results(str(tmp_path / 'S16'))
+    assert 'Topo: S16_topo.json (số liệu: so_lieu.json)' in capsys.readouterr().out

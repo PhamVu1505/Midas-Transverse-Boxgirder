@@ -150,7 +150,7 @@ class ProjectPanel(QWidget):
             'Bật: app tính từ hình học của ĐÚNG mặt cắt đó, và ghi cả mạch\n'
             'tính vào nhật ký lẫn chú thích trong file MCT.\n'
             'Tắt: đọc từ template — một template dùng cho nhiều mặt cắt thì\n'
-            'chỉ đúng cho MỘT mặt cắt (S20 thiếu 14% tải bánh, S16 dư 13%).\n\n'
+            'chỉ đúng cho MỘT mặt cắt (S20 thiếu 14% tải bánh, S16 dư 19%).\n\n'
             'IM và tải làn vẫn lấy từ template.')
         self.ck_auto_ll.toggled.connect(self._auto_ll_toggled)
         sv.addWidget(self.ck_auto_ll)

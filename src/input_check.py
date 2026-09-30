@@ -190,6 +190,11 @@ def strip_width_axles(e: float, spacing: float) -> float:
     cự ly đó; tổng bề rộng phân bố cho cả cặp là `E + spacing`, chia đôi cho
     mỗi trục. Dải hẹp hơn cự ly trục thì hai dải không chồng, giữ nguyên `E`.
 
+    **Nguồn là template, không phải quy phạm.** Căn cứ duy nhất đã kiểm được
+    là chính công thức ô Excel; chưa tìm thấy điều khoản TCVN 11823 nào ghi
+    luật này. Nên mạch tính ghi nguồn đúng như vậy — người thẩm tra đọc
+    "TCVN … Bảng 1" sẽ hiểu là quy phạm.
+
     **Bản đầu (N3 bước 1) chỉ có nửa luật** — áp cho xe hai trục, bỏ quên xe
     tải. Phép "tính xuôi tái lập đúng sáu ô Excel" không bắt được vì cả ba dải
     của template mẫu đều hẹp hơn 4300 mm; còn mặt cắt thật thì không: S1 · S16
@@ -307,6 +312,8 @@ def live_load_derivation(auto: dict) -> list:
         f"  Be rong dai: canh hang E = 1140 + 0.833X = {auto['E_can']:.0f} mm",
         f"               giua (+M)  E = 660 + 0.55S  = {auto['E_pos']:.0f} mm",
         f"               giua (-M)  E = 1220 + 0.25S = {auto['E_neg']:.0f} mm",
+        '  Luat cu ly truc (theo template Excel Load!F44:G46, CHUA doi chieu'
+        ' dieu khoan TCVN):',
         '  Xe tai:        E > 4300 thi E = (E + 4300)/2  (hai truc cach nhau 4.3 m)'
         + _axle_note(auto, AXLE_TRUCK),
         '  Xe hai truc:   E = (E_truck + 1200)/2  (hai truc cach nhau 1.2 m)',

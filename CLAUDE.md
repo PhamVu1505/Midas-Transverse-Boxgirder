@@ -307,7 +307,7 @@ python tools/gen_keypair.py                      # sinh khoá ký giấy phép (
 python tools/license_admin.py                    # cấp phép + theo dõi máy đang dùng
 python run.py inputs data/T.xls -o so_lieu.json  # template Excel → khối số liệu .json
 python run.py generate S1.dxf --inputs so_lieu.json  # khối + DXF → MCT (đường của bản web)
-python -m pytest tests -q                        # 328 bài: MCT, kiểm toán, số liệu, driver, NX, giấy phép
+python -m pytest tests -q                        # 333 bài: MCT, kiểm toán, số liệu, driver, NX, giấy phép
 python tools/check_gui.py                        # 34 phép kiểm, bấm thật (skill kiem-gui)
 python tools/audit_gui.py                        # soát ĐỘ PHỦ: bấm hết 57 điều khiển
 python tools/nx_crosscheck.py                    # kiểm chéo nội lực bằng Midas NX API
@@ -904,6 +904,27 @@ không kêu · `resolve` cũ) — bắt **5/5**.
   phụ thuộc mặt cắt) qua đúng cơ chế `Section.template` đã có.
 - Dock Properties → tab *Input data* vẫn chỉ đọc; chưa có nút mở hộp thoại ở đó.
 
+**Bốn chỗ soát lại sau khi tưởng đã xong** (phản biện 30/9) — hai chỗ trong số
+đó bác chính câu tôi vừa viết vào đây:
+
+- **`run.py results` vẫn dựng topo từ template CỨNG trong `data/`** — tức
+  "không chỗ nào đọc sót sang Excel" là sai ở đúng đường CLI của bản web. Mặt cắt
+  sinh bằng `--inputs` có `d_L` khác thì điểm kiểm toán phân loại theo một mô
+  hình khác mô hình đã giải, không gì báo. Nay đọc `<tên>_topo.json` mà
+  `generate` đã ghi (kèm `inputs.file`); không có mới dựng lại, và nói ra.
+- **Hộp thoại lặng lẽ viết lại trị `lech`.** Khối có `Pj = 977` (≠ Ap·fpj/1000 =
+  976,5): CLI từ chối, hộp thoại thì mở bình thường, ghi "không áp được", rồi sửa
+  `RH` là `Pj` thành 976,5 và nút Lưu vẫn sáng. Nay hiện **LỆCH: đang lưu …, ra
+  …**, tô đỏ, **giữ nguyên** cho tới khi người dùng chạm chính khoá đó hoặc một
+  đầu vào (kể cả gián tiếp: `fpu → fpj → Pj`), và khoá Lưu — cùng luật với
+  `validate`. `tests/test_input_dialog.py`; mã cũ đỏ đúng 2 bài mô tả lỗi.
+  Dọc đường: **Qt không phát `itemChanged` khi gõ lại đúng chữ đang có** — hai
+  bài đầu tôi viết "gõ 1860 vào ô fpu" (trị sẵn có) nên chẳng có gì chạy.
+- Tooltip ô tải bánh ghi "S16 dư 13%" là **tỉ số tải**, còn dock in **tỉ số bề
+  rộng dải** (19%). Hai con số khác nhau cho cùng một câu trên cùng một màn hình
+  — đúng lỗi "dock 8%, log 12%" đã khoá. Tooltip nay nói 19%.
+- Luật cự ly trục ghi sai nguồn — xem mục *Luật cự ly trục*.
+
 ### App tự tính tải bánh từ hình học — N3 bước 1 (2026-09-07)
 
 Sáu trị `truck_*`/`tandem_*` của sheet `Load` **không phải số liệu người dùng
@@ -961,6 +982,13 @@ trong MCT ghi rõ luật đã ăn vào dải nào. `tests/test_input_check.py` s
 **công thức Excel chép độc lập** trên bộ tham số cố ý có dải vượt 4300; dựng lại
 mã cũ → **8 bài đỏ**.
 
+**Nguồn của luật là TEMPLATE, chưa phải quy phạm.** Căn cứ duy nhất đã kiểm được
+là chính công thức ô Excel; chưa tìm thấy điều khoản TCVN 11823 nào ghi luật
+4300/1200 mm. Mạch tính trong MCT và `input_derive._WHEEL_REF` ghi nguồn đúng
+như vậy — đừng để nó đứng dưới dòng "TCVN … Bảng 1", người thẩm tra sẽ đọc là
+quy phạm. Luật này đổi tải bánh tự tính tới 11,5%, nên nó đi cùng câu hỏi
+"bật mặc định?" gửi VuPQ.
+
 - **Mặc định TẮT** (`auto_live_load=False`), và MCT ra **trùng khít từng byte**:
   so md5 với worktree ở HEAD, cùng một lượt chạy, **7/7 mặt cắt trùng** (S1 ·
   S7 · S10 · S16 · S20 · S1_V2 · SLT). Cờ này đổi tải bánh của **mọi** mặt cắt,
@@ -1013,7 +1041,7 @@ công:
 ## Current Sprint
 **Goal:** VuPQ chốt 2026-09-05: **DỪNG nhánh Midas Civil 2022, làm Midas NX.** Bốn việc đã làm: bật mặc định `*VERSION` · thẻ Kiểm chéo NX (đã chạy thật, 4/4 ĐẠT) · đọc MAPI-Key từ registry · phép soát ba tệp nguồn có cùng một mô hình không. Việc chờ cuối cùng đã khép: `Local API` **không chạy được** (đo 2026-09-07 — NX báo `Connected` nhưng không mở cổng nào, registry không đổi), nên giữ nguyên đường MOA qua máy chủ MIDAS ở Seoul.
 
-**Trạng thái (2026-09-30):** `pytest tests -q` **328 đạt** · `tools/check_gui.py` **46 đạt · 0 hỏng** (23 phép kiểm × 2 bảng màu) · `tools/audit_gui.py` **67 điều khiển, 63 đạt · 0 hỏng** (nút ở dock và mục menu khai số liệu được bấm và ĐẠT). Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` đẩy remote lần cuối 2026-09-07; **6 commit CHƯA đẩy** (`3bdf3ba` của phiên 7/9 + 5 của phiên 30/9), chưa merge. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
+**Trạng thái (2026-09-30):** `pytest tests -q` **333 đạt** · `tools/check_gui.py` **46 đạt · 0 hỏng** (23 phép kiểm × 2 bảng màu) · `tools/audit_gui.py` **67 điều khiển, 63 đạt · 0 hỏng** (nút ở dock và mục menu khai số liệu được bấm và ĐẠT). Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` đẩy remote lần cuối 2026-09-07; **7 commit CHƯA đẩy** (`3bdf3ba` của phiên 7/9 + 6 của phiên 30/9), chưa merge. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
 
 **Máy đang làm việc không phải máy phát triển.** Repo nằm trên ổ SSD ngoài `H:`, cắm qua lại giữa hai máy. `DESKTOP-NLCA550` (Windows 11 build 10.0.26200) **không có** Inno Setup, nhưng **CÓ cả Midas Civil 2022 và MIDAS CIVIL NX** — ghi chú cũ nói máy này chỉ có NX là **sai** (đo 7/9/2026: `C:\Program Files\MIDAS\midas Civil\CVLw.exe`, tiêu đề `Civil 2022 - [Untitled] - [MIDAS/Civil]`). Mở đồng thời hai bản là bình thường, và `_chon_civil()` lọc đúng. Không có venv trong repo; dựng venv riêng ở `C:\Users\admin\.venvs\mtbv` (**không** đặt trong `%TEMP%` — bản cũ ở đó bị dọn dở dang 30/9/2026: `import xlrd` vẫn qua mà `xlrd.open_workbook` không tồn tại, trông y như lỗi mã) rồi chạy mọi thứ bằng nó, và **luôn đặt `MTB_DATA_DIR`** trỏ thư mục tạm để khỏi đốt ngày dùng thử của máy.
 
@@ -1139,7 +1167,7 @@ As* của Windows 11 bỏ qua `WM_SETTEXT`. Đã vá + 2 bài test.
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
-- 2026-09-30: **N3 bước 2 — khai số liệu trong app, và bước 1 hoá ra chỉ có nửa luật.** Máy này có **Excel**, nên đọc thẳng công thức ô bằng COM thay vì đoán từ trị số — và ngay ô đầu tiên soi đã lộ ra `F44 = IF(G35>4300,(G35+4300)/2,G35)`: xe tải cũng có luật cự ly trục, không chỉ xe hai trục. Phép "tái lập đúng sáu ô Excel, lệch 7·10⁻¹⁵" của bước 1 **không thể** bắt được vì cả ba dải của template mẫu đều hẹp hơn 4300 mm; còn S1 · S16 · SLT thì vượt, và tải xe tải `+M` bị tính **thiếu 8–11,5%** khi bật cờ (cờ TẮT nên MCT mặc định không đổi). Sửa trước, commit riêng (`b5a7639`). Rồi bước 2 làm đúng theo ràng buộc web: **khối số liệu JSON** trước (`src/input_data.py`, `read_inputs` rẽ nhánh ở một chỗ nên mọi nơi dùng được ngay, `run.py generate --inputs`), **mạch tính dạng dữ liệu** sau (`src/input_derive.py`, 19 luật, điền đúng ô đầu vào của sheet → 19/19 tái lập trị Excel), **hộp thoại** cuối cùng (`gui/input_dialog.py`, Ctrl+I). Excel → khối → MCT **trùng md5 8/8**. Dọc đường vá một lỗ cũ: đổi template chung **không hề** đánh dấu kết quả lạc hậu — nay có, và so **trị số** chứ không so đường dẫn. Phép kiểm giao diện mới **bắt được lỗi thật ngay lượt chạy đầu**: `resolve()` "làm tròn lại" `Ec` ở chữ số thứ 16, đủ để cả project bị kêu lạc hậu vô cớ — `pytest` im lặng. Cũng tự bắt được một con số sai của chính mình: đã viết "16/19 luật chạy ngay" trong docstring và commit message, thực tế là **15/19** (19 luật trừ 4 thiếu tham số). `pytest` **287 → 328**; đột biến 8 + 6 + 6 + 5 biến thể, bắt hết. Soát diff lần cuối còn lộ ra một bẫy bộ đệm: `read_inputs` đệm theo `(đường dẫn, mtime, kích thước)`, mà FAT/exFAT làm tròn mtime tới 2 s — lưu hai lần liền với cùng kích thước là lần sinh MCT sau đọc số cũ. `save()` nay xoá đệm của file vừa ghi.
+- 2026-09-30: **N3 bước 2 — khai số liệu trong app, và bước 1 hoá ra chỉ có nửa luật.** Máy này có **Excel**, nên đọc thẳng công thức ô bằng COM thay vì đoán từ trị số — và ngay ô đầu tiên soi đã lộ ra `F44 = IF(G35>4300,(G35+4300)/2,G35)`: xe tải cũng có luật cự ly trục, không chỉ xe hai trục. Phép "tái lập đúng sáu ô Excel, lệch 7·10⁻¹⁵" của bước 1 **không thể** bắt được vì cả ba dải của template mẫu đều hẹp hơn 4300 mm; còn S1 · S16 · SLT thì vượt, và tải xe tải `+M` bị tính **thiếu 8–11,5%** khi bật cờ (cờ TẮT nên MCT mặc định không đổi). Sửa trước, commit riêng (`b5a7639`). Rồi bước 2 làm đúng theo ràng buộc web: **khối số liệu JSON** trước (`src/input_data.py`, `read_inputs` rẽ nhánh ở một chỗ nên mọi nơi dùng được ngay, `run.py generate --inputs`), **mạch tính dạng dữ liệu** sau (`src/input_derive.py`, 19 luật, điền đúng ô đầu vào của sheet → 19/19 tái lập trị Excel), **hộp thoại** cuối cùng (`gui/input_dialog.py`, Ctrl+I). Excel → khối → MCT **trùng md5 8/8**. Dọc đường vá một lỗ cũ: đổi template chung **không hề** đánh dấu kết quả lạc hậu — nay có, và so **trị số** chứ không so đường dẫn. Phép kiểm giao diện mới **bắt được lỗi thật ngay lượt chạy đầu**: `resolve()` "làm tròn lại" `Ec` ở chữ số thứ 16, đủ để cả project bị kêu lạc hậu vô cớ — `pytest` im lặng. Cũng tự bắt được một con số sai của chính mình: đã viết "16/19 luật chạy ngay" trong docstring và commit message, thực tế là **15/19** (19 luật trừ 4 thiếu tham số). `pytest` **287 → 333**; đột biến 8 + 6 + 6 + 5 biến thể, bắt hết. Soát diff lần cuối còn lộ ra một bẫy bộ đệm: `read_inputs` đệm theo `(đường dẫn, mtime, kích thước)`, mà FAT/exFAT làm tròn mtime tới 2 s — lưu hai lần liền với cùng kích thước là lần sinh MCT sau đọc số cũ. `save()` nay xoá đệm của file vừa ghi.
 - 2026-09-07 (chiều): **Khép trọn nhánh Midas Civil 2022 — và một lỗi chặn cả
   nhánh mà cả bốn công cụ kiểm đều mù.** Máy này hoá ra **có sẵn Civil 2022**
   (ghi chú cũ nói chỉ có NX là sai), nên làm nốt hai việc treo. Chạy driver thì

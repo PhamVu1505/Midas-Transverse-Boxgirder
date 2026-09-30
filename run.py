@@ -216,25 +216,19 @@ def _find_dxf_for_section(name: str) -> str:
     return None
 
 
-def _process_results(section_dir: str):
-    """Process results for one section."""
-    name = os.path.basename(section_dir.rstrip('/\\'))
+def _rebuild_topo(name: str):
+    """Dựng lại topo từ DXF + template mặc định — CHỈ khi không có topo.json.
 
-    # Find Beam Force XLS
-    xls_path = _find_beam_force(section_dir)
-    if not xls_path:
-        print(f'[{name}] No Beam Force XLS found in {section_dir}')
-        return None
-
-    # Find DXF to rebuild topology
+    Đây là lối lui cho thư mục kết quả cũ (trước khi CLI ghi topo.json). Nó
+    không biết mặt cắt đã sinh bằng nguồn số liệu nào, nên phải nói ra.
+    """
     dxf_path = _find_dxf_for_section(name)
     if not dxf_path:
         print(f'[{name}] No DXF file found for section {name}')
         return None
-
-    print(f'[{name}] Parsing: {os.path.basename(xls_path)}')
-
-    # Build topology
+    print(f'[{name}] WARNING: không có {name}_topo.json — dựng lại từ DXF + '
+          f'template mặc định; nếu MCT đã sinh bằng nguồn số liệu khác thì '
+          f'điểm kiểm toán có thể lệch mô hình đã giải')
     doc = ezdxf.readfile(dxf_path)
     msp = doc.modelspace()
     excel = EXCEL_PATH if os.path.exists(EXCEL_PATH) else None
@@ -248,6 +242,36 @@ def _process_results(section_dir: str):
     inpoly = inpolys if stype == 'twin_box' else inpolys[0]
     frame = build_frame(_get_polyline_vertices(msp, 'OUTPOLY'), inpoly, d_L=d_L, d_R=d_R)
     _, topo = write_mct(frame, name, excel)
+    return topo
+
+
+def _process_results(section_dir: str):
+    """Process results for one section."""
+    name = os.path.basename(section_dir.rstrip('/\\'))
+
+    # Find Beam Force XLS
+    xls_path = _find_beam_force(section_dir)
+    if not xls_path:
+        print(f'[{name}] No Beam Force XLS found in {section_dir}')
+        return None
+
+    # Topo: ưu tiên đúng file `generate` đã ghi cạnh MCT — đó là mô hình Midas
+    # đã giải. Trước đây LUÔN dựng lại từ template mặc định trong data/, nên
+    # mặt cắt sinh bằng `--inputs x.json` có `d_L`/`d_R` khác thì bị phân loại
+    # điểm kiểm toán theo một mô hình khác hẳn mô hình đã giải, không gì báo.
+    topo_path = os.path.join(section_dir, f'{name}_topo.json')
+    if os.path.exists(topo_path):
+        with open(topo_path, encoding='utf-8') as f:
+            topo = json.load(f)
+        src = (topo.get('inputs') or {}).get('file')
+        print(f'[{name}] Topo: {os.path.basename(topo_path)}'
+              + (f' (số liệu: {src})' if src else ''))
+    else:
+        topo = _rebuild_topo(name)
+        if topo is None:
+            return None
+
+    print(f'[{name}] Parsing: {os.path.basename(xls_path)}')
 
     # Parse beam force
     bf_report = []

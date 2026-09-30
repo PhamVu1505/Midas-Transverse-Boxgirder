@@ -91,7 +91,10 @@ def _wheel(key):
     return fn
 
 
-_WHEEL_REF = 'TCVN 11823-4 Đ.4.6.2.1.3 Bảng 1 + luật cự ly trục'
+# Bề rộng dải là của quy phạm; luật cự ly trục (E > 4300 / 1200) thì mới
+# kiểm được nguồn là ô template, chưa đối chiếu được điều khoản — ghi đúng thế.
+_WHEEL_REF = ('TCVN 11823-4 Bảng 1 (bề rộng dải) · luật cự ly trục theo '
+              'template Excel Load!F44:G46, chưa đối chiếu điều khoản TCVN')
 _WHEEL_F = {
     'truck_can':  'P(1+IM)/E, E = 1140 + 0,833·X; E>4300 → (E+4300)/2; P = 72,5',
     'tandem_can': 'P(1+IM)/E, E = 1140 + 0,833·X; E>1200 → (E+1200)/2; P = 55',
