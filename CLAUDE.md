@@ -305,7 +305,9 @@ python run_gui.py --mct duong/dan/S1.dxf         # tạo MCT ngay, không mở a
 python run_gui.py --dang-ky-chuot-phai           # thêm mục Tạo file MCT vào Explorer
 python tools/gen_keypair.py                      # sinh khoá ký giấy phép (một lần)
 python tools/license_admin.py                    # cấp phép + theo dõi máy đang dùng
-python -m pytest tests -q                        # 149 bài: MCT, kiểm toán, số liệu, driver, NX, giấy phép
+python run.py inputs data/T.xls -o so_lieu.json  # template Excel → khối số liệu .json
+python run.py generate S1.dxf --inputs so_lieu.json  # khối + DXF → MCT (đường của bản web)
+python -m pytest tests -q                        # 328 bài: MCT, kiểm toán, số liệu, driver, NX, giấy phép
 python tools/check_gui.py                        # 34 phép kiểm, bấm thật (skill kiem-gui)
 python tools/audit_gui.py                        # soát ĐỘ PHỦ: bấm hết 57 điều khiển
 python tools/nx_crosscheck.py                    # kiểm chéo nội lực bằng Midas NX API
@@ -798,10 +800,10 @@ nhiều mặt cắt*.
    2026-09-07** — nhưng là **6 khoá, không phải 9**: `d_L`/`d_R` không có lớp
    nào trong bản vẽ mang thông tin, `impact`/`lane_load` là trị quy phạm. Xem
    mục *App tự tính tải bánh từ hình học* ngay dưới.
-2. **Cửa sổ khai báo cho 31 khoá còn lại**, mang luôn mạch tính hiện công thức
-   sang app — không phải chỉ 31 ô trống. **CHƯA LÀM** (7/9/2026): `grep` cả
-   `gui/` không có hộp thoại nào nhập số liệu đầu vào; đường duy nhất vẫn là
-   chọn file `.xls`.
+2. ~~**Cửa sổ khai báo cho 31 khoá còn lại**, mang luôn mạch tính hiện công
+   thức sang app.~~ **ĐÃ LÀM 2026-09-30** — xem mục *Khai số liệu trong app —
+   N3 bước 2* ngay dưới. Làm đúng theo ràng buộc web bên dưới: khối dữ liệu
+   trước, hộp thoại sau.
 
    **VuPQ thêm một ràng buộc (7/9/2026): sau này app lên web, người dùng khai
    số liệu từ xa rồi nộp kèm một file DXF mặt cắt.** Ràng buộc này đổi hình
@@ -822,6 +824,85 @@ nhiều mặt cắt*.
      đó vừa là API cho bản web, vừa là cách kiểm bước 2 bằng `pytest`.
 3. **Xuất ngược ra Excel** làm hồ sơ thẩm tra. Đảo chiều dòng dữ liệu: app là
    nguồn, Excel là bản in. Đây chính là phần "tích hợp báo cáo" VuPQ hỏi.
+
+### Khai số liệu trong app — N3 bước 2 (2026-09-30)
+
+Ba lớp, **mỗi lớp một commit**, đúng thứ tự ràng buộc web đòi:
+
+| Lớp | File | Việc |
+|---|---|---|
+| Khối dữ liệu | `src/input_data.py` | `{format, schema, values, params, units, meta}` — JSON, ghi được ra đĩa, gửi được qua HTTP |
+| Mạch tính | `src/input_derive.py` | 19 luật dạng **dữ liệu** (khoá · công thức · căn cứ · ô Excel gốc · đầu vào · hàm) |
+| Lối vào PyQt | `gui/input_dialog.py` | bảng sửa được + cột *Mạch tính*; lối vào web sau này dùng chung hai lớp trên |
+
+- **Excel thành MỘT TRONG CÁC NGUỒN, rẽ nhánh ở đúng một chỗ.**
+  `read_inputs(path)` thấy đuôi `.json` thì đọc khối. Nhờ vậy **mọi** nơi đang
+  nhận đường dẫn template (writer, worker, CLI, dock Properties, đối chiếu hoạt
+  tải, tab Kiểm toán) dùng được ngay — không chỗ nào đọc sót sang Excel, mà đọc
+  sót thì cảnh báo *Dải tương đương* biến mất không một tiếng động. Nguồn là
+  **nguyên cả file**, không trộn từng khoá.
+- **`values` gồm đúng khoá của `SPEC` + `CONSTANTS`** — không lập bảng khoá thứ
+  hai. Nhóm hiển thị cũng chỉ đánh dấu **khoá mở đầu** (`GROUP_START`), không kê
+  lại danh sách. Luật đọc chặt như sheet `INPUT`, chặt hơn ở **khoá lạ** (gõ
+  nhầm `fC` phải chỉ ra `fC`).
+- **Excel → khối → MCT trùng md5 8/8 mặt cắt**, cả khi bật tải bánh tự tính;
+  mặc định trùng md5 8/8 với trước phiên. `topo['inputs'] = {kind: app|excel|
+  none, file}` — cố ý **không** ghi vào văn bản MCT, để phép so md5 ấy còn có
+  nghĩa.
+- `run.py generate --inputs X.json` (= đường "khối + 1 DXF → MCT" của bản web)
+  và `run.py inputs T.xls -o X.json`. **Khai nguồn mà nguồn không có thì dừng**,
+  không lui về template mặc định.
+
+**Mạch tính — công thức đọc bằng COM, không đoán.** Excel có trên
+DESKTOP-NLCA550, nên đọc thẳng `Range.Formula` của từng ô (`xlrd` chỉ đọc trị
+của `.xls` — lý do ghi chú cũ tưởng Excel "không ghi" luật `E_tandem`). Điền
+tham số bằng đúng ô đầu vào của sheet → **19/19 luật tái lập trị Excel**.
+
+- Ba loại khoá: **tính** (có luật, đủ tham số → ô khoá lại, tự đổi theo đầu vào)
+  · **khai** (người dùng gõ) · **tham số** (`γc`, `VB`, `Cd`, bề dày lớp phủ, `S`/`X`
+  dải tương đương… — đầu vào của mạch, không phải khoá của writer).
+- Đủ tham số mà trị lưu ≠ trị tính → **khối tự mâu thuẫn → `InputError`**. Hai
+  con số cho cùng một đại lượng trong cùng một file thì người thẩm tra không biết
+  tin con số nào.
+- Chuyển từ Excel, `params_from_values()` chỉ suy tham số **một nghĩa**: `γc`,
+  `k_py`, `k_pj`, `h_lc`, `z_wl`, `S`/`X` → **15/19 luật chạy ngay**. Không suy
+  `VB`/`S`/`Cd` (chỉ biết tích `V²·Cd`), bề dày lớp phủ, diện tích lan can: cặp số
+  nào cũng cho cùng kết quả, chọn một cặp là **bịa ra** một mạch tính. Tham số
+  suy xong mà luật của nó không tái lập được trị gốc thì **bỏ**.
+- `suggest` của tham số (2500, 22,5, 0,75…) **chỉ hiện mờ** trong ô trống, không
+  bao giờ là mặc định.
+- **`resolve()` giữ nguyên từng bit trị đã khớp.** Bản đầu thay mọi khoá tính
+  bằng trị vừa tính: `Ec` của Excel `38006.9894887769` thành `…77693` — lệch ở
+  chữ số thứ 16, đủ làm khối vừa chuyển bị coi là "khác số liệu" và **cả project
+  bị đánh dấu lạc hậu**. `pytest` không thấy; phép kiểm giao diện mới bắt được
+  ngay lượt chạy đầu.
+
+**Đổi nguồn số liệu giờ đánh dấu lạc hậu — trước đây KHÔNG.** Ô chọn template
+chung (`_pick_tpl`) từng gán thẳng `project.template` rồi thôi: đổi nguồn sau
+khi đã có Beam Force là bảng kiểm toán ra số đẹp của một bộ số liệu khác. Nay
+`Project.set_shared_template()` so **trị số** (`same_inputs`) trước/sau — chuyển
+Excel sang khối cùng 40 con số là đổi lối vào, **không** lạc hậu; khác số thì
+lạc hậu. Sửa khối đang dùng tại chỗ → `inputs_edited()`.
+
+**Lối vào**: nút *Khai số liệu trong app…* ngay dưới ô template ở dock trái ·
+`Tệp → Khai số liệu đầu vào` (**Ctrl+I**). Ô trống = thiếu, tô vàng, khoá nút
+Lưu. Lưu lần đầu từ Excel luôn hỏi chỗ ghi — **không bao giờ ghi đè file Excel**.
+Mọi ô chọn nguồn số liệu (dock, Tùy chọn, cửa sổ chuột phải) dùng chung
+`input_data.FILE_FILTER`, nhận cả `.json`.
+
+**Chứng minh**: `pytest` 292 → **328**; đột biến backend **6/6**, mạch tính
+**6/6**; `check_gui::kiem_khai_so_lieu_trong_app` dựng lại **5 biến thể** (nút
+chết · tính mà không vẽ lại · đổi nguồn cùng số vẫn kêu lạc hậu · sửa tại chỗ
+không kêu · `resolve` cũ) — bắt **5/5**.
+
+**Chưa làm**:
+- **Bước 3 — xuất ngược ra Excel** làm hồ sơ thẩm tra. `RULES` đã mang sẵn công
+  thức, căn cứ và ô gốc cho việc đó.
+- Khối nằm ở **file riêng** do `.mtbproj` trỏ tới, chưa nhúng vào `.mtbproj`.
+  Khối là một dict thuần nên nhúng được bất cứ lúc nào; giữ file riêng vì mọi
+  chỗ đang nhận đường dẫn, và vì mỗi mặt cắt gán được khối riêng (`d_L`/`d_R`
+  phụ thuộc mặt cắt) qua đúng cơ chế `Section.template` đã có.
+- Dock Properties → tab *Input data* vẫn chỉ đọc; chưa có nút mở hộp thoại ở đó.
 
 ### App tự tính tải bánh từ hình học — N3 bước 1 (2026-09-07)
 
@@ -932,9 +1013,9 @@ công:
 ## Current Sprint
 **Goal:** VuPQ chốt 2026-09-05: **DỪNG nhánh Midas Civil 2022, làm Midas NX.** Bốn việc đã làm: bật mặc định `*VERSION` · thẻ Kiểm chéo NX (đã chạy thật, 4/4 ĐẠT) · đọc MAPI-Key từ registry · phép soát ba tệp nguồn có cùng một mô hình không. Việc chờ cuối cùng đã khép: `Local API` **không chạy được** (đo 2026-09-07 — NX báo `Connected` nhưng không mở cổng nào, registry không đổi), nên giữ nguyên đường MOA qua máy chủ MIDAS ở Seoul.
 
-**Trạng thái (2026-09-07):** `pytest tests -q` **287 đạt** · `tools/check_gui.py` **44 đạt · 0 hỏng** (22 phép kiểm × 2 bảng màu) · `tools/audit_gui.py` **65 điều khiển, 61 đạt · 0 hỏng** (ô tích tải bánh mới được bấm và ĐẠT). Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` **đã đẩy remote 2026-09-07**, đi trước **22 commit**, chưa merge. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
+**Trạng thái (2026-09-30):** `pytest tests -q` **328 đạt** · `tools/check_gui.py` **46 đạt · 0 hỏng** (23 phép kiểm × 2 bảng màu) · `tools/audit_gui.py` **67 điều khiển, 63 đạt · 0 hỏng** (nút ở dock và mục menu khai số liệu được bấm và ĐẠT). Đã bump **v1.5.0** ở đủ 5 chỗ. `master` = `1b99f44`; nhánh `feature/v1.5-license` đẩy remote lần cuối 2026-09-07; **6 commit CHƯA đẩy** (`3bdf3ba` của phiên 7/9 + 5 của phiên 30/9), chưa merge. Cả 6 mặt cắt đã chạy trên Midas Civil 2022 thật: **6 đạt · 0 hỏng** (số liệu cũ, mã đường đó không đổi).
 
-**Máy đang làm việc không phải máy phát triển.** Repo nằm trên ổ SSD ngoài `H:`, cắm qua lại giữa hai máy. `DESKTOP-NLCA550` (Windows 11 build 10.0.26200) **không có** Inno Setup, nhưng **CÓ cả Midas Civil 2022 và MIDAS CIVIL NX** — ghi chú cũ nói máy này chỉ có NX là **sai** (đo 7/9/2026: `C:\Program Files\MIDAS\midas Civil\CVLw.exe`, tiêu đề `Civil 2022 - [Untitled] - [MIDAS/Civil]`). Mở đồng thời hai bản là bình thường, và `_chon_civil()` lọc đúng. Không có venv trong repo; dựng venv riêng ở `%TEMP%\mtbv` rồi chạy mọi thứ bằng nó, và **luôn đặt `MTB_DATA_DIR`** trỏ thư mục tạm để khỏi đốt ngày dùng thử của máy.
+**Máy đang làm việc không phải máy phát triển.** Repo nằm trên ổ SSD ngoài `H:`, cắm qua lại giữa hai máy. `DESKTOP-NLCA550` (Windows 11 build 10.0.26200) **không có** Inno Setup, nhưng **CÓ cả Midas Civil 2022 và MIDAS CIVIL NX** — ghi chú cũ nói máy này chỉ có NX là **sai** (đo 7/9/2026: `C:\Program Files\MIDAS\midas Civil\CVLw.exe`, tiêu đề `Civil 2022 - [Untitled] - [MIDAS/Civil]`). Mở đồng thời hai bản là bình thường, và `_chon_civil()` lọc đúng. Không có venv trong repo; dựng venv riêng ở `C:\Users\admin\.venvs\mtbv` (**không** đặt trong `%TEMP%` — bản cũ ở đó bị dọn dở dang 30/9/2026: `import xlrd` vẫn qua mà `xlrd.open_workbook` không tồn tại, trông y như lỗi mã) rồi chạy mọi thứ bằng nó, và **luôn đặt `MTB_DATA_DIR`** trỏ thư mục tạm để khỏi đốt ngày dùng thử của máy.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
@@ -990,16 +1071,24 @@ N2. **Plugin NX — KHÔNG làm bây giờ.** Khảo sát 2026-09-04: NX **khôn
 N3. **Bỏ template Excel, khai số liệu trong app** — VuPQ yêu cầu 2026-09-05.
     **Bước 1 XONG 2026-09-07**: app tự tính sáu trị tải bánh từ hình học mặt
     cắt, mặc định TẮT, ô tích ở dock trái → THIẾT LẬP. Xem mục *App tự tính
-    tải bánh từ hình học*. Còn hai bước, và **một câu chờ VuPQ**:
+    tải bánh từ hình học*. **Bước 2 XONG 2026-09-30**: khối số liệu JSON +
+    mạch tính dạng dữ liệu + hộp thoại (Ctrl+I) — xem mục *Khai số liệu trong
+    app*. Dọc đường sửa luôn **nửa luật cự ly trục còn thiếu** của bước 1 (xe
+    tải `E>4300`), xem mục *Luật cự ly trục*. Còn bước 3, và **một câu chờ
+    VuPQ**:
 
     * **Có bật mặc định không?** Rủi ro kỹ thuật đã bằng không (7/7 mặt cắt
       trùng khít khi tắt; bật thì diff chỉ gồm chú thích + con số tải bánh).
       Nhưng bật là **đổi nội lực của mọi mặt cắt**, kể cả 6 mặt cắt đã đi trọn
       chu trình QA trên Civil 2022. Đúng khuôn quyết định của `*VERSION`: giới
       thiệu TẮT → đo → VuPQ chốt bật. **Đừng tự bật.**
-    * **Bước 2** — cửa sổ khai báo cho 31 khoá còn lại, mang mạch tính hiện
-      công thức sang app.
-    * **Bước 3** — xuất ngược ra Excel làm hồ sơ thẩm tra.
+    * **Bước 3** — xuất ngược ra Excel làm hồ sơ thẩm tra. `input_derive.RULES`
+      đã mang sẵn công thức · căn cứ · ô Excel gốc cho từng đại lượng.
+    * **Câu hỏi thứ hai cho VuPQ**: có nên sửa template Excel mẫu sao cho các ô
+      đầu vào của mạch tính (`E9`, `G63`, `G64`, `C68`, diện tích lan can) nằm
+      trên sheet `INPUT` không? Khi đó `from_excel` chuyển được **19/19** luật
+      thay vì 15/19. App **không** tự đọc các ô đó theo toạ độ cứng — đó đúng là
+      lớp lỗi đã làm lệch 20/21 khoá sheet `Load`.
 
     Việc này **không phụ thuộc NX hay Civil 2022** nên làm được bất cứ lúc nào.
 
@@ -1050,6 +1139,7 @@ As* của Windows 11 bỏ qua `WM_SETTEXT`. Đã vá + 2 bài test.
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-09-30: **N3 bước 2 — khai số liệu trong app, và bước 1 hoá ra chỉ có nửa luật.** Máy này có **Excel**, nên đọc thẳng công thức ô bằng COM thay vì đoán từ trị số — và ngay ô đầu tiên soi đã lộ ra `F44 = IF(G35>4300,(G35+4300)/2,G35)`: xe tải cũng có luật cự ly trục, không chỉ xe hai trục. Phép "tái lập đúng sáu ô Excel, lệch 7·10⁻¹⁵" của bước 1 **không thể** bắt được vì cả ba dải của template mẫu đều hẹp hơn 4300 mm; còn S1 · S16 · SLT thì vượt, và tải xe tải `+M` bị tính **thiếu 8–11,5%** khi bật cờ (cờ TẮT nên MCT mặc định không đổi). Sửa trước, commit riêng (`b5a7639`). Rồi bước 2 làm đúng theo ràng buộc web: **khối số liệu JSON** trước (`src/input_data.py`, `read_inputs` rẽ nhánh ở một chỗ nên mọi nơi dùng được ngay, `run.py generate --inputs`), **mạch tính dạng dữ liệu** sau (`src/input_derive.py`, 19 luật, điền đúng ô đầu vào của sheet → 19/19 tái lập trị Excel), **hộp thoại** cuối cùng (`gui/input_dialog.py`, Ctrl+I). Excel → khối → MCT **trùng md5 8/8**. Dọc đường vá một lỗ cũ: đổi template chung **không hề** đánh dấu kết quả lạc hậu — nay có, và so **trị số** chứ không so đường dẫn. Phép kiểm giao diện mới **bắt được lỗi thật ngay lượt chạy đầu**: `resolve()` "làm tròn lại" `Ec` ở chữ số thứ 16, đủ để cả project bị kêu lạc hậu vô cớ — `pytest` im lặng. Cũng tự bắt được một con số sai của chính mình: đã viết "16/19 luật chạy ngay" trong docstring và commit message, thực tế là **15/19** (19 luật trừ 4 thiếu tham số). `pytest` **287 → 328**; đột biến 8 + 6 + 6 + 5 biến thể, bắt hết. Soát diff lần cuối còn lộ ra một bẫy bộ đệm: `read_inputs` đệm theo `(đường dẫn, mtime, kích thước)`, mà FAT/exFAT làm tròn mtime tới 2 s — lưu hai lần liền với cùng kích thước là lần sinh MCT sau đọc số cũ. `save()` nay xoá đệm của file vừa ghi.
 - 2026-09-07 (chiều): **Khép trọn nhánh Midas Civil 2022 — và một lỗi chặn cả
   nhánh mà cả bốn công cụ kiểm đều mù.** Máy này hoá ra **có sẵn Civil 2022**
   (ghi chú cũ nói chỉ có NX là sai), nên làm nốt hai việc treo. Chạy driver thì
