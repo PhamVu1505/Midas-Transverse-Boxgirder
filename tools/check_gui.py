@@ -396,6 +396,68 @@ def kiem_o_tu_tinh_tai_banh(c):
             f'nạp lại im tiếng')
 
 
+def kiem_khai_so_lieu_trong_app(c):
+    """Khai số liệu trong app: mở từ dock, chuỗi tính chạy, đổi nguồn đúng lúc.
+
+    Bốn chiều, mỗi chiều một cách hỏng mà `pytest` không thấy:
+
+    1. **Nút ở dock mở được hộp thoại** trên đúng template đang dùng.
+    2. **Sửa đầu vào thì ô tính đổi theo** — đọc CHỮ trong ô `Ec`, không đọc
+       biến nội bộ: hộp thoại tính đúng mà quên vẽ lại thì người dùng vẫn đọc
+       con số cũ.
+    3. **Chuyển Excel → khối cùng số liệu KHÔNG làm kết quả lạc hậu.** Đó là
+       đổi lối vào chứ không đổi mô hình; kêu lạc hậu lúc này là bắt chạy lại
+       Midas vô cớ, và người dùng thôi đọc cảnh báo.
+    4. **Sửa con số rồi lưu thì CÓ lạc hậu.** Ô chọn template chung từng gán
+       thẳng `project.template` mà không đánh dấu gì — đổi số liệu sau khi đã
+       có Beam Force là bảng kiểm toán ra số đẹp của một bộ số liệu khác.
+    """
+    import tempfile
+    from PyQt6.QtWidgets import QMessageBox
+    from gui import input_dialog as D
+
+    co_kq = [s.name for s in c.w.project if s.beam_force and not s.template]
+    mo, goc_exec, goc_mb = [], D.InputDialog.exec, QMessageBox.exec
+    D.InputDialog.exec = lambda self: mo.append(self) or 0
+    QMessageBox.exec = lambda self: QMessageBox.StandardButton.Yes
+    tmp = tempfile.mkdtemp(prefix='kiem_so_lieu_')
+    try:
+        c.w.panel.b_inputs.click()
+        c.step()
+        assert mo, 'bấm "Khai số liệu trong app…" mà không hộp thoại nào mở'
+        d = mo[0]
+        assert 'Midas-Transverse-Boxgirder-analysis.xls' in d.lb_src.text(), \
+            f'hộp thoại không mở trên template đang dùng: {d.lb_src.text()!r}'
+
+        # (3) lưu y nguyên thành khối → đổi nguồn, không lạc hậu
+        p1 = os.path.join(tmp, 'a.json')
+        assert d._write(p1), 'lưu khối số liệu thất bại'
+        c.step()
+        assert c.w.panel.ed_tpl.text() == p1, \
+            f'dock vẫn trỏ {c.w.panel.ed_tpl.text()!r}, không phải khối vừa lưu'
+        bi = [n for n in co_kq if c.w.project.find(n).stale]
+        assert not bi, f'đổi sang khối CÙNG số liệu mà {bi} bị đánh dấu lạc hậu'
+
+        # (2) sửa f'c → chữ trong ô Ec đổi
+        o_ec = d.table.item(d._rows[('v', 'Ec')], D.C_VAL)
+        truoc = o_ec.text()
+        d.set_value('v', 'fc', '40')
+        c.step()
+        assert o_ec.text() != truoc, f"sửa f'c mà ô Ec vẫn ghi {truoc}"
+
+        # (4) lưu con số mới tại chỗ → lạc hậu
+        assert d._write(p1)
+        c.step()
+        khong = [n for n in co_kq if 'Số liệu' not in (c.w.project.find(n).stale or '')]
+        assert not khong, f'sửa số liệu đang dùng mà {khong} không bị đánh dấu lạc hậu'
+        d._baseline = d._snapshot()
+        d.close()
+    finally:
+        D.InputDialog.exec = goc_exec
+        QMessageBox.exec = goc_mb
+    return f'mở từ dock · Ec {truoc} → {o_ec.text()} · {len(co_kq)} mặt cắt lạc hậu đúng lúc'
+
+
 def kiem_bat_tat_duoc_tung_dock(c):
     """Ba mục `Xem → Panel…` phải bật/tắt được dock thật.
 
@@ -834,6 +896,7 @@ CHECKS = [
     kiem_preflight_hoi_truoc_khi_tao,
     kiem_canh_bao_hoat_tai_tra_duoc_bat_ky_luc_nao,
     kiem_o_tu_tinh_tai_banh,
+    kiem_khai_so_lieu_trong_app,
     kiem_bat_tat_duoc_tung_dock,
     kiem_khong_co_widget_mo_coi,
     kiem_thanh_trang_thai_khong_chong_chu,

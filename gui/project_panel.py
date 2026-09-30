@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget,
                              QCheckBox, QLineEdit, QScrollArea,
                              QFrame, QSizePolicy, QMessageBox)
 
+from src.input_data import FILE_FILTER as TEMPLATE_FILTER, is_block_path
 from src.project import (Project, STATUS_LABEL, NEW, GENERATED, ASSIGNED,
                          CHECKED, ERROR)
 from .theme import LIGHT, FONT_MONO
@@ -125,6 +126,15 @@ class ProjectPanel(QWidget):
         self.ed_tpl, r1 = self._path_row('Template số liệu', self._pick_tpl)
         self.ed_out, r2 = self._path_row('Thư mục kết quả', self._pick_out)
         sv.addWidget(r1)
+        # Khai số liệu ngay trong app — đặt sát ô template vì nó sửa đúng thứ
+        # ô đó trỏ tới. Lối vào thứ hai là Tệp → Khai số liệu đầu vào (Ctrl+I).
+        self.b_inputs = QPushButton('Khai số liệu trong app…')
+        self.b_inputs.setToolTip(
+            'Mở số liệu của template hiện tại thành bảng sửa được, kèm mạch\n'
+            'tính (Ec, gió, tải bánh, cáp…). Lưu ra một khối số liệu .json —\n'
+            'file Excel gốc không bị đụng.')
+        self.b_inputs.clicked.connect(self._open_inputs)
+        sv.addWidget(self.b_inputs)
         sv.addWidget(r2)
         self.ed_out.textChanged.connect(self._out_typed)
 
@@ -140,7 +150,7 @@ class ProjectPanel(QWidget):
             'Bật: app tính từ hình học của ĐÚNG mặt cắt đó, và ghi cả mạch\n'
             'tính vào nhật ký lẫn chú thích trong file MCT.\n'
             'Tắt: đọc từ template — một template dùng cho nhiều mặt cắt thì\n'
-            'chỉ đúng cho MỘT mặt cắt (S20 thiếu 14% tải bánh, S16 dư 22%).\n\n'
+            'chỉ đúng cho MỘT mặt cắt (S20 thiếu 14% tải bánh, S16 dư 13%).\n\n'
             'IM và tải làn vẫn lấy từ template.')
         self.ck_auto_ll.toggled.connect(self._auto_ll_toggled)
         sv.addWidget(self.ck_auto_ll)
@@ -243,13 +253,33 @@ class ProjectPanel(QWidget):
 
     def _pick_tpl(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, 'Chọn template số liệu', '.',
-            'File Excel (*.xls *.xlsx);;Tất cả (*)')
+            self, 'Chọn nguồn số liệu', '.', TEMPLATE_FILTER)
         if path:
-            self.project.template = path
-            self.project.touch()
-            self._set_path(self.ed_tpl, path)
-            self.settings_changed.emit()
+            self.set_shared_template(path)
+
+    def _open_inputs(self):
+        """Nhờ cửa sổ chính mở hộp thoại — nó giữ theme và nhật ký. Không có
+        cửa sổ chính (lúc dựng thử) thì không làm gì."""
+        mo = getattr(self.window(), 'open_inputs', None)
+        if mo:
+            mo()
+
+    def set_shared_template(self, path: str):
+        """Đổi nguồn số liệu chung — và nói ra khi kết quả cũ hết hiệu lực.
+
+        Trước đây gán thẳng `project.template`: đổi nguồn sau khi đã có Beam
+        Force thì bảng nội lực thuộc về bộ số liệu khác mà không gì báo.
+        """
+        lac_hau = self.project.set_shared_template(path)
+        self._set_path(self.ed_tpl, path)
+        self._log('Nguồn số liệu: ' + os.path.basename(path)
+                  + (' (khai trong app)' if is_block_path(path) else ''))
+        if lac_hau:
+            self._log(f'{lac_hau} mặt cắt đã có kết quả — nội lực đang gán '
+                      f'tính từ số liệu cũ. Hãy tạo lại MCT và chạy lại '
+                      f'Midas.', 'warning')
+        self.refresh()
+        self.settings_changed.emit()
 
     def _pick_out(self):
         folder = QFileDialog.getExistingDirectory(
@@ -636,8 +666,7 @@ class ProjectPanel(QWidget):
         """
         if path is None:
             path, _ = QFileDialog.getOpenFileName(
-                self, 'Chọn template số liệu', '.',
-                'File Excel (*.xls *.xlsx);;Tất cả (*)')
+                self, 'Chọn nguồn số liệu', '.', TEMPLATE_FILTER)
             if not path:
                 return
 

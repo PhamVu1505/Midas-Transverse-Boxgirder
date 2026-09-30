@@ -143,6 +143,25 @@ dùng chung được một template.</p>
 <p>Kiểm tra trước khi chạy: <b>Công cụ → Kiểm tra template số liệu</b> sẽ liệt
 kê cả 40 khoá và đối chiếu với ô gốc bên sheet con, bắt được trường hợp công
 thức bị dán thành số cứng.</p>
+
+<h3 style="color:{ink}">Khai số liệu ngay trong app</h3>
+<p>Không muốn sửa file Excel? Bấm <b>Khai số liệu trong app…</b> ở dock trái
+(hoặc <b>Tệp → Khai số liệu đầu vào</b>, <code>Ctrl+I</code>). Số liệu của
+template hiện tại mở thành một bảng sửa được, chia nhóm Vật liệu · Tĩnh tải ·
+Gió · Nhiệt độ · Hoạt tải · Cáp DƯL. Lưu ra một <b>khối số liệu</b>
+<code>.json</code> — file Excel gốc không bị đụng — rồi chọn khối đó làm nguồn
+số liệu như chọn một template.</p>
+<p>Cột <b>Mạch tính</b> ghi công thức của từng đại lượng tính được (<code>Ec =
+0,043·γc^1,5·√f'c</code>, <code>PD = 0,0006·V²·Cd</code>, <code>Pj =
+Ap·fpj/1000</code>, tải bánh theo dải tương đương…) kèm trị các đầu vào. Đủ tham
+số thì ô giá trị khoá lại và tự đổi khi bạn sửa đầu vào; thiếu tham số thì cột
+này nói còn thiếu gì để chương trình tính hộ. Chuyển từ Excel sang, chương trình
+tự suy những tham số suy được một nghĩa (γc, cự ly sườn S, cánh hẫng X…); tốc độ
+gió, bề dày lớp phủ, diện tích lan can thì bạn tự khai.</p>
+{note('Ô trống là <b>thiếu</b> — tô vàng, và nút Lưu khoá lại. Không có trị mặc '
+      'định: số gợi ý chỉ hiện mờ bên cạnh. Sửa số liệu đang dùng sau khi đã '
+      'có Beam Force thì các mặt cắt đó bị đánh dấu <b>lạc hậu</b>; chỉ chuyển '
+      'Excel sang khối với cùng con số thì không.', warn, t['warn_bg'])}
 '''),
 
         ('Tạo file MCT', f'''
@@ -549,21 +568,22 @@ trình. Đổi được ngay trên cửa sổ đó.</p>
 <tr><td><code>Ctrl+O</code></td><td>Thêm DXF</td></tr>
 <tr style="background:{soft}"><td><code>Ctrl+T</code></td>
     <td>Chọn template số liệu</td></tr>
-<tr><td><code>F5</code></td><td>Tạo MCT toàn bộ</td></tr>
-<tr style="background:{soft}"><td><code>Shift+F5</code></td>
+<tr><td><code>Ctrl+I</code></td><td>Khai số liệu đầu vào trong app</td></tr>
+<tr style="background:{soft}"><td><code>F5</code></td><td>Tạo MCT toàn bộ</td></tr>
+<tr><td><code>Shift+F5</code></td>
     <td>Tạo MCT cho mặt cắt đang chọn</td></tr>
-<tr><td><code>F8</code></td>
+<tr style="background:{soft}"><td><code>F8</code></td>
     <td>Chạy Midas/Civil <i>(phải bật ở Tùy chọn → Midas)</i></td></tr>
-<tr style="background:{soft}"><td><code>Ctrl+B</code></td>
+<tr><td><code>Ctrl+B</code></td>
     <td>Gán file Beam Force</td></tr>
-<tr><td><code>F6</code></td><td>Xử lý Beam Force</td></tr>
-<tr style="background:{soft}"><td><code>F7</code></td><td>Kiểm toán mặt cắt</td></tr>
-<tr><td><code>F</code></td><td>Vừa khung nhìn</td></tr>
-<tr style="background:{soft}"><td><code>Ctrl+L</code></td><td>Xoá nhật ký</td></tr>
-<tr><td><code>Ctrl+,</code></td><td>Tùy chọn giao diện</td></tr>
-<tr style="background:{soft}"><td><code>Ctrl+Shift+L</code></td>
+<tr style="background:{soft}"><td><code>F6</code></td><td>Xử lý Beam Force</td></tr>
+<tr><td><code>F7</code></td><td>Kiểm toán mặt cắt</td></tr>
+<tr style="background:{soft}"><td><code>F</code></td><td>Vừa khung nhìn</td></tr>
+<tr><td><code>Ctrl+L</code></td><td>Xoá nhật ký</td></tr>
+<tr style="background:{soft}"><td><code>Ctrl+,</code></td><td>Tùy chọn giao diện</td></tr>
+<tr><td><code>Ctrl+Shift+L</code></td>
     <td>Giấy phép — trạng thái, kích hoạt, xin cấp</td></tr>
-<tr><td><code>F1</code></td><td>Mở hướng dẫn này</td></tr>
+<tr style="background:{soft}"><td><code>F1</code></td><td>Mở hướng dẫn này</td></tr>
 </table>
 '''),
 

@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
                              QMessageBox, QProgressBar, QPushButton,
                              QVBoxLayout, QWidget)
 
+from src.input_data import FILE_FILTER
 from src.security import guard, usage_log
 from .widgets import LogView
 from .worker import GenerateWorker
@@ -148,7 +149,7 @@ class QuickMctDialog(QDialog):
     def _pick_template(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, 'Chọn template số liệu',
                                               self.template or '',
-                                              'Excel (*.xls *.xlsx);;Tất cả (*.*)')
+                                              FILE_FILTER)
         if path:
             self.template = path
             self._refresh_head()

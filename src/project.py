@@ -40,6 +40,23 @@ STATUS_LABEL = {
 STATUS_ORDER = [NEW, GENERATED, ASSIGNED, CHECKED, ERROR]
 
 
+def same_inputs(a: str, b: str) -> bool:
+    """Hai nguồn số liệu có cho ra CÙNG các con số không.
+
+    Đọc không được bên nào thì coi là KHÁC: không biết chắc là giống thì phải
+    nói ra rằng kết quả có thể đã lạc hậu, chứ không im lặng cho qua.
+    """
+    if not a and not b:
+        return True
+    try:
+        from .input_data import keys
+        from .input_reader import read_inputs
+        da, db = read_inputs(a, strict=True), read_inputs(b, strict=True)
+    except Exception:
+        return False
+    return all(da.get(k) == db.get(k) for k in keys())
+
+
 @dataclass
 class Section:
     """Một mặt cắt ngang trong project."""
@@ -272,6 +289,49 @@ class Project:
                  + ') sau khi có kết quả — nội lực đang gán tính từ tải bánh '
                    'cũ. Hãy tạo lại MCT và chạy lại Midas.')
         return sum(1 for s in self.sections if self.mark_stale(s.name, ly_do))
+
+    def set_shared_template(self, path: str) -> int:
+        """Đổi nguồn số liệu CHUNG của project (template Excel hoặc khối `.json`).
+
+        Trước đây ô chọn template gán thẳng `self.template` rồi thôi — đổi nguồn
+        số liệu sau khi đã có Beam Force là bảng nội lực thuộc về một bộ số liệu
+        khác mà không có gì nói ra. Nay đánh dấu lạc hậu mọi mặt cắt dùng
+        template chung.
+
+        So **trị số**, không so đường dẫn: chuyển template Excel sang khối số
+        liệu của app (cùng 40 con số) là đổi lối vào, không đổi mô hình — đánh
+        dấu lạc hậu lúc đó là bắt người dùng chạy lại Midas vô cớ.
+
+        Returns:
+            số mặt cắt vừa bị đánh dấu lạc hậu.
+        """
+        truoc = self.template
+        if os.path.normcase(os.path.abspath(path or '')) == \
+                os.path.normcase(os.path.abspath(truoc or '')):
+            return 0
+        self.template = path
+        self._dirty = True
+        if same_inputs(truoc, path):
+            return 0
+        ly_do = ('Nguồn số liệu đầu vào đã đổi (' + os.path.basename(path or '')
+                 + ') sau khi có kết quả — nội lực đang gán tính từ số liệu cũ. '
+                   'Hãy tạo lại MCT và chạy lại Midas.')
+        return sum(1 for s in self.sections
+                   if not s.template and self.mark_stale(s.name, ly_do))
+
+    def inputs_edited(self, path: str) -> int:
+        """Khối số liệu `path` vừa được sửa TẠI CHỖ — đánh dấu lạc hậu mọi mặt
+        cắt đang dùng nó. Chỗ gọi (hộp thoại khai số liệu) đã so trước/sau."""
+        key = os.path.normcase(os.path.abspath(path))
+        ly_do = ('Số liệu đầu vào (' + os.path.basename(path) + ') đã sửa sau '
+                 'khi có kết quả — nội lực đang gán tính từ số liệu cũ. Hãy tạo '
+                 'lại MCT và chạy lại Midas.')
+        n = 0
+        for s in self.sections:
+            tpl = self.template_for(s)
+            if tpl and os.path.normcase(os.path.abspath(tpl)) == key:
+                n += self.mark_stale(s.name, ly_do)
+        return n
 
     def set_check_opts(self, name: str, opts: dict):
         s = self.find(name)

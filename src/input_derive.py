@@ -197,10 +197,16 @@ def derive(values: dict, params: dict = None) -> list:
 def resolve(values: dict, params: dict = None) -> dict:
     """Bộ số liệu mới với mọi khoá tính được thay bằng trị tính — cho hộp thoại:
     người dùng sửa `fc` thì `Ec` phải tự đổi theo, không để một `Ec` cũ nằm lại.
+
+    Trị đang lưu mà đã KHỚP trị tính (trong `REL_TOL`) thì giữ nguyên từng bit.
+    Thay vô điều kiện thì `Ec` của Excel `38006.9894887769` thành
+    `38006.98948877693` — lệch ở chữ số thứ 16, nhưng đủ làm khối vừa chuyển từ
+    Excel bị coi là "khác số liệu", và mọi mặt cắt bị đánh dấu lạc hậu vô cớ
+    (`tools/check_gui.py::kiem_khai_so_lieu_trong_app` bắt được).
     """
     out = dict(values)
     for e in derive(values, params):
-        if e['calc'] is not None:
+        if e['calc'] is not None and e['status'] != 'tinh':
             out[e['key']] = e['calc']
     return out
 

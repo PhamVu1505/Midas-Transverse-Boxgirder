@@ -205,3 +205,66 @@ def test_dong_lenh_sinh_mct_tu_khoi(block_file, tmp_path):
     topo = json.loads((tmp_path / 'J' / 'S16' / 'S16_topo.json')
                       .read_text(encoding='utf-8'))
     assert topo['inputs']['kind'] == 'app'
+
+
+# ─────────────────────────────────────────────────────────────
+# Đổi nguồn số liệu của project
+# ─────────────────────────────────────────────────────────────
+
+def _project_co_ket_qua():
+    from src.project import Project, Section
+    p = Project(template=TEMPLATE,
+                sections=[Section(name='S1', dxf='a.dxf', beam_force='bf.xls'),
+                          Section(name='S2', dxf='b.dxf'),
+                          Section(name='S3', dxf='c.dxf', beam_force='bf3.xls',
+                                  template='rieng.xls')])
+    return p
+
+
+@needs_template
+def test_doi_sang_khoi_cung_so_lieu_khong_lac_hau(block_file):
+    """Đổi lối vào, không đổi mô hình — kêu lạc hậu là bắt chạy lại Midas vô cớ."""
+    p = _project_co_ket_qua()
+    assert p.set_shared_template(block_file) == 0
+    assert p.template == block_file
+    assert [s.stale for s in p] == ['', '', '']
+
+
+@needs_template
+def test_doi_sang_nguon_khac_so_thi_lac_hau(block_file):
+    """Ô chọn template chung từng gán thẳng rồi thôi — kết quả cũ không bị đánh dấu."""
+    b = _raw(block_file)
+    b['values']['pavement'] = 2.5
+    _write(block_file, b)
+    p = _project_co_ket_qua()
+    assert p.set_shared_template(block_file) == 1
+    assert 'Nguồn số liệu' in p.find('S1').stale
+    assert p.find('S2').stale == ''           # chưa có kết quả
+    assert p.find('S3').stale == ''           # dùng template riêng
+    assert p.set_shared_template(block_file) == 0   # chọn lại đúng nguồn đang dùng
+
+
+@needs_template
+def test_sua_khoi_tai_cho_danh_dau_dung_mat_cat(block_file):
+    p = _project_co_ket_qua()
+    p.find('S3').template = block_file
+    p.template = block_file
+    assert p.inputs_edited(block_file) == 2
+    assert 'đã sửa' in p.find('S3').stale
+
+
+@needs_template
+def test_luu_lai_cung_kich_thuoc_khong_doc_so_cu_tu_bo_dem(block_file):
+    """FAT/exFAT làm tròn mtime tới 2 s — đệm không được trả số của lần lưu trước.
+
+    Dựng lại đúng cảnh đó: ghi đè cùng kích thước rồi ép mtime về như cũ.
+    """
+    assert read_inputs(block_file)['RH'] == 85.0
+    st = os.stat(block_file)
+    b = input_data.load(block_file)
+    b['values']['RH'] = 75.0
+    input_data.save(b, block_file)
+    os.utime(block_file, ns=(st.st_atime_ns, st.st_mtime_ns))
+    if os.path.getsize(block_file) != st.st_size:
+        pytest.skip('kích thước đổi — khoá đệm tự khác, cảnh này không dựng được')
+    assert read_inputs(block_file)['RH'] == 75.0

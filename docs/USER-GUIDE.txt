@@ -147,6 +147,27 @@ Kiểm tra trước khi chạy: Công cụ → Kiểm tra template số liệu s
 khoá và đối chiếu với ô gốc bên sheet con, bắt được trường hợp công thức bị
 dán thành số cứng.
 
+Khai số liệu ngay trong app
+
+Không muốn sửa file Excel? Bấm Khai số liệu trong app… ở dock trái (hoặc Tệp →
+Khai số liệu đầu vào, Ctrl+I). Số liệu của template hiện tại mở thành một bảng
+sửa được, chia nhóm Vật liệu · Tĩnh tải · Gió · Nhiệt độ · Hoạt tải · Cáp DƯL.
+Lưu ra một khối số liệu .json — file Excel gốc không bị đụng — rồi chọn khối
+đó làm nguồn số liệu như chọn một template.
+
+Cột Mạch tính ghi công thức của từng đại lượng tính được (Ec =
+0,043·γc^1,5·√f'c, PD = 0,0006·V²·Cd, Pj = Ap·fpj/1000, tải bánh theo dải
+tương đương…) kèm trị các đầu vào. Đủ tham số thì ô giá trị khoá lại và tự đổi
+khi bạn sửa đầu vào; thiếu tham số thì cột này nói còn thiếu gì để chương
+trình tính hộ. Chuyển từ Excel sang, chương trình tự suy những tham số suy
+được một nghĩa (γc, cự ly sườn S, cánh hẫng X…); tốc độ gió, bề dày lớp phủ,
+diện tích lan can thì bạn tự khai.
+
+LƯU Ý: Ô trống là thiếu — tô vàng, và nút Lưu khoá lại. Không có trị mặc định:
+  số gợi ý chỉ hiện mờ bên cạnh. Sửa số liệu đang dùng sau khi đã có Beam
+  Force thì các mặt cắt đó bị đánh dấu lạc hậu; chỉ chuyển Excel sang khối với
+  cùng con số thì không.
+
 ==============================================================================
 5. TẠO FILE MCT
 ==============================================================================
@@ -591,6 +612,7 @@ PHÍM TẮT
   Ctrl+S        Lưu project
   Ctrl+O        Thêm DXF
   Ctrl+T        Chọn template số liệu
+  Ctrl+I        Khai số liệu đầu vào trong app
   F5            Tạo MCT toàn bộ
   Shift+F5      Tạo MCT cho mặt cắt đang chọn
   F8            Chạy Midas/Civil (phải bật ở Tùy chọn → Midas)

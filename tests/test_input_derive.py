@@ -54,7 +54,7 @@ def test_moi_luat_tai_lap_dung_o_excel():
 
 @needs_template
 def test_suy_nguoc_chi_lay_tham_so_mot_nghia():
-    """16/19 luật chạy được chỉ từ 40 con số; ba luật còn lại KHÔNG được bịa."""
+    """15/19 luật chạy được chỉ từ 40 con số; bốn luật còn lại KHÔNG được bịa."""
     v = _vals()
     p = params_from_values(v)
     assert p == {'gamma_c': 2500.0, 'k_py': 0.9, 'k_pj': 0.75, 'h_lc': 1.34,
@@ -85,6 +85,18 @@ def test_sua_dau_vao_thi_chuoi_tinh_doi_theo_dung_thu_tu():
     assert v2['Pj'] == pytest.approx(7 * 140.0 * 0.75 * 1770.0 / 1000.0)
     assert v2['Ec'] == pytest.approx(0.043 * 2500 ** 1.5 * 40.0 ** 0.5)
     assert not [e for e in derive(v2, p) if e['status'] == 'lech']
+
+
+@needs_template
+def test_resolve_giu_nguyen_tung_bit_tri_da_khop():
+    """Chuyển Excel sang khối không được "làm tròn lại" con số nào.
+
+    `resolve` từng thay mọi khoá tính bằng trị vừa tính: `Ec` lệch ở chữ số
+    thứ 16, khối bị coi là khác số liệu, cả project bị đánh dấu lạc hậu vô cớ.
+    """
+    v = _vals()
+    p = {**params_from_values(v), **EXCEL_INPUT_CELLS}
+    assert resolve(v, p) == v
 
 
 @needs_template

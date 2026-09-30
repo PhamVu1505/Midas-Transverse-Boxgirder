@@ -361,9 +361,14 @@ class MainWindow(QMainWindow):
         self.a_tpl = self._act('Chọn &template số liệu…', self.pick_template,
                                'Ctrl+T', 'template',
                                'Template chung; từng mặt cắt có thể gán riêng')
+        self.a_inputs = self._act('&Khai số liệu đầu vào…', self.open_inputs,
+                                  'Ctrl+I', 'template',
+                                  'Khai / sửa số liệu ngay trong app, kèm mạch '
+                                  'tính — thay cho sửa file Excel')
         m.addAction(self.a_dxf)
         m.addAction(self.a_dxf_dir)
         m.addAction(self.a_tpl)
+        m.addAction(self.a_inputs)
         m.addSeparator()
         m.addAction(self._act('Mở thư mục &kết quả', self.open_output, None, 'folder'))
         m.addSeparator()
@@ -864,6 +869,53 @@ class MainWindow(QMainWindow):
 
     def pick_template(self):
         self.panel._pick_tpl()
+
+    def open_inputs(self):
+        """Hộp thoại khai số liệu — mở trên nguồn số liệu chung của project."""
+        from .input_dialog import InputDialog
+        try:
+            d = InputDialog(self.project.template, theme=self.t, parent=self)
+        except Exception as e:
+            QMessageBox.warning(self, 'Không đọc được nguồn số liệu', str(e))
+            return
+        d.saved.connect(self._inputs_saved)
+        d.exec()
+
+    def _inputs_saved(self, path: str, doi_so: bool):
+        """Sau khi hộp thoại ghi một khối số liệu.
+
+        Khối đang được dùng → sửa tại chỗ: có đổi con số thì kết quả của mọi
+        mặt cắt dùng nó thành lạc hậu. Khối mới → hỏi có dùng làm nguồn chung
+        không; `set_shared_template` tự so trị số trước/sau (chuyển Excel sang
+        khối cùng số liệu thì không có gì lạc hậu).
+        """
+        def same(a, b):
+            return bool(a) and bool(b) and (os.path.normcase(os.path.abspath(a))
+                                            == os.path.normcase(os.path.abspath(b)))
+        dang_dung = same(path, self.project.template) or any(
+            same(path, s.template) for s in self.project)
+        if dang_dung:
+            self.log.info(f'Đã lưu số liệu: {os.path.basename(path)}')
+            if doi_so:
+                n = self.project.inputs_edited(path)
+                if n:
+                    self.log.warning(
+                        f'{n} mặt cắt đã có kết quả — nội lực đang gán tính từ '
+                        f'số liệu cũ. Hãy tạo lại MCT và chạy lại Midas.')
+            self._on_project_changed()
+            return
+        hop = QMessageBox(QMessageBox.Icon.Question, 'Số liệu đầu vào',
+                          f'Dùng {os.path.basename(path)} làm nguồn số liệu '
+                          f'chung của project?',
+                          QMessageBox.StandardButton.Yes
+                          | QMessageBox.StandardButton.No, self)
+        hop.setInformativeText('Mọi mặt cắt không gán template riêng sẽ đọc số '
+                               'liệu từ khối này thay cho template hiện tại.')
+        if hop.exec() == QMessageBox.StandardButton.Yes:
+            self.panel.set_shared_template(path)
+        else:
+            self.log.info(f'Đã lưu số liệu: {os.path.basename(path)} '
+                          f'(chưa dùng cho project)')
 
     # ─────────────────────────────────────────
     # Giấy phép

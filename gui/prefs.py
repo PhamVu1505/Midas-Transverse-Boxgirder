@@ -23,6 +23,8 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget,
                              QLineEdit, QFileDialog, QGroupBox,
                              QGridLayout)
 
+from src.input_data import FILE_FILTER
+
 from .theme import (THEMES, ACCENTS, DENSITY, FONT_CHOICES, FONT_MONO,
                     DEFAULT_THEME, DEFAULT_ACCENT, DEFAULT_DENSITY,
                     make_theme, make_size, build_qss)
@@ -470,8 +472,7 @@ class PreferencesDialog(QDialog):
 
     def _pick_tpl(self):
         p, _ = QFileDialog.getOpenFileName(
-            self, 'Template số liệu mặc định', '.',
-            'File Excel (*.xls *.xlsx);;Tất cả (*)')
+            self, 'Template số liệu mặc định', '.', FILE_FILTER)
         if p:
             self.ed_tpl.setText(p)
 

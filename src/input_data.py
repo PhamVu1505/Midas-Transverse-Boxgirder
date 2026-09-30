@@ -54,10 +54,41 @@ FORMAT = 'mtb-input'
 SCHEMA = 1
 EXT = '.json'
 
+# Bộ lọc hộp thoại chọn file cho MỌI ô chọn nguồn số liệu (dock trái, Tùy chọn,
+# cửa sổ chuột phải, hộp thoại khai số liệu). Một chỗ — bốn ô chọn từng mang
+# bốn chuỗi riêng, thêm đuôi mới là phải nhớ sửa đủ bốn.
+FILE_FILTER = ('Số liệu đầu vào (*.xls *.xlsx *.json);;'
+               'Template Excel (*.xls *.xlsx);;'
+               'Khối số liệu của app (*.json);;Tất cả (*)')
+
 
 def keys() -> list:
     """Mọi khoá của khối, theo thứ tự SPEC rồi tới hằng số."""
     return [s[0] for s in SPEC] + list(CONSTANTS)
+
+
+# Khoá MỞ ĐẦU mỗi nhóm, theo đúng thứ tự `SPEC` — đánh dấu chỗ cắt chứ không
+# kê lại cả danh sách, nên thêm khoá vào SPEC là tự rơi vào đúng nhóm.
+GROUP_START = {'fc': 'Vật liệu', 'barrier_left': 'Tĩnh tải', 'ws_fx': 'Gió',
+               'sys_temp': 'Nhiệt độ', 'lane_load': 'Hoạt tải HL93',
+               'fpu': 'Cáp DƯL', 'nu': 'Hằng số'}
+
+
+def groups() -> list:
+    """[(tên nhóm, [khoá…]), …] theo thứ tự hiển thị."""
+    out = []
+    for k in keys():
+        if k in GROUP_START or not out:
+            out.append((GROUP_START.get(k, ''), []))
+        out[-1][1].append(k)
+    return out
+
+
+def describe_key(key: str) -> str:
+    for s in SPEC:
+        if s[0] == key:
+            return s[6]
+    return CONSTANTS[key][2] if key in CONSTANTS else ''
 
 
 def units() -> dict:
@@ -171,6 +202,13 @@ def save(block: dict, path: str) -> None:
         json.dump(block, f, ensure_ascii=False, indent=2)
         f.write('\n')
     os.replace(tmp, path)
+    # `read_inputs` đệm theo (đường dẫn, mtime, kích thước). Trên FAT/exFAT
+    # mtime làm tròn tới 2 s: sửa `fc` 50 → 40 rồi lưu hai lần liền nhau thì
+    # khoá đệm y hệt, và lần sinh MCT sau đọc SỐ CŨ. Ghi xong là xoá đệm.
+    from . import input_reader
+    ap = os.path.abspath(path)
+    for k in [k for k in input_reader._CACHE if k[0] == ap]:
+        del input_reader._CACHE[k]
 
 
 def from_excel(excel_path: str) -> dict:
