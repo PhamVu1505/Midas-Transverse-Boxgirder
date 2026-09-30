@@ -131,6 +131,23 @@ def _mo_ta_hoat_tai(ld: dict, auto_ll: dict) -> dict:
     return {'source': 'template' if ld else 'none'}
 
 
+def _nguon_so_lieu(excel_path) -> dict:
+    """Số liệu đầu vào của mô hình này lấy từ đâu — ghi vào `topo.json`.
+
+    `app` = khối số liệu khai trong app (`input_data`), `excel` = template Excel,
+    `none` = không có gì (MCT không có khối tải trọng). Cùng lý do với
+    `_mo_ta_hoat_tai`: mở lại project hôm sau vẫn phải tra được.
+
+    Cố ý KHÔNG ghi vào văn bản MCT: đổi nguồn mà số liệu y hệt thì MCT phải
+    trùng khít từng byte — đó là phép chứng minh Excel → khối → MCT không mất gì.
+    """
+    if not (excel_path and os.path.exists(excel_path)):
+        return {'kind': 'none'}
+    from .input_data import is_block_path
+    return {'kind': 'app' if is_block_path(excel_path) else 'excel',
+            'file': os.path.basename(excel_path)}
+
+
 def _kiem_hinh_hoc(txt: str, section_name: str) -> None:
     """Soi *NODE/*ELEMENT của MCT vừa ghi: node trùng toạ độ, phần tử dài 0.
 
@@ -702,6 +719,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
         'pt_warnings': pt_warnings,
         'combo_warnings': combo_warnings,
         'live_load': _mo_ta_hoat_tai(ld, auto_ll),
+        'inputs': _nguon_so_lieu(excel_path),
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,
@@ -1177,6 +1195,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
         'pt_warnings': pt_warnings,
         'combo_warnings': combo_warnings,
         'live_load': _mo_ta_hoat_tai(ld, auto_ll),
+        'inputs': _nguon_so_lieu(excel_path),
         'top_ids': top_ids,
         'top_nodes': top_nodes,
         'bot_ids': bot_ids,

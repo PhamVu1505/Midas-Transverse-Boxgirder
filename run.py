@@ -4,6 +4,8 @@ Entry point - Pipeline phân tích khung ngang dầm hộp.
 Commands:
     python run.py generate input/dxf/S20.dxf              # 1 file → output/S20/
     python run.py generate input/dxf/                      # all DXF in folder
+    python run.py generate S1.dxf --inputs so_lieu.json    # số liệu khai trong app
+    python run.py inputs data/template.xls -o so_lieu.json # Excel → khối số liệu
     python run.py results  output/S20/                     # parse Beam Force → check table + Excel
     python run.py results  output/                         # batch all subfolders
 """
@@ -38,7 +40,8 @@ EXCEL_PATH = os.path.join(os.path.dirname(__file__),
 def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
                   pt_jacking: str = 'begin',
                   mct_version: str = MCT_VERSION,
-                  auto_live_load: bool = False):
+                  auto_live_load: bool = False,
+                  inputs: str = None):
     """Generate MCT + SVG for one DXF file into output_dir/name/.
 
     include_pt: True/False/None (None = auto-detect from DXF layers).
@@ -48,6 +51,9 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
         đã kiểm trên Civil 2022. Xem MCT_VERSION ở mct_frame_writer.
     auto_live_load: True = tính sáu trị tải bánh từ hình học mặt cắt thay vì
         đọc từ template. Xem `_hoat_tai_tu_hinh_hoc` ở mct_frame_writer.
+    inputs: nguồn số liệu — template Excel hoặc khối số liệu `.json`
+        (`src/input_data.py`). None = template mặc định trong `data/`. Đây là
+        đường "khối số liệu + 1 DXF → MCT" không qua GUI mà bản web sẽ gọi.
     """
     name = os.path.splitext(os.path.basename(dxf_path))[0]
     section_dir = os.path.join(output_dir, name)
@@ -62,7 +68,14 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
     inpoly = inpolys if stype == 'twin_box' else inpolys[0]
     pt_cables = read_pt_cables(msp) if include_pt is not False else []
 
-    excel = EXCEL_PATH if os.path.exists(EXCEL_PATH) else None
+    if inputs:
+        # Khai nguồn mà nguồn không có thì DỪNG — lui về template mặc định là
+        # sinh MCT bằng số liệu người dùng không hề chọn, mà không ai biết.
+        if not os.path.exists(inputs):
+            raise FileNotFoundError(f'Không thấy nguồn số liệu: {inputs}')
+        excel = inputs
+    else:
+        excel = EXCEL_PATH if os.path.exists(EXCEL_PATH) else None
     if not excel:
         print(f'[{name}] WARNING: Excel not found at {EXCEL_PATH}')
         print(f'[{name}] WARNING: using fallback d_L=d_R=0.4 m and skipping all load blocks')
@@ -134,6 +147,16 @@ def _generate_one(dxf_path: str, output_dir: str, include_pt: bool = None,
     return section_dir
 
 
+def cmd_inputs(args):
+    """Handle 'inputs': chuyển template Excel thành khối số liệu JSON."""
+    from src import input_data
+    if not input_data.is_block_path(args.output):
+        raise SystemExit(f'File ghi ra phải có đuôi {input_data.EXT}: {args.output}')
+    block = input_data.from_excel(args.source)
+    input_data.save(block, args.output)
+    print(f'Đã ghi {len(block["values"])} khoá số liệu → {args.output}')
+
+
 def cmd_generate(args):
     """Handle 'generate' command."""
     paths = args.input
@@ -159,7 +182,8 @@ def cmd_generate(args):
             _generate_one(dxf_path, output_dir, include_pt=include_pt,
                           pt_jacking=getattr(args, 'pt_jacking', 'begin'),
                           mct_version=getattr(args, 'mct_version', MCT_VERSION),
-                          auto_live_load=getattr(args, 'auto_live_load', False))
+                          auto_live_load=getattr(args, 'auto_live_load', False),
+                          inputs=getattr(args, 'inputs', None))
         except Exception as e:
             print(f'  [ERROR] {dxf_path}: {e}')
             import traceback
@@ -456,6 +480,17 @@ def build_parser():
                             help='tính sáu trị tải bánh từ hình học mặt cắt '
                                  'thay vì đọc từ template — xoá lớp lỗi một '
                                  'template dùng cho nhiều mặt cắt')
+    gen_parser.add_argument('--inputs', '--so-lieu', '--template',
+                            metavar='FILE', default=None,
+                            help='nguồn số liệu: template .xls/.xlsx hoặc khối '
+                                 'số liệu .json (mặc định: template trong data/)')
+
+    # inputs: Excel → khối số liệu JSON
+    inp_parser = subparsers.add_parser(
+        'inputs', help='Template Excel → khối số liệu .json (khai trong app)')
+    inp_parser.add_argument('source', help='template .xls/.xlsx')
+    inp_parser.add_argument('-o', '--output', required=True,
+                            help='file .json ghi ra')
 
     # results
     res_parser = subparsers.add_parser('results', help='Beam Force → check table + Excel')
@@ -499,6 +534,8 @@ def main():
         if not _gate('mct'):
             raise SystemExit(2)
         cmd_generate(args)
+    elif args.command == 'inputs':
+        cmd_inputs(args)
     elif args.command == 'results':
         if not _gate('check'):
             raise SystemExit(2)

@@ -212,12 +212,13 @@ def read_inputs(excel_path: str, strict: bool = True) -> dict:
     Ưu tiên sheet `INPUT` (khóa–giá trị). Không có thì rơi về ô cứng legacy.
 
     Args:
-        excel_path: đường dẫn .xls hoặc .xlsx
+        excel_path: đường dẫn .xls / .xlsx, hoặc khối số liệu .json
         strict: True → thiếu khóa thì raise InputError.
                 False → bỏ qua khóa thiếu (chỉ dùng khi kiểm tra file).
 
     Returns:
-        dict {key: giá trị}, kèm '_source' = 'INPUT' | 'legacy'
+        dict {key: giá trị}, kèm '_source' = 'INPUT' | 'legacy' | 'app'
+        ('app' = khối số liệu `.json` khai trong app, xem `input_data`)
         và '_missing' = danh sách khóa không đọc được.
     """
     if not excel_path or not os.path.exists(excel_path):
@@ -230,6 +231,17 @@ def read_inputs(excel_path: str, strict: bool = True) -> dict:
     hit = _CACHE.get(ck)
     if hit is not None:
         return dict(hit)
+
+    # Khối số liệu khai trong app (N3 bước 2). Rẽ nhánh ở ĐÚNG chỗ này để mọi
+    # nơi đang nhận đường dẫn template dùng được ngay — xem `input_data`.
+    from . import input_data
+    if input_data.is_block_path(excel_path):
+        try:
+            out = input_data.validate(input_data.load(excel_path), strict=strict)
+        except InputError as e:
+            raise InputError(f'{os.path.basename(excel_path)}: {e}') from e
+        _CACHE[ck] = dict(out)
+        return out
 
     book = _Book(excel_path)
     sheet = _find_input_sheet(book)
@@ -348,7 +360,12 @@ def crosscheck(excel_path: str, tol: float = 1e-9) -> list:
     Returns:
         list các (key, giá_trị_INPUT, giá_trị_ô_gốc, địa_chỉ_ô). Rỗng = khớp
         hết. `giá_trị_ô_gốc` là `None` khi ô không đọc được.
+
+        Khối số liệu khai trong app không có "ô gốc" nào để đối chiếu → rỗng.
     """
+    from . import input_data
+    if input_data.is_block_path(excel_path):
+        return []
     book = _Book(excel_path)
     sheet = _find_input_sheet(book)
     if sheet is None:
@@ -382,7 +399,9 @@ def source_line(excel_path: str) -> str:
     d = read_inputs(excel_path, strict=False)
     n = len([k for k in d if not k.startswith('_')])
     s = f'Input: {os.path.basename(excel_path)} — nguồn {d["_source"]}, {n} khóa'
-    if d['_source'] != INPUT_SHEET:
+    if d['_source'] == 'app':
+        s += ' (số liệu khai trong app)'
+    elif d['_source'] != INPUT_SHEET:
         s += " (chưa có sheet INPUT — chèn/xóa dòng ở 'General'/'Load' sẽ đọc sai số)"
     if d['_missing']:
         s += f'\n  THIẾU {len(d["_missing"])} khóa: ' + ', '.join(d['_missing'])
