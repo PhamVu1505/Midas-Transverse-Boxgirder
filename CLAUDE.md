@@ -1105,11 +1105,10 @@ N3. **Bỏ template Excel, khai số liệu trong app** — VuPQ yêu cầu 2026
     tải `E>4300`), xem mục *Luật cự ly trục*. Còn bước 3, và **một câu chờ
     VuPQ**:
 
-    * **Có bật mặc định không?** Rủi ro kỹ thuật đã bằng không (7/7 mặt cắt
-      trùng khít khi tắt; bật thì diff chỉ gồm chú thích + con số tải bánh).
-      Nhưng bật là **đổi nội lực của mọi mặt cắt**, kể cả 6 mặt cắt đã đi trọn
-      chu trình QA trên Civil 2022. Đúng khuôn quyết định của `*VERSION`: giới
-      thiệu TẮT → đo → VuPQ chốt bật. **Đừng tự bật.**
+    * ~~**Có bật mặc định không?**~~ **VuPQ chốt 30/9/2026: người dùng tự
+      bật/tắt, mặc định TẮT.** Không ai được bật hộ. Ô tích có ở **mọi** lối
+      vào sinh MCT: dock trái (mức project), cửa sổ chuột phải (vừa thêm — trước
+      đó lối này lặng lẽ luôn đọc template), `--auto-live-load` ở CLI.
     * **Bước 3** — xuất ngược ra Excel làm hồ sơ thẩm tra. `input_derive.RULES`
       đã mang sẵn công thức · căn cứ · ô Excel gốc cho từng đại lượng.
     * **Câu hỏi thứ hai cho VuPQ**: có nên sửa template Excel mẫu sao cho các ô

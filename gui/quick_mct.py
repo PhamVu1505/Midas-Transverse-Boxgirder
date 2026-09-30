@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
+from PyQt6.QtWidgets import (QCheckBox, QDialog, QFileDialog, QHBoxLayout, QLabel,
                              QMessageBox, QProgressBar, QPushButton,
                              QVBoxLayout, QWidget)
 
@@ -93,6 +93,17 @@ class QuickMctDialog(QDialog):
 
         lay.addWidget(self._path_row('Template số liệu:', 'template'))
         lay.addWidget(self._path_row('Thư mục kết quả:', 'out'))
+
+        # Cùng lựa chọn với ô ở dock trái của cửa sổ chính (VuPQ chốt 30/9:
+        # người dùng tự bật/tắt, mặc định TẮT). Thiếu ô này thì lối vào chuột
+        # phải lặng lẽ luôn đọc tải bánh từ template, bất kể người dùng muốn gì.
+        self.ck_auto_ll = QCheckBox('Tự tính tải bánh từ hình học mặt cắt')
+        self.ck_auto_ll.setChecked(False)
+        self.ck_auto_ll.setToolTip(
+            'Bật: sáu trị tải bánh tính từ cự ly sườn S, cánh hẫng X của ĐÚNG\n'
+            'mặt cắt đó (TCVN 11823-4 Bảng 1), mạch tính ghi vào file MCT.\n'
+            'Tắt: đọc từ template. IM và tải làn luôn lấy từ template.')
+        lay.addWidget(self.ck_auto_ll)
 
         self.log = LogView()
         lay.addWidget(self.log, 1)
@@ -174,11 +185,15 @@ class QuickMctDialog(QDialog):
         usage_log.record('context_menu')
         jobs = [{'name': os.path.splitext(os.path.basename(p))[0],
                  'dxf': p, 'excel': self.template,
-                 'include_pt': True, 'supports': [], 'pt_jacking': 'begin'}
+                 'include_pt': True, 'supports': [], 'pt_jacking': 'begin',
+                 'auto_live_load': self.ck_auto_ll.isChecked()}
                 for p in self.paths]
 
         self.b_go.setEnabled(False)
         self.log.info(f'Thư mục kết quả: {self.out_dir}')
+        self.log.info('Tải bánh: ' + ('app TỰ TÍNH từ hình học mặt cắt'
+                                      if self.ck_auto_ll.isChecked()
+                                      else 'đọc từ template'))
         self.worker = GenerateWorker(jobs, self.out_dir)
         self.worker.log.connect(self.log.append_auto)
         self.worker.section_info.connect(self._on_info)

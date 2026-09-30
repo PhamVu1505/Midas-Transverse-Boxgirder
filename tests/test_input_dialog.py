@@ -82,3 +82,37 @@ def test_go_vao_chinh_o_lech_la_nhan_tri_tinh(app, lech):
     d.set_value('v', 'Pj', '980')
     assert d.values['Pj'] == pytest.approx(976.5)
     assert 'LỆCH' not in d.lb_sum.text()
+
+
+@pytest.mark.parametrize('bat', [False, True])
+def test_cua_so_chuot_phai_cho_chon_tai_banh(app, monkeypatch, tmp_path, bat):
+    """VuPQ chốt 30/9: tải bánh tự tính là lựa chọn của NGƯỜI DÙNG, mặc định tắt.
+
+    Cửa sổ chuột phải từng không có ô này — mọi MCT sinh từ Explorer đều lặng
+    lẽ đọc tải bánh từ template, bất kể người dùng muốn gì.
+    """
+    import types
+    from gui import quick_mct
+    gui_jobs = []
+
+    class FakeWorker:
+        def __init__(self, jobs, out):
+            gui_jobs.extend(jobs)
+            for sig in ('log', 'section_info', 'section_error', 'finished_all'):
+                setattr(self, sig, types.SimpleNamespace(connect=lambda *_: None))
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(quick_mct, 'GenerateWorker', FakeWorker)
+    monkeypatch.setattr(quick_mct.guard, 'get_runtime_state',
+                        lambda _f: types.SimpleNamespace(ready=True, message=''))
+    monkeypatch.setattr(quick_mct.usage_log, 'record', lambda *_: None)
+    dxf = tmp_path / 'S1.dxf'
+    dxf.write_text('', encoding='utf-8')
+    d = quick_mct.QuickMctDialog([str(dxf)], prefs=types.SimpleNamespace(
+        output_dir='', template=''))
+    assert d.ck_auto_ll.isChecked() is False, 'phải TẮT sẵn'
+    d.ck_auto_ll.setChecked(bat)
+    d.start()
+    assert [j['auto_live_load'] for j in gui_jobs] == [bat]
