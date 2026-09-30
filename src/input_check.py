@@ -47,6 +47,10 @@ import os
 P_TRUCK = 72.5      # nửa trục 145 kN của xe tải
 P_TANDEM = 55.0     # nửa trục 110 kN của xe hai trục
 
+# Cự ly trục (mm) dùng cho luật dải một trục — xem `strip_width_axles`.
+AXLE_TRUCK = 4300.0     # xe tải HL93, cự ly trục trước–sau nhỏ nhất
+AXLE_TANDEM = 1200.0    # xe hai trục
+
 # Câu mở đầu chung cho mọi cảnh báo về số liệu template. Đặt ngay đầu dòng để
 # quét mắt qua cửa sổ Messages là thấy ngay việc phải làm, không phải đọc hết
 # câu mới hiểu là đang nói về file Excel chứ không phải về bản vẽ.
@@ -148,8 +152,9 @@ def template_strip_geometry(data: dict) -> dict:
     if min(can, pos, neg) <= 0:
         return {}
 
-    def E(load):                       # kN/m → mm
-        return P_TRUCK * (1.0 + im) / load * 1000.0
+    def E(load):                       # kN/m → mm, tháo luật cự ly trục ra
+        return strip_width_unaxle(P_TRUCK * (1.0 + im) / load * 1000.0,
+                                  AXLE_TRUCK)
 
     X = (E(can) - 1140.0) / 0.833
     S_pos = (E(pos) - 660.0) / 0.55
@@ -172,14 +177,43 @@ def strip_width(S=None, X=None):
     return {'pos': 660.0 + 0.55 * S, 'neg': 1220.0 + 0.25 * S}
 
 
-def strip_width_tandem(e_truck: float) -> float:
-    """Bề rộng dải cho xe HAI TRỤC — `E = (E_truck + 1200)/2`.
+def strip_width_axles(e: float, spacing: float) -> float:
+    """Bề rộng dải cho MỘT trục khi dải rộng hơn cự ly hai trục liền nhau.
 
-    Sheet `Load` **không ghi công thức này**, phải truy ngược mới ra. Nó là cách
-    xử lý hai trục cách nhau 1,2 m: tổng bề rộng phân bố là `E_truck + 1200`,
-    chia đôi cho mỗi trục.
+    Sheet `Load` mục 2.3.3 *Modification of Equivalent strips* (công thức đọc
+    thẳng bằng COM ô `F44:G46`)::
+
+        xe tải       =IF(E > 4300, (E + 4300)/2, E)
+        xe hai trục  =IF(E > 1200, (E + 1200)/2, E)
+
+    Hai trục cách nhau `spacing` thì hai dải `E` chồng lên nhau khi `E` lớn hơn
+    cự ly đó; tổng bề rộng phân bố cho cả cặp là `E + spacing`, chia đôi cho
+    mỗi trục. Dải hẹp hơn cự ly trục thì hai dải không chồng, giữ nguyên `E`.
+
+    **Bản đầu (N3 bước 1) chỉ có nửa luật** — áp cho xe hai trục, bỏ quên xe
+    tải. Phép "tính xuôi tái lập đúng sáu ô Excel" không bắt được vì cả ba dải
+    của template mẫu đều hẹp hơn 4300 mm; còn mặt cắt thật thì không: S1 · S16
+    · SLT có dải `+M` 5057–5418 mm, và tải xe tải `+M` bị tính **thiếu 8–11,5%**.
     """
-    return (e_truck + 1200.0) / 2.0
+    return (e + spacing) / 2.0 if e > spacing else e
+
+
+def strip_width_unaxle(e_mod: float, spacing: float) -> float:
+    """Chiều NGHỊCH của `strip_width_axles` — từ dải một trục về dải gốc.
+
+    Hàm xuôi đơn điệu và `(E + s)/2 > s` khi và chỉ khi `E > s`, nên tháo ra
+    được không nhập nhằng.
+    """
+    return 2.0 * e_mod - spacing if e_mod > spacing else e_mod
+
+
+def strip_width_tandem(e_truck: float) -> float:
+    """Bề rộng dải cho xe HAI TRỤC — `E = (E + 1200)/2` (hai trục cách 1,2 m).
+
+    `e_truck` là dải **gốc** theo Bảng 1, chưa áp luật cự ly trục của xe tải —
+    đúng như ô `G44 = IF(G35>1200, …)` đọc thẳng `G35`, không đọc `F44`.
+    """
+    return strip_width_axles(e_truck, AXLE_TANDEM)
 
 
 def live_load_from_geometry(metrics: dict, im) -> dict:
@@ -231,11 +265,22 @@ def live_load_from_geometry(metrics: dict, im) -> dict:
 
     loads = {}
     for vi_tri in ('can', 'pos', 'neg'):
-        loads[f'truck_{vi_tri}'] = P_TRUCK * (1.0 + im) * 1000.0 / E[vi_tri]
+        loads[f'truck_{vi_tri}'] = (P_TRUCK * (1.0 + im) * 1000.0
+                                    / strip_width_axles(E[vi_tri], AXLE_TRUCK))
         loads[f'tandem_{vi_tri}'] = (P_TANDEM * (1.0 + im) * 1000.0
                                      / strip_width_tandem(E[vi_tri]))
     return {'loads': loads, 'S': S, 'X': X, 'im': im,
             'E_can': E['can'], 'E_pos': E['pos'], 'E_neg': E['neg']}
+
+
+def _axle_note(auto: dict, spacing: float) -> str:
+    """Nói rõ luật cự ly trục có ĂN vào dải nào không — người thẩm tra không
+    phải tự so từng `E` với 4300."""
+    ten = {'can': 'canh hang', 'pos': '+M', 'neg': '-M'}
+    an = [f"{ten[k]} {auto['E_' + k]:.0f} -> "
+          f"{strip_width_axles(auto['E_' + k], spacing):.0f} mm"
+          for k in ('can', 'pos', 'neg') if auto['E_' + k] > spacing]
+    return ': ' + ', '.join(an) if an else ': khong dai nao vuot'
 
 
 def live_load_derivation(auto: dict) -> list:
@@ -262,6 +307,8 @@ def live_load_derivation(auto: dict) -> list:
         f"  Be rong dai: canh hang E = 1140 + 0.833X = {auto['E_can']:.0f} mm",
         f"               giua (+M)  E = 660 + 0.55S  = {auto['E_pos']:.0f} mm",
         f"               giua (-M)  E = 1220 + 0.25S = {auto['E_neg']:.0f} mm",
+        '  Xe tai:        E > 4300 thi E = (E + 4300)/2  (hai truc cach nhau 4.3 m)'
+        + _axle_note(auto, AXLE_TRUCK),
         '  Xe hai truc:   E = (E_truck + 1200)/2  (hai truc cach nhau 1.2 m)',
         '  Tai banh tren dai 1 m = P(1+IM)/E,'
         ' P = 72.5 kN (xe tai) / 55.0 kN (xe hai truc)',

@@ -127,7 +127,7 @@ phải **tra được bất cứ lúc nào**, không chỉ trong khoảnh khắc
 Sheet `Load` mục 2.3 dùng **phương pháp dải tương đương**. Mọi con số trong `*VEHICLE` tái lập được từ công thức quy phạm, lệch 0.0000 — đừng sửa tay, sửa ở Excel.
 
 - Bề rộng dải: cánh hẫng `E = 1140 + 0.833X`, giữa `+M` `E = 660 + 0.55S`, giữa `−M` `E = 1220 + 0.25S` (`S` = khoảng cách sườn, `X` = từ tải đến gối).
-- **`E_tandem = (E_truck + 1200)/2`** — chỗ này Excel không ghi công thức, phải truy ngược. Là cách xử lý hai trục cách nhau 1.2 m: tổng bề rộng phân bố `E_truck + 1200`, chia đôi cho mỗi trục.
+- **Luật cự ly trục**: `E_tandem = IF(E>1200, (E+1200)/2, E)` và **xe tải cũng có**: `IF(E>4300, (E+4300)/2, E)` (ô `Load!F44:G46`, đọc bằng COM — `xlrd` không đọc được công thức `.xls` nên ghi chú cũ tưởng Excel không ghi). Hai trục cách nhau một cự ly thì dải rộng hơn cự ly ấy chồng nhau, chia đôi `E + cự ly` cho mỗi trục. Xem mục *Luật cự ly trục*.
 - Tải bánh vào lát 1 m = `P(1+IM)/E`, `P` = nửa trục (72.5 kN xe tải / 55 kN xe hai trục), `IM = 0.33`.
 - Hệ số làn `m` (1.2/1.0/0.85/0.65) áp cho **bánh xe**; Excel **không** nhân `m` vào tải làn (giữ 3.1) còn MCT thì có — khác biệt đã biết, để nguyên theo hướng thiên về an toàn.
 
@@ -851,9 +851,34 @@ thì dock nói một số, MCT ghi một số khác.
 | | tải bánh phải đổi |
 |---|---|
 | **S20** | `+M` **+13,6%** · cánh hẫng +5,4% — chiều KHÔNG an toàn, đây là lỗi thật |
-| **S10** | cánh hẫng **+7,6%**; nhưng `+M` lại dư 6,2% |
-| **S1 · S16 · SLT** | template **dư 11–22%** — thiên an toàn, nhưng tốn cốt thép thật |
-| **S1_V2** | cánh hẫng dư 14,8% |
+| **S10** | cánh hẫng **+7,6%**; nhưng `+M` lại dư 4,1% |
+| **S1 · S16 · SLT** | template **dư 10–18%** — thiên an toàn, nhưng tốn cốt thép thật |
+| **S1_V2** | cánh hẫng dư 9,4% |
+
+(Đo lại 30/9/2026 sau khi thêm **luật cự ly trục 4300 mm của xe tải** — bảng
+đầu ghi "S16 dư 22% · S1_V2 dư 14,8%" là số của bản thiếu luật. Xem mục
+*Luật cự ly trục* ngay dưới.)
+
+**Luật cự ly trục — bản đầu chỉ có một nửa (sửa 30/9/2026).** Đọc thẳng công
+thức ô `Load!F44:G46` bằng COM (Excel có trên DESKTOP-NLCA550; `xlrd` chỉ đọc
+được trị, không đọc được công thức của `.xls`):
+
+    xe tải       F44 = IF(G35 > 4300, (G35 + 4300)/2, G35)
+    xe hai trục  G44 = IF(G35 > 1200, (G35 + 1200)/2, G35)
+
+Cùng một luật cho hai xe: dải rộng hơn cự ly hai trục liền nhau thì hai dải
+chồng lên nhau, lấy `(E + cự ly)/2` cho mỗi trục. Bản N3 bước 1 chỉ có nửa luật
+của xe hai trục (ghi chú cũ còn nói *"Excel không ghi công thức, phải truy
+ngược"* — sai, Excel có ghi, chỉ là `xlrd` không đọc được). Phép "tái lập đúng
+sáu ô Excel, lệch 7·10⁻¹⁵" **không thể** bắt được, vì cả ba dải của template
+mẫu (`S = 6468`) đều hẹp hơn 4300 mm. Mặt cắt thật thì vượt: S1 · S16 · SLT có
+dải `+M` 5057–5418 mm, và tải xe tải `+M` bị tính **thiếu 8–11,5%** — chiều
+không an toàn. Không ảnh hưởng MCT mặc định (cờ đang TẮT), và trong mô hình xe
+trội vẫn là `tandem_(−M)` (luật của nó vốn đúng). `strip_width_axles()` +
+`strip_width_unaxle()` (chiều nghịch cho `template_strip_geometry`), mạch tính
+trong MCT ghi rõ luật đã ăn vào dải nào. `tests/test_input_check.py` so với
+**công thức Excel chép độc lập** trên bộ tham số cố ý có dải vượt 4300; dựng lại
+mã cũ → **8 bài đỏ**.
 
 - **Mặc định TẮT** (`auto_live_load=False`), và MCT ra **trùng khít từng byte**:
   so md5 với worktree ở HEAD, cùng một lượt chạy, **7/7 mặt cắt trùng** (S1 ·

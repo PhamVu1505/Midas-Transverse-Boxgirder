@@ -24,22 +24,31 @@ from src.input_check import (CHECK_TEMPLATE, P_TANDEM, P_TRUCK,
                              check_shared_template, check_template,
                              frame_metrics, live_load_compare,
                              live_load_derivation, live_load_from_geometry,
-                             strip_width, strip_width_tandem,
-                             template_strip_geometry)
+                             strip_width, strip_width_axles,
+                             strip_width_tandem, template_strip_geometry)
 from src.mct_frame_writer import _write_tendon_prestress_block
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _excel_truck(E):
+    """Ô `F44:F46` của sheet Load, chép nguyên văn: `=IF(E>4300,(E+4300)/2,E)`.
+
+    Viết lại độc lập ở đây, không gọi `strip_width_axles`, để bài kiểm so mã
+    với **công thức Excel** chứ không so mã với chính nó.
+    """
+    return (E + 4300.0) / 2.0 if E > 4300.0 else E
+
+
 def _template(S, X, im=0.33):
-    """Bộ số liệu hoạt tải sinh ra từ một S và X biết trước."""
+    """Bộ số liệu hoạt tải sinh ra từ một S và X biết trước — đúng mạch Excel."""
     E = strip_width(S=S)
     E_can = strip_width(X=X)
     return {
         'impact': im,
-        'truck_can': P_TRUCK * (1 + im) / E_can * 1000.0,
-        'truck_pos': P_TRUCK * (1 + im) / E['pos'] * 1000.0,
-        'truck_neg': P_TRUCK * (1 + im) / E['neg'] * 1000.0,
+        'truck_can': P_TRUCK * (1 + im) / _excel_truck(E_can) * 1000.0,
+        'truck_pos': P_TRUCK * (1 + im) / _excel_truck(E['pos']) * 1000.0,
+        'truck_neg': P_TRUCK * (1 + im) / _excel_truck(E['neg']) * 1000.0,
     }
 
 
@@ -435,6 +444,38 @@ def test_xe_hai_truc_dung_dai_rong_hon_xe_tai():
     # KHÔNG được bằng trị tính bằng E của xe tải
     assert auto['loads']['tandem_pos'] != pytest.approx(
         P_TANDEM * 1.33 * 1000.0 / E_pos, abs=1e-3)
+
+
+@pytest.mark.parametrize('S,X', [(8450.0, 3945.0), (8650.0, 3845.0),
+                                 (16311.0, 4503.0), (6468.0, 3632.0)])
+def test_xe_tai_dung_luat_cu_ly_truc_4300_nhu_excel(S, X):
+    """Dải rộng hơn 4300 mm thì xe tải lấy `(E + 4300)/2` — ô `F44:F46`.
+
+    Bản đầu bỏ quên luật này. Phép "tái lập đúng sáu ô Excel" không bắt được vì
+    cả ba dải của template mẫu (S = 6468) đều hẹp hơn 4300 mm, nên bộ tham số ở
+    đây cố ý gồm mặt cắt THẬT có dải vượt: S1, S16 (`+M`), và một nhịp dài
+    vượt cả ở `−M`. Thiếu luật thì tải xe tải `+M` của S16 thiếu 11,5%.
+    """
+    auto = live_load_from_geometry(_metrics(S, X), 0.33)
+    ref = _template(S, X)
+    for k in ('truck_can', 'truck_pos', 'truck_neg'):
+        assert auto['loads'][k] == pytest.approx(ref[k], abs=1e-9), k
+    # và dải vượt 4300 thì thực sự có ăn (không phải trùng hợp E < 4300)
+    if S > 6700:
+        E_pos = strip_width(S=S)['pos']
+        assert E_pos > 4300
+        assert auto['loads']['truck_pos'] > P_TRUCK * 1.33 * 1000.0 / E_pos * 1.05
+
+
+def test_luat_cu_ly_truc_hien_ra_trong_mach_tinh():
+    """Người thẩm tra phải thấy luật đã ăn vào dải nào, không phải tự so."""
+    auto = live_load_from_geometry(_metrics(8650.0, 3845.0), 0.33)
+    txt = '\n'.join(live_load_derivation(auto))
+    assert '(E + 4300)/2' in txt
+    E_pos = strip_width(S=8650.0)['pos']
+    assert f'+M {E_pos:.0f} -> {strip_width_axles(E_pos, 4300.0):.0f} mm' in txt
+    hep = live_load_from_geometry(_metrics(5550.0, 3375.0), 0.33)
+    assert 'khong dai nao vuot' in '\n'.join(live_load_derivation(hep))
 
 
 def test_nhieu_nhip_va_hai_canh_hang_lech_thi_lay_ben_ngan():
