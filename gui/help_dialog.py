@@ -155,9 +155,11 @@ số liệu như chọn một template.</p>
 0,043·γc^1,5·√f'c</code>, <code>PD = 0,0006·V²·Cd</code>, <code>Pj =
 Ap·fpj/1000</code>, tải bánh theo dải tương đương…) kèm trị các đầu vào. Đủ tham
 số thì ô giá trị khoá lại và tự đổi khi bạn sửa đầu vào; thiếu tham số thì cột
-này nói còn thiếu gì để chương trình tính hộ. Chuyển từ Excel sang, chương trình
-tự suy những tham số suy được một nghĩa (γc, cự ly sườn S, cánh hẫng X…); tốc độ
-gió, bề dày lớp phủ, diện tích lan can thì bạn tự khai.</p>
+này nói còn thiếu gì để chương trình tính hộ. Template mẫu có sẵn mục
+<b>MẠCH TÍNH (tham số)</b> trên sheet <code>INPUT</code> (γc, tốc độ gió, bề dày
+lớp phủ, diện tích lan can, S/X dải tương đương…) nên chuyển sang đủ cả 19 mạch.
+Template cũ chưa có mục đó thì chương trình chỉ tự suy những tham số suy được
+một nghĩa; phần còn lại bạn tự khai.</p>
 {note('Ô trống là <b>thiếu</b> — tô vàng, và nút Lưu khoá lại. Không có trị mặc '
       'định: số gợi ý chỉ hiện mờ bên cạnh. Sửa số liệu đang dùng sau khi đã '
       'có Beam Force thì các mặt cắt đó bị đánh dấu <b>lạc hậu</b>; chỉ chuyển '

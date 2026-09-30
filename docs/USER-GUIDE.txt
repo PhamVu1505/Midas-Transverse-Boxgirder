@@ -159,9 +159,10 @@ Cột Mạch tính ghi công thức của từng đại lượng tính được 
 0,043·γc^1,5·√f'c, PD = 0,0006·V²·Cd, Pj = Ap·fpj/1000, tải bánh theo dải
 tương đương…) kèm trị các đầu vào. Đủ tham số thì ô giá trị khoá lại và tự đổi
 khi bạn sửa đầu vào; thiếu tham số thì cột này nói còn thiếu gì để chương
-trình tính hộ. Chuyển từ Excel sang, chương trình tự suy những tham số suy
-được một nghĩa (γc, cự ly sườn S, cánh hẫng X…); tốc độ gió, bề dày lớp phủ,
-diện tích lan can thì bạn tự khai.
+trình tính hộ. Template mẫu có sẵn mục MẠCH TÍNH (tham số) trên sheet INPUT
+(γc, tốc độ gió, bề dày lớp phủ, diện tích lan can, S/X dải tương đương…) nên
+chuyển sang đủ cả 19 mạch. Template cũ chưa có mục đó thì chương trình chỉ tự
+suy những tham số suy được một nghĩa; phần còn lại bạn tự khai.
 
 LƯU Ý: Ô trống là thiếu — tô vàng, và nút Lưu khoá lại. Không có trị mặc định:
   số gợi ý chỉ hiện mờ bên cạnh. Sửa số liệu đang dùng sau khi đã có Beam

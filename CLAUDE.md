@@ -884,6 +884,34 @@ khi đã có Beam Force là bảng kiểm toán ra số đẹp của một bộ 
 Excel sang khối cùng 40 con số là đổi lối vào, **không** lạc hậu; khác số thì
 lạc hậu. Sửa khối đang dùng tại chỗ → `inputs_edited()`.
 
+**Tham số mạch tính trên sheet `INPUT` (VuPQ chốt 30/9/2026).** Template mẫu
+nay có mục **MẠCH TÍNH (tham số)** — 16 hàng, tra theo khoá như 40 khoá cũ —
+nên `from_excel` chuyển đủ **19/19** luật thay vì 15/19. Sửa bằng COM
+(script ở scratchpad của phiên, không vào repo), **chỉ thêm hàng ở `INPUT`**,
+không chèn/xoá hàng ở `General`/`Load` (toạ độ legacy và `crosscheck` dựa vào
+đó):
+
+- Tham số **đã là ô** (`Load!E9 G39 G40 G63 G64 C68 F70`): hàng `INPUT` =
+  `=Load!…`, cùng chiều 40 khoá cũ.
+- Hằng số **nằm chết trong công thức** (2500 · 22,5 · 0,49 · 0,42 · 1,8 · 0,9 ·
+  0,75): tạo ô trên `INPUT` **và sửa công thức gốc trỏ về đó** — `General!H72
+  H86 H94`, `Load!G9 G11 G13 C75`. Chỉ ghi trị lên `INPUT` mà để nguyên công
+  thức là **hai con số cho một đại lượng**. Cùng lượt: `Load!G7` (trọng lượng
+  riêng BT dùng cho lan can, ghi cứng 24,5) nay `=INPUT!B8` = khoá `density`.
+- **Chứng minh bằng Excel thật**: đổi từng ô ×1,1 → `CalculateFull` → khoá phụ
+  thuộc trên `INPUT` phải đổi → phục hồi. Bản mới **17/17 ô sống**; biến thể
+  "thêm hàng mà không sửa công thức" → bắt đúng **10 ô chết**.
+- Bất biến giữ nguyên: 40 khoá **trùng từng bit**, `crosscheck` rỗng, MCT
+  **md5 8/8** như trước khi sửa.
+- Reader cất tham số ở `d['_params']`, **không** trộn vào 40 khoá. Tham số sheet
+  làm luật lệch → template tự mâu thuẫn → `InputError`, không bỏ đi cho êm.
+  `input_data.excel_params()` dùng chung cho `from_excel` và hộp thoại.
+- `tools/make_input_sheet.py` (sinh `INPUT` cho workbook CŨ) **không** sinh mục
+  này: hằng số chết trong công thức thì phải có người sửa công thức, công cụ
+  không làm hộ được. Workbook cũ vẫn chạy — lui về suy ngược 15/19.
+- Hệ quả thấy ngay: đổi `d_L` trong khối mà không tính lại lan can giờ bị từ
+  chối — `barrier_left` (kN/m²) chính là tải trên dải **chia `d_L`**.
+
 **Lối vào**: nút *Khai số liệu trong app…* ngay dưới ô template ở dock trái ·
 `Tệp → Khai số liệu đầu vào` (**Ctrl+I**). Ô trống = thiếu, tô vàng, khoá nút
 Lưu. Lưu lần đầu từ Excel luôn hỏi chỗ ghi — **không bao giờ ghi đè file Excel**.
@@ -1111,11 +1139,8 @@ N3. **Bỏ template Excel, khai số liệu trong app** — VuPQ yêu cầu 2026
       đó lối này lặng lẽ luôn đọc template), `--auto-live-load` ở CLI.
     * **Bước 3** — xuất ngược ra Excel làm hồ sơ thẩm tra. `input_derive.RULES`
       đã mang sẵn công thức · căn cứ · ô Excel gốc cho từng đại lượng.
-    * **Câu hỏi thứ hai cho VuPQ**: có nên sửa template Excel mẫu sao cho các ô
-      đầu vào của mạch tính (`E9`, `G63`, `G64`, `C68`, diện tích lan can) nằm
-      trên sheet `INPUT` không? Khi đó `from_excel` chuyển được **19/19** luật
-      thay vì 15/19. App **không** tự đọc các ô đó theo toạ độ cứng — đó đúng là
-      lớp lỗi đã làm lệch 20/21 khoá sheet `Load`.
+    * ~~**Câu hỏi thứ hai**: đưa ô đầu vào của mạch tính lên sheet `INPUT`?~~
+      **VuPQ chốt 30/9, ĐÃ LÀM** — xem *Tham số mạch tính trên sheet INPUT*.
 
     Việc này **không phụ thuộc NX hay Civil 2022** nên làm được bất cứ lúc nào.
 

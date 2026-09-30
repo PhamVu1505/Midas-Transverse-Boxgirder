@@ -285,8 +285,11 @@ def test_results_dung_topo_da_ghi_khong_dung_lai_tu_template(block_file, tmp_pat
     dxf = os.path.join(ROOT, 'input', 'dxf', 'S16.dxf')
     if not (os.path.exists(bf) and os.path.exists(dxf)):
         pytest.skip('thiếu Beam Force/DXF của S16')
+    from src.input_derive import resolve
     b = _raw(block_file)
-    b['values']['d_L'] = 0.6
+    # đổi d_L thì lan can (kN/m² = tải trên dải chia d_L) phải tính lại theo —
+    # để nguyên là khối tự mâu thuẫn, và validate từ chối đúng như vậy
+    b['values'] = resolve({**b['values'], 'd_L': 0.6}, b['params'])
     _write(block_file, b)
     run._generate_one(dxf, str(tmp_path), inputs=block_file)
     shutil.copy(bf, tmp_path / 'S16')

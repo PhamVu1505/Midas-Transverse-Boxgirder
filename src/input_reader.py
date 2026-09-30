@@ -230,7 +230,9 @@ def read_inputs(excel_path: str, strict: bool = True) -> dict:
     ck = (os.path.abspath(excel_path), st.st_mtime_ns, st.st_size, strict)
     hit = _CACHE.get(ck)
     if hit is not None:
-        return dict(hit)
+        out = dict(hit)
+        out['_params'] = dict(hit.get('_params') or {})
+        return out
 
     # Khối số liệu khai trong app (N3 bước 2). Rẽ nhánh ở ĐÚNG chỗ này để mọi
     # nơi đang nhận đường dẫn template dùng được ngay — xem `input_data`.
@@ -266,6 +268,19 @@ def read_inputs(excel_path: str, strict: bool = True) -> dict:
                     pass
             out[key] = default
         out['_source'] = INPUT_SHEET
+        # Tham số MẠCH TÍNH (γc, VB, Cd, S/X dải tương đương…) — tuỳ chọn,
+        # cất riêng ở `_params` chứ không trộn vào 40 khoá: writer không đọc
+        # chúng, và trộn vào thì `same_inputs`/`describe` đếm nhầm. Tra theo
+        # khoá như mọi khoá khác; ô không phải số thì bỏ, không đoán.
+        from .input_derive import PARAMS
+        prm = {}
+        for p in PARAMS:
+            if _norm(p.name) in kv:
+                try:
+                    prm[p.name] = _num(kv[_norm(p.name)], p.name)
+                except InputError:
+                    pass
+        out['_params'] = prm
     else:
         warnings.warn(
             f"Không thấy sheet '{INPUT_SHEET}' trong {os.path.basename(excel_path)} — "
@@ -283,6 +298,7 @@ def read_inputs(excel_path: str, strict: bool = True) -> dict:
         for key, (default, _u, _d) in CONSTANTS.items():
             out[key] = default
         out['_source'] = 'legacy'
+        out['_params'] = {}
 
     out['_missing'] = missing
     if missing and strict:
@@ -419,6 +435,12 @@ def describe(excel_path: str) -> str:
             lines.append(f'  {key:<14} {"THIẾU":>14}  {unit:<6} {desc}')
     for key, (_v, unit, desc) in CONSTANTS.items():
         lines.append(f'  {key:<14} {d.get(key, 0):>14.6g}  {unit:<6} {desc} (hằng số)')
+    if d.get('_params'):
+        from .input_derive import PARAM_BY_NAME
+        lines.append(f'  — tham số mạch tính ({len(d["_params"])}):')
+        for key, v in d['_params'].items():
+            p = PARAM_BY_NAME[key]
+            lines.append(f'  {key:<14} {v:>14.6g}  {p.unit:<6} {p.desc}')
     if d['_missing']:
         lines.append(f'  → thiếu {len(d["_missing"])} khóa: ' + ', '.join(d['_missing']))
     return '\n'.join(lines)

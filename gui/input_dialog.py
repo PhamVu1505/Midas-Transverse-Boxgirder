@@ -29,8 +29,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QDialog, QFileDialog,
                              QVBoxLayout)
 
 from src import input_data
-from src.input_derive import (PARAMS, RULE_BY_KEY, derive, params_from_values,
-                              resolve)
+from src.input_derive import PARAMS, RULE_BY_KEY, derive, resolve
 from src.input_reader import InputError, read_inputs
 
 from .theme import FONT_MONO, LIGHT
@@ -121,9 +120,9 @@ class InputDialog(QDialog):
                          f'tạo một khối số liệu .json, file Excel không bị đụng.')
         self.values = {k: d[k] for k in input_data.keys() if k in d}
         if not input_data.is_block_path(source):
-            # Mạch tính không đi theo con số — suy ngược những gì suy được một
-            # nghĩa, phần còn lại để người dùng tự khai (xem input_derive).
-            self.params = params_from_values(self.values)
+            # Tham số mạch tính: ô trên sheet INPUT nếu template có, phần còn
+            # lại suy ngược một nghĩa — chung một hàm với `from_excel`.
+            self.params = input_data.excel_params(d)
 
     def _snapshot(self):
         return (dict(self.values), dict(self.params))

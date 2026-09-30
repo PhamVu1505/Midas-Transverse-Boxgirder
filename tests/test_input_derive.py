@@ -144,3 +144,54 @@ def test_moi_luat_tinh_ra_mot_khoa_that_cua_SPEC():
         for n in r.inputs:
             assert n in spec or n in names or n in ('density',), (r.key, n)
     assert not names & spec                  # tham số không trùng tên khoá
+
+
+# ─────────────────────────────────────────────────────────────
+# Tham số mạch tính nằm trên sheet INPUT của template (VuPQ chốt 30/9)
+# ─────────────────────────────────────────────────────────────
+
+@needs_template
+def test_template_mang_du_tham_so_19_tren_19():
+    """Template mẫu nay có ô cho mọi đầu vào của mạch tính → chuyển đủ 19/19.
+
+    Không có các ô đó thì chỉ suy ngược được 15/19 — bốn mạch (lớp phủ, hai lan
+    can, gió PD) chỉ còn lại tích số, tách không được.
+    """
+    d = read_inputs(TEMPLATE)
+    assert set(d['_params']) == {p.name for p in PARAMS}
+    b = input_data.from_excel(TEMPLATE)
+    st = [e['status'] for e in derive(b['values'], b['params'])]
+    assert st.count('tinh') == len(RULES) == 19
+    # và tham số trên sheet đúng là ô Excel đã dùng (đọc bằng COM 30/9)
+    for k, v in EXCEL_INPUT_CELLS.items():
+        assert d['_params'][k] == v, k
+
+
+def test_ten_tham_so_khong_trung_khoa_sau_chuan_hoa():
+    """Reader so khoá sau `_norm` (bỏ khoảng trắng, chữ thường) và `setdefault`
+    giữ khoá ĐẦU TIÊN — trùng là âm thầm đọc nhầm ô. `K`, `Ap`, `Cd` đều là
+    khoá mà chữ hoa/thường dễ va nhau."""
+    from src.input_reader import CONSTANTS, _norm
+    khoa = [_norm(s[0]) for s in SPEC] + [_norm(k) for k in CONSTANTS]
+    tham = [_norm(p.name) for p in PARAMS]
+    assert len(set(tham)) == len(tham)
+    assert not set(tham) & set(khoa)
+
+
+@needs_template
+def test_tham_so_tren_sheet_lam_lech_thi_tu_choi(tmp_path):
+    """Template mà ô tham số khác ô Excel đã dùng là template tự mâu thuẫn —
+    `from_excel` phải nói ra, không bỏ tham số đi cho êm."""
+    import openpyxl
+    d = read_inputs(TEMPLATE)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'INPUT'
+    for k in input_data.keys():
+        ws.append([k, d[k]])
+    for k, v in d['_params'].items():
+        ws.append([k, 2400.0 if k == 'gamma_c' else v])
+    p = str(tmp_path / 'lech.xlsx')
+    wb.save(p)
+    with pytest.raises(InputError, match='lech.xlsx.*Ec'):
+        input_data.from_excel(p)

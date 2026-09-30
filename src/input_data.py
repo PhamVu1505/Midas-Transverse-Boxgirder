@@ -223,7 +223,26 @@ def from_excel(excel_path: str) -> dict:
     """
     d = read_inputs(excel_path, strict=True)
     vals = {k: d[k] for k in keys()}
-    return make_block(vals,
-                      {'from': os.path.basename(excel_path),
-                       'from_sheet': d['_source']},
-                      params_from_values(vals))
+    try:
+        return make_block(vals,
+                          {'from': os.path.basename(excel_path),
+                           'from_sheet': d['_source']},
+                          excel_params(d))
+    except InputError as e:
+        raise InputError(f'Template {os.path.basename(excel_path)}: {e}') from e
+
+
+def excel_params(d: dict) -> dict:
+    """Tham số mạch tính của một template đã đọc: ô trên sheet `INPUT` trước,
+    phần sheet không có thì suy ngược một nghĩa (`params_from_values`).
+
+    Một chỗ dùng chung cho `from_excel` và hộp thoại — hai lối vào mà chọn
+    tham số khác nhau thì cùng một template cho ra hai mạch tính.
+
+    Tham số lấy từ sheet mà làm luật LỆCH thì template tự mâu thuẫn: không bỏ
+    đi cho êm, để `make_block`/`validate` từ chối và nói ra khoá nào.
+    """
+    vals = {k: d[k] for k in keys() if k in d}
+    p = params_from_values(vals)
+    p.update(d.get('_params') or {})
+    return p
