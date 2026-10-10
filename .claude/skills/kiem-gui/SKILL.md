@@ -8,10 +8,9 @@ description: Kiểm giao diện PyQt của app Midas Transverse Boxgirder bằng
 ## Chạy
 
 ```bash
-python tools/check_gui.py                 # cả hai bảng màu, ~20 phép kiểm
+python tools/check_gui.py                 # 18 phép kiểm
 python tools/check_gui.py --list          # liệt kê rồi thoát
 python tools/check_gui.py --only dong_bo  # lọc theo tên
-python tools/check_gui.py --themes dark
 ```
 
 Thoát mã 0 = đạt hết. Cần `output/` đã có ít nhất một mặt cắt sinh MCT xong —
@@ -28,7 +27,7 @@ công cụ dựng project mẫu từ dữ liệu thật ở đó, giống `tools
 Lỗi giao diện của dự án này gần như luôn rơi vào cột giữa, và `pytest` im lặng
 với tất cả: ô chọn mặt cắt đổi bảng nhưng dock đứng yên · widget mồ côi giữ
 640×480 vẽ đè lên dock · thông điệp tạm của `QStatusBar` chồng lên hai nhãn ·
-mũi tên ô xoay biến mất vì QSS đã đặt `border`.
+mũi tên ô xoay biến mất vì QSS đã đặt `border` (từ 2026-10-10 app để Windows tự vẽ điều khiển — `kiem_qss_khong_dung_dieu_khien_native` giữ luật không QSS nào chạm tới chúng).
 
 ## Thêm phép kiểm mới
 
@@ -54,7 +53,7 @@ def kiem_ten_gi_do(c):
 | `c.w` | `MainWindow` đã nạp project mẫu và đang hiện |
 | `c.app` | `QApplication` |
 | `c.single` / `c.twin` | tên mặt cắt một hộp / hai hộp (`twin` có thể `None`) |
-| `c.theme` | `'light'` hoặc `'dark'` |
+| `c.theme` | luôn `'light'` — app chỉ còn bảng Sáng (2026-10-10) |
 | `c.step()` | cho Qt xử lý xong việc đang chờ rồi vẽ lại |
 | `c.pick(combo, text)` | chọn một mục **như người dùng bấm chuột** |
 | `c.props_section()` | tên mặt cắt dock Properties đang hiển thị |

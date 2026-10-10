@@ -9,14 +9,17 @@ Ba nút icon vẽ đúng ký hiệu sẽ hiện trên mô hình — mượn lố
 SAP2000: nhìn hình là biết chọn gì, không phải đọc chữ trong danh sách xổ.
 """
 
-from PyQt6.QtCore import QSize, pyqtSignal
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                             QToolButton, QSpinBox, QFrame, QButtonGroup)
+                             QToolButton, QSpinBox, QFrame, QButtonGroup,
+                             QRadioButton)
 
-from .icons import support_icon, SUPPORT_NAME, SUPPORT_CODE
-from .theme import LIGHT, FONT_MONO
+from src.mct_frame_writer import SUPPORT_CODE
+from .theme import LIGHT, ui_font
 
 KINDS = ('pin', 'roller', 'fixed')
+# Nhãn ngắn cho nút chọn một — đủ ngắn để ba nút nằm vừa một hàng của dock
+SUPPORT_NAME = {'pin': 'Cố định', 'roller': 'Di động', 'fixed': 'Ngàm'}
 
 
 class SupportEditor(QWidget):
@@ -62,14 +65,14 @@ class SupportEditor(QWidget):
         v = self.view
         sups = list(v.supports) if v else []
 
-        head = QLabel(f'GỐI ({len(sups)})')
-        head.setStyleSheet(f'font-size:8pt;font-weight:600;letter-spacing:.7px;'
-                           f'color:{self.t["ink_3"]};padding-top:6px')
+        head = QLabel(f'Gối ({len(sups)})')
+        head.setFont(ui_font(bold=True))          # tiêu đề nhóm
+        head.setStyleSheet(f'color:{self.t["ink"]};padding-top:6px')
         self._lay.addWidget(head)
 
         if not v or not v.m:
             note = QLabel('Chưa nạp mô hình')
-            note.setStyleSheet(f'color:{self.t["ink_3"]};font-size:9pt')
+            note.setStyleSheet(f'color:{self.t["ink_3"]}')
             self._lay.addWidget(note)
             return
 
@@ -79,7 +82,7 @@ class SupportEditor(QWidget):
         if not sups:
             note = QLabel('Chưa đặt gối riêng — khi tạo MCT dùng bộ mặc định')
             note.setWordWrap(True)
-            note.setStyleSheet(f'color:{self.t["ink_3"]};font-size:8pt')
+            note.setStyleSheet(f'color:{self.t["ink_3"]}')
             self._lay.addWidget(note)
 
         btns = QWidget()
@@ -87,7 +90,7 @@ class SupportEditor(QWidget):
         h.setContentsMargins(0, 6, 0, 0)
         h.setSpacing(5)
         b_add = QToolButton()
-        b_add.setText('＋ Thêm gối')
+        b_add.setText('Thêm gối')
         b_add.setToolTip('Đặt thêm một gối trên bản đáy')
         b_add.clicked.connect(self._add)
         h.addWidget(b_add)
@@ -102,14 +105,17 @@ class SupportEditor(QWidget):
         hint = QLabel('Trên hình: bấm node đáy để đặt · kéo tam giác để dời · '
                       'chuột phải để xóa')
         hint.setWordWrap(True)
-        hint.setStyleSheet(f'color:{self.t["ink_3"]};font-size:8pt;padding-top:4px')
+        hint.setStyleSheet(f'color:{self.t["ink_3"]};padding-top:4px')
         self._lay.addWidget(hint)
         self._lay.addStretch()
 
     def _row(self, idx, sp):
         box = QFrame()
+        # Bộ chọn theo tên: `QFrame {…}` trơn lan xuống mọi QLabel con (QLabel
+        # là QFrame) — chính vì thế các nhãn bên dưới từng phải tự `border:0`.
+        box.setObjectName('supRow')
         box.setStyleSheet(
-            f'QFrame {{ background:{self.t["panel_alt"]};'
+            f'QFrame#supRow {{ background:{self.t["panel_alt"]};'
             f' border:1px solid {self.t["border_soft"]}; border-radius:3px; }}')
         outer = QVBoxLayout(box)
         outer.setContentsMargins(6, 4, 4, 5)
@@ -118,7 +124,7 @@ class SupportEditor(QWidget):
         top = QHBoxLayout()
         top.setSpacing(4)
         cap = QLabel('node')
-        cap.setStyleSheet(f'border:0;color:{self.t["ink_3"]};font-size:8pt')
+        cap.setStyleSheet(f'color:{self.t["ink_3"]}')
         top.addWidget(cap)
 
         spin = QSpinBox()
@@ -127,54 +133,34 @@ class SupportEditor(QWidget):
         spin.setFixedWidth(64)
         spin.setKeyboardTracking(False)      # chỉ báo khi Enter hoặc rời ô
         spin.setToolTip('Gõ số hiệu node bản đáy rồi Enter để dời gối')
-        spin.setStyleSheet(f'font-family:{FONT_MONO}')
         spin.valueChanged.connect(lambda val, k=idx: self._move(k, val))
         top.addWidget(spin)
 
         xlb = QLabel(f'{sp["x"]:+.3f}')
-        xlb.setStyleSheet(f'border:0;color:{self.t["ink_2"]};'
-                          f'font-family:{FONT_MONO};font-size:8pt')
+        xlb.setStyleSheet(f'color:{self.t["ink_2"]}')
         top.addWidget(xlb)
         top.addStretch()
 
         bx = QToolButton()
-        bx.setText('✕')
-        bx.setFixedSize(21, 21)
+        bx.setText('Xóa')                 # chữ, không ký hiệu ✕
         bx.setToolTip('Xóa gối này')
-        # `padding:0` là bắt buộc: QSS chung cho QToolButton đặt padding 5×10px,
-        # nút này lại ghim cứng 21×21 nên chữ chỉ còn 1px bề ngang và Qt rút gọn
-        # dấu ✕ thành một chấm mờ — nhìn tưởng nút hỏng chứ không phải nút xóa.
-        bx.setStyleSheet(f'QToolButton{{border:0;padding:0;min-height:0;'
-                         f'color:{self.t["ink_3"]}}}'
-                         f'QToolButton:hover{{color:{self.t["err"]}}}')
         bx.clicked.connect(lambda _=False, k=idx: self._remove(k))
         top.addWidget(bx)
         outer.addLayout(top)
 
+        # Loại gối loại trừ nhau → nút chọn một có chữ, như "Dynamic analysis
+        # type" của caldintav. Bản trước là ba nút icon + một nhãn tên lặp lại.
         row = QHBoxLayout()
         row.setSpacing(4)
         grp = QButtonGroup(box)
         for kind in KINDS:
-            b = QToolButton()
-            b.setIcon(support_icon(kind, theme=self.t))
-            b.setIconSize(QSize(22, 22))
-            b.setCheckable(True)
+            b = QRadioButton(SUPPORT_NAME[kind])
             b.setChecked(sp.get('kind') == kind)
-            b.setFixedSize(34, 30)
-            b.setToolTip(f'{SUPPORT_NAME[kind]} — {SUPPORT_CODE[kind]}')
-            b.setStyleSheet(
-                f'QToolButton{{border:1px solid {self.t["border"]};'
-                f' border-radius:3px; background:{self.t["panel"]}}}'
-                f'QToolButton:checked{{background:{self.t["accent_soft"]};'
-                f' border:2px solid {self.t["accent"]}}}'
-                f'QToolButton:hover{{border-color:{self.t["accent"]}}}')
+            b.setToolTip(f'Gối {SUPPORT_NAME[kind].lower()} — '
+                         f'khoá {SUPPORT_CODE[kind]}')
             b.clicked.connect(lambda _=False, k=idx, kk=kind: self._kind(k, kk))
             grp.addButton(b)
             row.addWidget(b)
-
-        name = QLabel(SUPPORT_NAME.get(sp.get('kind'), ''))
-        name.setStyleSheet(f'border:0;color:{self.t["ink"]};font-size:8pt')
-        row.addWidget(name)
         row.addStretch()
         outer.addLayout(row)
         return box

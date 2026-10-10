@@ -290,6 +290,79 @@ def test_mct_version_block():
             f'{name}: *VERSION phải đứng trước *UNIT')
 
 
+def _loadcomb_blocks(mct: str) -> dict:
+    """{tên tổ hợp: các dòng của khối đó} trong *LOADCOMB."""
+    out, cur, inside = {}, None, False
+    for line in mct.splitlines():
+        if line.startswith('*'):
+            inside = line.startswith('*LOADCOMB')
+            continue
+        if not inside or not line.strip() or line.lstrip().startswith(';'):
+            continue
+        if line.strip().startswith('NAME='):
+            cur = line.split('=', 1)[1].split(',')[0].strip()
+            out[cur] = []
+        out[cur].append(line)
+    return out
+
+
+def test_combo_overrides():
+    """Tổ hợp tự sửa (T21): mặc định trùng khít từng byte, sửa đâu đổi đúng đó.
+
+    Khoá trên cả ba hình (single, twin, SLT) vì hai writer gọi
+    `_write_load_combinations` ở hai chỗ — sửa một quên một là đúng khuôn lỗi
+    `_COMBOS` từng mắc.
+    """
+    from src.mct_frame_writer import (write_mct, combo_default,
+                                      combo_overrides_clean, combo_problems,
+                                      _validate_load_references)
+
+    for dxf_rel, stype, *_ in CASES:
+        frame, cables, props, name, _ = _frame_for(dxf_rel)
+        kw = dict(pt_cables=cables, pt_props=props)
+        mac_dinh, topo = write_mct(frame, name, EXCEL, **kw)
+        has_pt = bool(topo.get('tendons')) and 'Prestress, PS' in mac_dinh
+
+        # 1. None, {} và một bản sao y mặc định đều cho ra đúng file cũ
+        for ov in (None, {}, {'Cuong do I': combo_default('Cuong do I', has_pt)}):
+            assert write_mct(frame, name, EXCEL, combos=ov, **kw)[0] == mac_dinh, \
+                f'{name}: combos={ov!r} làm đổi MCT'
+
+        # 2. Đổi một hệ số → chỉ khối NAME=Cuong do I đổi
+        terms = combo_default('Cuong do I', has_pt=True)
+        terms[0][2] = 1.30
+        sua, _ = write_mct(frame, name, EXCEL, combos={'Cuong do I': terms}, **kw)
+        a, b = _loadcomb_blocks(mac_dinh), _loadcomb_blocks(sua)
+        assert list(a) == list(b), f'{name}: thứ tự/tên tổ hợp đổi'
+        khac = [k for k in a if a[k] != b[k]]
+        assert khac == ['Cuong do I'], f'{name}: sửa Cuong do I mà đổi {khac}'
+        assert 'ST, Self Weight, 1.3' in ' '.join(b['Cuong do I'])
+        assert not _validate_load_references(sua.splitlines()), name
+
+        # 3. Không có cáp thì số hạng CS tự rơi, không thành tổ hợp mồ côi
+        if not has_pt:
+            assert 'CS,' not in ' '.join(b['Cuong do I']), \
+                f'{name}: không có cáp mà vẫn ghi số hạng CS'
+            # tổ hợp tự sửa CHỈ toàn CS → lọc xong rỗng → phải lui về mặc định,
+            # không được ghi một dòng NAME= trơ trọi
+            chi_cs, _ = write_mct(frame, name, EXCEL, combos={
+                'Cuong do IV': [['CS', 'Tendon Secondary', 1]]}, **kw)
+            assert chi_cs == mac_dinh, f'{name}: tổ hợp toàn CS làm hỏng MCT'
+
+    # 4. Bộ kiểm: CB trỏ tới tổ hợp định nghĩa SAU nó phải bị bắt
+    bad = {'Su dung I': [['ST', 'Self Weight', 1], ['CB', 'str_all', 1]]}
+    assert any('str_all' in p for p in combo_problems(bad)), \
+        'combo_problems không bắt CB trỏ tới tổ hợp phía sau'
+    assert combo_problems({'TG': []}), 'tổ hợp rỗng phải bị bắt'
+    # ST Prestress chỉ khai báo khi có cáp — cho chọn là mở lại lỗi (null)
+    assert combo_problems({'TG': [['ST', 'Prestress', 1]]}), \
+        'ST Prestress không được nằm trong danh sách có thể chọn'
+    assert combo_problems({'TG': [['ST', 'TpG(+)', 0]]}), 'hệ số 0 phải bị bắt'
+    assert not combo_problems({'TG': [['ST', 'TpG(+)', 1.2], ['ST', 'TpG(-)', 1]]})
+    # tên lạ bị bỏ, bản sao mặc định bị bỏ
+    assert combo_overrides_clean({'khong co': [], 'DW': combo_default('DW')}) == {}
+
+
 def test_custom_supports():
     """Gối tuỳ đặt: lưu theo toạ độ X, ghi MCT thì quy về node đáy gần nhất."""
     from src.mct_frame_writer import write_mct, SUPPORT_CODE
@@ -1017,3 +1090,32 @@ if __name__ == '__main__':
             failed += 1
             print(f'FAIL  {case[0]}: {e}')
     sys.exit(1 if failed else 0)
+
+
+def test_beam_force_stale_only_when_mct_content_changes(tmp_path):
+    """"Cũ hơn MCT" chỉ khi NỘI DUNG MCT đổi, không phải mỗi lần bấm Tạo MCT.
+
+    Đóng dấu thời gian mỗi lần tạo thì sau "Tạo MCT toàn bộ" (ra file y hệt)
+    mọi mặt cắt đã gán Beam Force đều bị báo "chạy lại Midas" — cảnh báo kêu
+    sau thao tác hay dùng nhất là cảnh báo không ai đọc.
+    """
+    import os
+    from src.project import Project, Section
+    mct, bf = tmp_path / 'S.mct', tmp_path / 'bf.xls'
+    mct.write_text('A')
+    p = Project(sections=[Section(name='S', dxf='')])
+    s = p.sections[0]
+    p.record_generated('S', str(mct), '', 'single', 1, 1, inputs={})
+    s.gen_inputs['time'] = 1000.0          # MCT tạo "từ lâu"
+    bf.write_text('x')
+    os.utime(bf, (1005.0, 1005.0))        # Beam Force xuất SAU lần tạo đó
+    p.set_beam_force('S', str(bf))
+    assert not p.beam_force_older_than_mct(s)
+
+    p.record_generated('S', str(mct), '', 'single', 1, 1, inputs={})   # y hệt
+    assert not p.beam_force_older_than_mct(s), 'tạo lại y hệt mà báo Beam Force cũ'
+
+    mct.write_text('B')                                                # đổi thật
+    p.record_generated('S', str(mct), '', 'single', 1, 1, inputs={})
+    s.gen_inputs['time'] = os.path.getmtime(bf) + 10
+    assert p.beam_force_older_than_mct(s), 'MCT đổi nội dung mà không báo Beam Force cũ'

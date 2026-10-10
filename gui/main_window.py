@@ -2,7 +2,7 @@
 
 import os
 
-from PyQt6.QtCore import Qt, QSize, QSettings
+from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QTabBar, QStackedWidget,
                              QStatusBar, QLabel, QPlainTextEdit,
@@ -19,8 +19,7 @@ from .properties_panel import PropertiesPanel
 from .viewer_panel import ViewerPanel
 from .frame_view import MODEL, SHAPE, PARTS
 from .widgets import LogView
-from .icons import icon
-from .theme import FONT_MONO, THEMES, apply_theme
+from .theme import apply_theme, mono_font, ui_font
 from .prefs import Prefs, PreferencesDialog
 from .widgets import StepBar, IDLE, ACTIVE, DONE
 from . import assets
@@ -241,15 +240,14 @@ class MainWindow(QMainWindow):
         self._msg_level = 'ok'
 
         self.lb_msg = QLabel('Sẵn sàng')
-        self.lb_msg.setStyleSheet(f'color: {self.t["ok"]}; font-weight: 600;')
+        self.lb_msg.setStyleSheet(f'color: {self.t["ok"]};')
         self.status.addWidget(self.lb_msg)
         self.lb_detail = QLabel('')
         self.status.addWidget(self.lb_detail, 1)
         self.status.detail = self.lb_detail
 
         self.lb_cursor = QLabel('')
-        self.lb_cursor.setStyleSheet(
-            f'font-family: {FONT_MONO}; color: {self.t["ink_3"]};')
+        self.lb_cursor.setStyleSheet(f'color: {self.t["ink_3"]};')
         self.status.addPermanentWidget(self.lb_cursor)
         self.status.addPermanentWidget(self._sep())
 
@@ -259,22 +257,27 @@ class MainWindow(QMainWindow):
         self.prog.setVisible(False)
         self.status.addPermanentWidget(self.prog)
 
-        mono = f'font-family: {FONT_MONO}; color: {self.t["ink_2"]};'
         self.lb_count = QLabel('—')
-        self.lb_count.setStyleSheet(mono)
+        self.lb_count.setStyleSheet(f'color: {self.t["ink_2"]};')
         self.status.addPermanentWidget(self._sep())
         self.status.addPermanentWidget(self.lb_count)
 
         self.lb_units = QLabel('kN, m')
-        self.lb_units.setStyleSheet(mono)
+        self.lb_units.setStyleSheet(f'color: {self.t["ink_2"]};')
         self.lb_units.setToolTip('Hệ đơn vị của mô hình MCT xuất ra')
         self.status.addPermanentWidget(self._sep())
         self.status.addPermanentWidget(self.lb_units)
 
         self.status.addPermanentWidget(self._sep())
         self.lb_ver = QLabel(VERSION)
-        self.lb_ver.setStyleSheet(
-            f'font-family: {FONT_MONO}; color: {self.t["ink_3"]};')
+        self.lb_ver.setStyleSheet(f'color: {self.t["ink_3"]};')
+        # Style native là plugin Qt — bản đóng gói thiếu plugin thì lặng lẽ lui
+        # về Fusion. Rê chuột lên số phiên bản là biết đang chạy style nào
+        # (bản `--windowed` không có console để in ra).
+        app = QApplication.instance()
+        if app is not None:
+            self.lb_ver.setToolTip(
+                f'Qt style: {app.style().metaObject().className()}')
         self.status.addPermanentWidget(self.lb_ver)
 
         # Không nối `messageChanged` nữa: `StatusBar.showMessage` ghi thẳng vào
@@ -288,16 +291,10 @@ class MainWindow(QMainWindow):
         self._seps.append(f)
         return f
 
-    _act_icons = None
-
-    def _act(self, text, slot, shortcut=None, ic=None, tip=None):
+    # Lệnh KHÔNG mang icon — cả trên menu lẫn thanh công cụ, như caldintav:
+    # nút là chữ có động từ đầy đủ, đọc là biết bấm xong có gì.
+    def _act(self, text, slot, shortcut=None, tip=None):
         a = QAction(text, self)
-        if self._act_icons is None:
-            self._act_icons = []
-        if ic:
-            a.setIcon(icon(ic, theme=self.t))
-            # Icon là pixmap tô sẵn màu — đổi theme phải vẽ lại, nhớ đường về.
-            self._act_icons.append((a, ic))
         if shortcut:
             a.setShortcut(QKeySequence(shortcut))
         if tip:
@@ -309,30 +306,30 @@ class MainWindow(QMainWindow):
         mb = self.menuBar()
 
         m = mb.addMenu('&Tệp')
-        m.addAction(self._act('Project &mới', self.new_project, 'Ctrl+N', 'new'))
-        m.addAction(self._act('&Mở project…', self.open_project, 'Ctrl+Shift+O', 'open'))
-        self.a_save = self._act('&Lưu project', self.save_project, 'Ctrl+S', 'save')
+        m.addAction(self._act('Project &mới', self.new_project, 'Ctrl+N'))
+        m.addAction(self._act('&Mở project…', self.open_project, 'Ctrl+Shift+O'))
+        self.a_save = self._act('&Lưu project', self.save_project, 'Ctrl+S')
         m.addAction(self.a_save)
         m.addAction(self._act('Lưu project &thành…', self.save_project_as, 'Ctrl+Shift+S'))
         self.recent_menu = m.addMenu('Project &gần đây')
         m.addSeparator()
-        self.a_dxf = self._act('Thêm &DXF…', self.panel_add_dxf, 'Ctrl+O', 'add',
+        self.a_dxf = self._act('Thêm &DXF…', self.panel_add_dxf, 'Ctrl+O',
                                'Thêm mặt cắt DXF vào project')
         self.a_dxf_dir = self._act('Thêm cả thư &mục DXF…', self.panel_add_folder,
-                                   None, 'folder')
+                                   None)
         self.a_tpl = self._act('Chọn &template số liệu…', self.pick_template,
-                               'Ctrl+T', 'template',
+                               'Ctrl+T',
                                'Template chung; từng mặt cắt có thể gán riêng')
         m.addAction(self.a_dxf)
         m.addAction(self.a_dxf_dir)
         m.addAction(self.a_tpl)
         m.addSeparator()
-        m.addAction(self._act('Mở thư mục &kết quả', self.open_output, None, 'folder'))
+        m.addAction(self._act('Mở thư mục &kết quả', self.open_output, None))
         m.addSeparator()
         m.addAction(self._act('T&hoát', self.close, 'Alt+F4'))
 
         m = mb.addMenu('&Mô hình')
-        self.a_gen = self._act('&Tạo MCT toàn bộ', self.generate_all, 'F5', 'generate')
+        self.a_gen = self._act('&Tạo MCT toàn bộ', self.generate_all, 'F5')
         self.a_gen_sel = self._act('Tạo MCT cho mặt cắt &đang chọn',
                                    self.generate_selected, 'Shift+F5')
         m.addAction(self.a_gen)
@@ -341,19 +338,23 @@ class MainWindow(QMainWindow):
         # Mục vẫn HIỆN khi tính năng tắt, chỉ bị khoá kèm chú thích chỉ đường.
         # Giấu hẳn thì người dùng không biết là có, mà bật sẵn thì app tự giành
         # lấy chuột — cả hai đều sai. `_sync_midas_action()` lo phần khoá/mở.
-        self.a_midas = self._act('Chạy &Midas/Civil', self.run_midas, 'F8', 'run')
+        self.a_combos = self._act('Tổ hợp tải trọn&g…', self.edit_combos, None,
+                                  'Sửa hệ số tổ hợp bằng hai danh sách có sẵn ↔ trong tổ hợp')
+        m.addAction(self.a_combos)
+        m.addSeparator()
+        self.a_midas = self._act('Chạy &Midas/Civil', self.run_midas, 'F8')
         m.addAction(self.a_midas)
         m.addSeparator()
-        m.addAction(self._act('&Xóa nhật ký', self.clear_log, 'Ctrl+L', 'clear'))
+        m.addAction(self._act('&Xóa nhật ký', self.clear_log, 'Ctrl+L'))
 
         m = mb.addMenu('&Kết quả')
-        self.a_bf = self._act('&Gán file Beam Force…', self.assign_bf, 'Ctrl+B', 'load')
-        self.a_run = self._act('&Xử lý Beam Force', self.process_results, 'F6', 'check')
+        self.a_bf = self._act('&Gán file Beam Force…', self.assign_bf, 'Ctrl+B')
+        self.a_run = self._act('&Xử lý Beam Force', self.process_results, 'F6')
         m.addAction(self.a_bf)
         m.addAction(self.a_run)
         m.addSeparator()
         self.a_check = self._act('&Kiểm toán mặt cắt', self.run_section_check,
-                                 'F7', 'check',
+                                 'F7',
                                  'Nhập cốt thép và kiểm toán theo TCVN 11823')
         m.addAction(self.a_check)
 
@@ -368,26 +369,13 @@ class MainWindow(QMainWindow):
         m.addAction(self._act('&Vừa khung', lambda: self.gen_tab.view.fit(), 'F'))
         m.addSeparator()
 
-        # Đổi nhanh bảng màu ngay trong menu Xem, cùng chỗ với bật/tắt panel —
-        # midas Civil cũng để Display Option cạnh Toolbars chứ không chôn hết
-        # vào Preferences.
-        self.theme_menu = m.addMenu('&Bảng màu')
-        self._theme_acts = {}
-        for key, (label, _tbl) in THEMES.items():
-            a = QAction(label, self)
-            a.setCheckable(True)
-            a.triggered.connect(lambda _=False, k=key: self.set_theme(k))
-            self.theme_menu.addAction(a)
-            self._theme_acts[key] = a
-        self._sync_theme_menu()
-
         m = mb.addMenu('&Công cụ')
         m.addAction(self._act('Kiểm tra &template số liệu…', self.check_template,
-                              None, 'info',
+                              None,
                               'Đọc thử Excel, liệt kê 40 khóa và đối chiếu ô gốc'))
         m.addSeparator()
-        self.a_prefs = self._act('&Tùy chọn…', self.open_prefs, 'Ctrl+,', 'gear',
-                                 'Giao diện, khung xem và giá trị mặc định')
+        self.a_prefs = self._act('&Tùy chọn…', self.open_prefs, 'Ctrl+,',
+                                 'Khung xem, giá trị mặc định và chạy Midas')
         m.addAction(self.a_prefs)
 
         m = mb.addMenu('Trợ &giúp')
@@ -400,8 +388,7 @@ class MainWindow(QMainWindow):
         tb = self.tb = QToolBar('Chính')
         tb.setObjectName('mainToolbar')
         tb.setMovable(False)
-        tb.setIconSize(QSize(17, 17))
-        tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.addToolBar(tb)
 
         for a in (self.a_dxf, self.a_tpl):
@@ -411,28 +398,25 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
         tb.addAction(self.a_bf)
         tb.addAction(self.a_run)
+        # Mỗi lệnh là một NÚT có viền riêng (Windows vẽ), như hàng nút của
+        # caldintav — mặc định QToolBar để nút phẳng, chữ "Thêm DXF", "Chọn
+        # template…" trôi liền nhau không biết đâu là ranh giới.
+        tb.layout().setSpacing(4)
+        for a in (self.a_dxf, self.a_tpl, self.a_gen, self.a_bf, self.a_run):
+            w = tb.widgetForAction(a)
+            if w is not None:
+                w.setAutoRaise(False)
 
         spacer = QWidget()
         spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy().Expanding,
                              spacer.sizePolicy().verticalPolicy().Preferred)
         tb.addWidget(spacer)
 
-        # Nút bánh răng cuối thanh: bấm mở Tùy chọn, giữ/mũi tên xổ menu đổi
-        # nhanh bảng màu. Kiểu nút chia đôi này lấy từ thanh công cụ của midas
-        # và SAP2000 — thao tác hay dùng đi thẳng, phần còn lại nằm trong menu.
-        self.btn_prefs = QToolButton()
-        self.btn_prefs.setIcon(icon('gear', theme=self.t))
-        # Chỉ icon: thanh công cụ đã kín chỗ vì nhãn tiếng Việt dài, thêm chữ
-        # nữa là nút bị đẩy khuất khỏi mép phải trên màn hình hẹp.
-        self.btn_prefs.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.btn_prefs.setToolTip('Tùy chọn (Ctrl+,) — bấm mũi tên để đổi '
-                                  'nhanh bảng màu')
-        self.btn_prefs.setPopupMode(
-            QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        self.btn_prefs.setMenu(self.theme_menu)
-        self.btn_prefs.clicked.connect(self.open_prefs)
-        tb.addWidget(self.btn_prefs)
-        self._act_icons.append((self.btn_prefs, 'gear'))
+        # Tùy chọn cuối thanh: nút chữ như mọi nút khác (bản trước là bánh
+        # răng chỉ có icon — người dùng phải rê chuột mới biết nó là gì).
+        tb.addAction(self.a_prefs)
+        self.btn_prefs = tb.widgetForAction(self.a_prefs)
+        self.btn_prefs.setAutoRaise(False)
         tb.addSeparator()
 
         # Dấu hiệu TEDI ở mép phải — badge đơn vị, không phải nút bấm
@@ -520,7 +504,28 @@ class MainWindow(QMainWindow):
         self.project.set_pt_jacking(name, jacking)
         label = 'hai đầu' if jacking == 'both' else 'một đầu'
         self.log.info(f'{name}: căng cáp {label} — tạo lại MCT để áp thay đổi')
+        self.props.refresh()        # bảng tóm tắt: "Cần tạo lại — đã đổi kiểu căng"
         self._update_title()
+
+    def edit_combos(self):
+        """Hộp thoại tổ hợp tải trọng (T21) — chung cho cả project."""
+        from .combo_dialog import ComboDialog
+        has_tpl = bool(self.project.template
+                       or any(s.template for s in self.project))
+        d = ComboDialog(self.project.combos, self.t, self, has_template=has_tpl)
+        if d.exec() != QDialog.DialogCode.Accepted:
+            return
+        new = d.result_combos()
+        if new == self.project.combos:
+            return
+        self.project.combos = new
+        self.project._dirty = True
+        if new:
+            self.log.info(f'Tổ hợp tải trọng: đã sửa {len(new)} tổ hợp '
+                          f'({", ".join(new)}) — tạo lại MCT để áp dụng')
+        else:
+            self.log.info('Tổ hợp tải trọng: về mặc định — tạo lại MCT để áp dụng')
+        self._on_project_changed()
 
     def _on_project_changed(self):
         self.panel.refresh()
@@ -650,16 +655,14 @@ class MainWindow(QMainWindow):
     # ─────────────────────────────────────────
     # Giao diện / Tùy chọn
     # ─────────────────────────────────────────
-    # Đổi theme không khởi động lại: QSS của QApplication lo phần lớn widget,
-    # nhưng KHÔNG với tới hai thứ — style nội tuyến (`setStyleSheet` trong panel)
-    # và widget tự vẽ bằng QPainter (khung xem, thanh bước, sơ đồ điểm kiểm).
-    # `_push_theme()` là chỗ duy nhất phân phát; panel nào cần thì có
-    # `apply_theme()`. Thêm panel mới mà quên nối vào đây thì nó đứng nguyên
-    # màu cũ — nên danh sách để tập trung một chỗ cho dễ soát.
+    # Nút/ô nhập do Windows vẽ (xem `gui/theme.py`); token chỉ còn cho style
+    # nội tuyến của nhãn và widget tự vẽ bằng QPainter (khung xem, thanh bước,
+    # sơ đồ điểm kiểm). `_push_theme()` là chỗ duy nhất phân phát token xuống
+    # các panel — chỉ chạy một lần lúc dựng cửa sổ vì app chỉ còn bảng Sáng.
     def _push_theme(self):
         app = QApplication.instance()
         if app is not None:
-            apply_theme(app, self.t, self.sizes, self.prefs.font_family)
+            apply_theme(app, self.t)
         self.steps.apply_theme(self.t)
         self.viewer.apply_theme(self.t)
         self.panel.apply_theme(self.t)
@@ -672,30 +675,17 @@ class MainWindow(QMainWindow):
     def _restyle_chrome(self):
         """Style nội tuyến của chính cửa sổ (thanh tab, status bar, nút Tạo MCT)."""
         t = self.t
-        self.mode_bar.setStyleSheet(f'background: {t["panel_alt"]};'
-                                    f' border-bottom: 1px solid {t["border"]};')
-        self.mct_view.setStyleSheet(
-            f'font-family: {FONT_MONO}; font-size: {self.sizes["font_mono"]}pt;'
-            f' border: 0;')
-        mono = f'font-family: {FONT_MONO}; color: {t["ink_2"]};'
-        self.lb_count.setStyleSheet(mono)
-        self.lb_units.setStyleSheet(mono)
+        # Phông đơn cách CHỈ ở đây — nội dung là văn bản máy (file MCT). Có bộ
+        # chọn: QSS trơn lan `border: 0` xuống hai thanh cuộn con.
+        self.mct_view.setFont(mono_font())
+        self.mct_view.setStyleSheet('QPlainTextEdit { border: 0; }')
+        for lb in (self.lb_count, self.lb_units):
+            lb.setStyleSheet(f'color: {t["ink_2"]};')
         for lb in (self.lb_cursor, self.lb_ver):
-            lb.setStyleSheet(f'font-family: {FONT_MONO}; color: {t["ink_3"]};')
+            lb.setStyleSheet(f'color: {t["ink_3"]};')
         for f in self._seps:
             f.setStyleSheet(f'color: {t["border"]};')
         self.status_msg(self.lb_msg.text(), self._msg_level)
-
-        for a, ic in self._act_icons:
-            a.setIcon(icon(ic, theme=t))
-        w = self.tb.widgetForAction(self.a_gen) if hasattr(self, 'tb') else None
-        if w:
-            w.setStyleSheet(
-                f'QToolButton {{ background: {t["accent"]};'
-                f' color: {t["on_accent"]}; font-weight: 600;'
-                f' border: 1px solid {t["accent"]};'
-                f' border-radius: 3px; padding: 5px 12px; }}'
-                f'QToolButton:hover {{ background: {t["accent_hover"]}; }}')
 
     def _select_start_mode(self):
         want = {'model': 0, 'shape': 1, 'parts': 2}.get(self.prefs.start_mode, 0)
@@ -709,30 +699,11 @@ class MainWindow(QMainWindow):
         old = self.prefs
         self.prefs = d.result_prefs()
         self.prefs.save(self.settings)
-        self.t = self.prefs.tokens()
-        self.sizes = self.prefs.sizes()
-        self._push_theme()
         if self.prefs.layers != old.layers:
             self.panel.set_layer_states(self.prefs.layers)
         self.panel.select_on_add = self.prefs.select_on_add
         self._sync_midas_action()
-        self._sync_theme_menu()
-        self.status_msg('Đã áp dụng tùy chọn giao diện')
-
-    def set_theme(self, key: str):
-        """Đổi nhanh bảng màu từ menu Xem — vẫn ghi vào cùng một chỗ lưu."""
-        if key == self.prefs.theme:
-            return
-        self.prefs.theme = key
-        self.prefs.save(self.settings)
-        self.t = self.prefs.tokens()
-        self._push_theme()
-        self._sync_theme_menu()
-        self.status_msg(f'Bảng màu: {THEMES[key][0]}')
-
-    def _sync_theme_menu(self):
-        for key, a in self._theme_acts.items():
-            a.setChecked(key == self.prefs.theme)
+        self.status_msg('Đã áp dụng tùy chọn')
 
     # ─────────────────────────────────────────
     # Kéo thả từ Explorer vào bất kỳ đâu trong cửa sổ
@@ -877,9 +848,9 @@ class MainWindow(QMainWindow):
         box.setWindowTitle('Chạy Midas/Civil')
         box.setText(f'Sắp chạy Midas cho {len(jobs)} mặt cắt.')
         box.setInformativeText(
-            'Trong lúc chạy, app <b>bấm thật vào ribbon Midas và chiếm tiền '
-            'cảnh</b> — máy không dùng được, khoảng 1–3 phút mỗi mặt cắt.<br><br>'
-            'Midas phải đang mở với tài liệu trống. App <b>không</b> tự mở, tự '
+            'Trong lúc chạy, app bấm thật vào ribbon Midas và chiếm tiền '
+            'cảnh — máy không dùng được, khoảng 1–3 phút mỗi mặt cắt.<br><br>'
+            'Midas phải đang mở với tài liệu trống. App không tự mở, tự '
             'đóng hay tắt Midas; tài liệu đang mở không sạch thì app dừng và báo.')
         box.setTextFormat(Qt.TextFormat.RichText)
         box.setDetailedText('\n'.join(f'{j["name"]}  ←  {j["mct"]}' for j in jobs))
@@ -1003,20 +974,27 @@ class MainWindow(QMainWindow):
         app_lb.setPixmap(assets.app_icon().pixmap(72, 72))
         top.addWidget(app_lb, 0, Qt.AlignmentFlag.AlignTop)
 
+        # Tên chương trình là chỗ DUY NHẤT dùng cỡ chữ lớn — như tiêu đề
+        # "CALDINTAV 3.0" (docs/UI-CALDINTAV.md mục 4).
+        col = QVBoxLayout()
+        col.setSpacing(6)
+        title = QLabel(APP_NAME)
+        title.setFont(ui_font(4, bold=True))
+        title.setWordWrap(True)
+        col.addWidget(title)
         txt = QLabel(
-            f'<div style="color:{self.t["ink"]};font-size:14pt;'
-            f'font-weight:600">{APP_NAME}</div>'
-            f'<div style="color:{self.t["ink_2"]};font-size:10pt">{VERSION}</div>'
+            f'<div style="color:{self.t["ink_2"]}">{VERSION}</div>'
             f'<div style="height:8px"></div>'
             f'<div style="color:{self.t["ink"]}">Phân tích khung ngang dầm hộp '
             f'bê tông cốt thép dự ứng lực.</div>'
             f'<div style="color:{self.t["ink_2"]}">Tự động hóa từ mặt cắt DXF '
             f'đến bảng kiểm toán.</div>'
             f'<div style="height:10px"></div>'
-            f'<div style="color:{self.t["ink_2"]};font-size:9pt">DXF → MCT → '
+            f'<div style="color:{self.t["ink_2"]}">DXF → MCT → '
             f'Midas/Civil → Beam Force → Bảng kiểm toán</div>')
         txt.setWordWrap(True)
-        top.addWidget(txt, 1)
+        col.addWidget(txt)
+        top.addLayout(col, 1)
 
         tedi = QLabel()
         tedi.setPixmap(assets.tedi_full(96))
@@ -1030,12 +1008,12 @@ class MainWindow(QMainWindow):
         lay.addWidget(line)
 
         foot = QHBoxLayout()
-        cr = QLabel(f'<span style="color:{self.t["ink_3"]};font-size:9pt">'
+        cr = QLabel(f'<span style="color:{self.t["ink_3"]}">'
                     f'TEDI — Tổng công ty Tư vấn thiết kế GTVT</span>')
         foot.addWidget(cr)
         foot.addStretch()
         ok = QPushButton('Đóng')
-        ok.setProperty('primary', True)
+        ok.setDefault(True)
         ok.clicked.connect(d.accept)
         foot.addWidget(ok)
         lay.addLayout(foot)
@@ -1049,7 +1027,7 @@ class MainWindow(QMainWindow):
                'err': self.t['err'], 'busy': self.t['accent']}[level]
         self._msg_level = level
         self.lb_msg.setText(text)
-        self.lb_msg.setStyleSheet(f'color: {col}; font-weight: 600;')
+        self.lb_msg.setStyleSheet(f'color: {col};')
 
     def set_progress(self, done, total):
         if total <= 0 or done >= total:

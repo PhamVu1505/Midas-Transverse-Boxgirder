@@ -14,7 +14,7 @@ from PyQt6.QtGui import (QColor, QTextCharFormat, QFont, QTextCursor,
 from PyQt6.QtWidgets import QTextEdit
 
 from ..icons import level_image
-from ..theme import LIGHT, FONT_MONO, SIZE
+from ..theme import LIGHT, SIZE
 
 # Nhận diện mức độ từ nội dung dòng log do worker phát ra.
 _ERR = re.compile(r'\bERROR\b|\bTraceback\b|\bException\b|InputError', re.I)
@@ -49,10 +49,9 @@ class LogView(QTextEdit):
         self._badges = set()
 
     def _restyle(self):
+        # Phông giao diện chung — nhật ký là câu chữ, không phải văn bản máy.
         self.setStyleSheet(
-            f'QTextEdit {{ font-family: {FONT_MONO};'
-            f' font-size: {self._size["font_mono"]}pt;'
-            f' background: {self.t["panel"]};'
+            f'QTextEdit {{ background: {self.t["panel"]};'
             f' border: 1px solid {self.t["border"]}; }}')
 
     def apply_theme(self, theme: dict, size: dict = None):

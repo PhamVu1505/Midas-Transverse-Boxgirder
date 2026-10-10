@@ -1,10 +1,9 @@
 """
 Kiểm giao diện tự động — dựng cửa sổ thật, bấm thật, rồi đối chiếu.
 
-    python tools/check_gui.py                 # chạy hết, cả hai bảng màu
+    python tools/check_gui.py                 # chạy hết
     python tools/check_gui.py --list          # liệt kê các phép kiểm rồi thoát
     python tools/check_gui.py --only dong_bo  # chỉ chạy phép kiểm có tên chứa chuỗi
-    python tools/check_gui.py --themes dark
 
 Vì sao có công cụ này
 ─────────────────────
@@ -313,7 +312,7 @@ def kiem_canh_bao_hoat_tai_tra_duoc_bat_ky_luc_nao(c):
         c.step()
         assert c.props_section() == s.name, 'dock không đi theo mặt cắt được chọn'
         chu = c.w.props.input[1].text()
-        assert 'DẢI TƯƠNG ĐƯƠNG' in chu, \
+        assert 'Dải tương đương' in chu, \
             f'{s.name}: dock không có khối đối chiếu dải tương đương'
         assert f'{cmp["S"]["tpl"]:.0f} mm' in chu, \
             f'{s.name}: dock không in trị S mà template đang khai'
@@ -420,21 +419,269 @@ def kiem_huy_hieu_nhat_ky(c):
     return f'4 mức có ảnh · khoá huy hiệu gồm mã màu ({c.theme})'
 
 
-def kiem_mui_ten_o_xoay_va_o_xo(c):
-    """QSS phải trỏ tới ảnh mũi tên thật cho ô xoay và ô xổ.
+def kiem_qss_khong_dung_dieu_khien_native(c):
+    """Không QSS nào được chạm vào nút, ô nhập, ô tích… — để Windows tự vẽ.
 
-    Đặt `border`/`background` lên `QSpinBox`/`QComboBox` là Qt thôi nhờ style
-    vẽ mũi tên, mà hai sub-control này **chỉ** nhận `image: url(...)`.
+    Chỉ một thuộc tính hộp (`border`/`background`/`padding`/`margin`) trên một
+    điều khiển là Qt thôi nhờ style native vẽ nó. Bản v1.3–v1.4.1 phủ QSS lên
+    mọi thứ rồi phải tự dựng lại mũi tên ô xoay, dấu tích, độ nổi của nút — mà
+    vẫn thua bản Windows vẽ (VuPQ chốt bỏ, 2026-10-10). Soát ba đường QSS có thể
+    lọt vào: QSS của app · QSS nội tuyến trên chính điều khiển · QSS không bộ
+    chọn đặt trên khung cha (nó lan xuống mọi con).
     """
-    from gui.theme import build_qss, make_size
-    qss = build_qss(c.w.t, make_size(), '')
-    for luat in ('QSpinBox::up-arrow', 'QSpinBox::down-arrow',
-                 'QComboBox::down-arrow'):
-        assert luat in qss, f'QSS thiếu quy tắc {luat}'
-        khuc = qss.split(luat, 1)[1][:200]
-        assert 'image: url(' in khuc, \
-            f'{luat} không trỏ tới ảnh — mũi tên sẽ biến mất'
-    return 'ô xoay và ô xổ đều có ảnh mũi tên'
+    import re
+    from PyQt6.QtWidgets import QWidget
+    from gui.theme import NATIVE_CONTROLS
+    hop = re.compile(r'\b(border|background|padding|margin)\b')
+    loai = tuple(getattr(__import__('PyQt6.QtWidgets', fromlist=['x']), n)
+                 for n in NATIVE_CONTROLS)
+
+    def ten_trong(qss):
+        return [n for n in NATIVE_CONTROLS if re.search(rf'\b{n}\b', qss)]
+
+    loi = []
+    app_qss = c.app.styleSheet()
+    if ten_trong(app_qss):
+        loi.append(f'QSS của app nhắc tới {ten_trong(app_qss)}')
+    # Cả hai hộp thoại riêng: chúng không phải con của cửa sổ chính
+    from gui.prefs import PreferencesDialog
+    from gui.help_dialog import HelpDialog
+    from gui.combo_dialog import ComboDialog
+    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w),
+                 ComboDialog({}, c.w.t, c.w)]
+    ws = [c.w, *c.w.findChildren(QWidget)]
+    for d in hop_thoai:
+        ws += [d, *d.findChildren(QWidget)]
+    for w in ws:
+        q = w.styleSheet()
+        if not q:
+            continue
+        ten = type(w).__name__ + (f'#{w.objectName()}' if w.objectName() else '')
+        if ten_trong(q):
+            loi.append(f'{ten}: QSS nhắm vào {ten_trong(q)}')
+        elif isinstance(w, loai) and hop.search(q):
+            loi.append(f'{ten}: QSS có thuộc tính hộp — {q[:60]!r}')
+        elif '{' not in q and hop.search(q) and any(
+                isinstance(k, loai) for k in w.findChildren(QWidget)):
+            loi.append(f'{ten}: QSS không bộ chọn lan xuống điều khiển con — {q[:60]!r}')
+    assert not loi, ' · '.join(loi[:5]) + (f' … (+{len(loi) - 5})' if len(loi) > 5 else '')
+    for d in hop_thoai:
+        d.deleteLater()
+    return f'soát {len(ws)} widget + QSS của app · style {c.app.style().metaObject().className()}'
+
+
+def kiem_mot_phong_mot_co_khong_nghieng(c):
+    """Một phông, một cỡ, không in nghiêng — kiểu chữ theo caldintav.
+
+    VuPQ chốt 2026-10-10 (docs/UI-CALDINTAV.md): caldintav dùng đúng một phông,
+    một cỡ, chữ đậm chỉ cho tiêu đề nhóm, gần như không in nghiêng. Bản trước
+    rải 8 pt / 9 pt / 12 pt / Consolas / chữ nghiêng khắp nơi. Soát chữ người
+    dùng thực sự đọc: phông của từng widget, cùng `font-size` / `font-family` /
+    `<i>` lọt vào nội dung hay QSS của nhãn. Ngoại lệ có tên: thẻ MCT source
+    (phông đơn cách) và chú giải nổi trên hình vẽ (nhỏ hơn đúng 1 pt).
+    """
+    import re
+    from PyQt6.QtWidgets import QWidget, QLabel
+    from gui.prefs import PreferencesDialog
+    from gui.help_dialog import HelpDialog
+    goc = c.app.font()
+    ngoai_le = {c.w.mct_view, *c.w.mct_view.findChildren(QWidget), c.w.viewer.legend}
+    from gui.combo_dialog import ComboDialog
+    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w),
+                 ComboDialog({}, c.w.t, c.w)]
+    ws = [c.w, *c.w.findChildren(QWidget)]
+    for d in hop_thoai:
+        ws += [d, *d.findChildren(QWidget)]
+    cam = re.compile(r'font-size|font-family|font-style|<i>|<tt>', re.I)
+    loi = []
+    for w in ws:
+        if w in ngoai_le:
+            continue
+        f = w.font()
+        ten = type(w).__name__ + (f'#{w.objectName()}' if w.objectName() else '')
+        if isinstance(w, QLabel):
+            ten += f' {w.text()[:24]!r}'
+        if f.italic():
+            loi.append(f'{ten}: in nghiêng')
+        if f.family() != goc.family():
+            loi.append(f'{ten}: phông {f.family()!r}')
+        if abs(f.pointSizeF() - goc.pointSizeF()) > 0.01:
+            loi.append(f'{ten}: cỡ {f.pointSizeF():g} pt (chung {goc.pointSizeF():g})')
+        noi_dung = w.styleSheet() + (w.text() if isinstance(w, QLabel) else '')
+        if cam.search(noi_dung):
+            loi.append(f'{ten}: {cam.search(noi_dung).group(0)!r} trong nội dung/QSS')
+    for d in hop_thoai:
+        d.deleteLater()
+
+    # Chữ VẼ bằng QPainter (thanh bước, khung xem, biểu đồ, tiêu đề cột) không
+    # nằm trong font() của widget nào: chặn QPainter.setFont rồi vẽ lại mọi thẻ.
+    from PyQt6.QtGui import QPainter
+    da_ve = []
+    # Lấy đúng descriptor trong __dict__ để trả lại nguyên trạng: gán lại
+    # `QPainter.setFont` lấy qua thuộc tính thì mất ràng buộc `self`, mọi
+    # paintEvent sau đó văng TypeError (đã xảy ra với phép kiểm chạy kế tiếp).
+    goc_desc = QPainter.__dict__['setFont']
+    goc_set = QPainter.setFont
+
+    def ghi(painter, font):
+        da_ve.append((font.family(), font.pointSizeF(), font.italic()))
+        return goc_set(painter, font)
+    QPainter.setFont = ghi
+    try:
+        for i in range(c.w.tabbar.count()):
+            c.w.tabbar.setCurrentIndex(i)
+            c.step()
+            c.w.repaint()
+    finally:
+        setattr(QPainter, 'setFont', goc_desc)
+    co_cho_phep = {round(goc.pointSizeF(), 2), round(goc.pointSizeF() - 1, 2)}
+    for fam, pt, nghieng in set(da_ve):
+        if nghieng:
+            loi.append(f'QPainter vẽ chữ nghiêng ({fam} {pt:g} pt)')
+        if fam != goc.family():
+            loi.append(f'QPainter vẽ phông {fam!r}')
+        # huy hiệu điểm kiểm toán (A, A1…) co theo vòng tròn — ký hiệu bản vẽ
+        if round(pt, 2) not in co_cho_phep and pt > goc.pointSizeF():
+            loi.append(f'QPainter vẽ cỡ {pt:g} pt')
+
+    assert not loi, ' · '.join(loi[:5]) + (f' … (+{len(loi) - 5})' if len(loi) > 5 else '')
+    return (f'soát {len(ws)} widget + {len(set(da_ve))} kiểu chữ QPainter · '
+            f'{goc.family()} {goc.pointSizeF():g} pt')
+
+
+def kiem_nut_la_chu_khong_icon(c):
+    """Nút bấm và mục menu là CHỮ, không icon; chữ trên nút không bị cắt.
+
+    VuPQ chốt 2026-10-10 theo caldintav: nút mang động từ đầy đủ, không icon
+    (bản trước có icon cạnh chữ ở thanh công cụ + menu, và nút Tùy chọn chỉ là
+    một bánh răng). Soát mọi nút + mọi QAction của menu/thanh công cụ ở cửa sổ
+    chính và hai hộp thoại; với nút có chữ thì đo chữ có vừa bề rộng nút
+    không — nút zoom từng bị QSS bóp thành một chấm.
+    """
+    from PyQt6.QtWidgets import QAbstractButton
+    from PyQt6.QtGui import QAction
+    from gui.prefs import PreferencesDialog
+    from gui.help_dialog import HelpDialog
+    from gui.combo_dialog import ComboDialog
+    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w),
+                 ComboDialog({}, c.w.t, c.w)]
+    goc = [c.w, *hop_thoai]
+    loi, so_nut, so_lenh = [], 0, 0
+    for g in goc:
+        for b in g.findChildren(QAbstractButton):
+            # nút đóng/thả nổi của dock, nút cuộn của thanh thẻ: Qt tự vẽ
+            cha = type(b.parent()).__name__ if b.parent() is not None else ''
+            if b.objectName().startswith('qt_') or cha in ('QDockWidget', 'QTabBar'):
+                continue
+            so_nut += 1
+            ten = f'{type(b).__name__} {b.text()!r}'
+            if not b.icon().isNull():
+                loi.append(f'{ten}: có icon')
+            if b.isVisible() and b.text():
+                can = b.fontMetrics().horizontalAdvance(b.text().replace('&', ''))
+                if b.width() < can:
+                    loi.append(f'{ten}: rộng {b.width()} px < chữ {can} px')
+        for a in g.findChildren(QAction):
+            so_lenh += 1
+            if not a.icon().isNull():
+                loi.append(f'lệnh {a.text()!r}: có icon')
+    for d in hop_thoai:
+        d.deleteLater()
+    assert not loi, ' · '.join(loi[:5]) + (f' … (+{len(loi) - 5})' if len(loi) > 5 else '')
+    return f'{so_nut} nút + {so_lenh} lệnh đều là chữ, không cắt chữ'
+
+
+def kiem_tom_tat_bao_can_tao_lai(c):
+    """Bảng tóm tắt ở dock Properties phải nói "Cần tạo lại" và nói VÌ SAO.
+
+    Mẫu *Project Summary* của caldintav (docs/UI-CALDINTAV.md mục 2.3): thứ
+    hiển thị là số liệu đã dùng; đổi gối / kiểu căng sau khi tạo MCT thì MCT
+    trên đĩa không còn khớp, mà trước đây không có gì báo. Bấm như người dùng
+    (nút chọn loại gối, ô Căng cáp) rồi đọc dock **không gọi refresh tay** —
+    nối dây thiếu ở đâu là phép kiểm đỏ ở đó. Project cũ chưa có dấu vân tay
+    thì phải nói "không rõ" chứ không kêu "cần tạo lại" cho mọi mặt cắt.
+    """
+    from PyQt6.QtWidgets import QRadioButton
+    p = c.w.project
+    sec = p.find(c.single)
+
+    def chu():
+        c.step()
+        return c.w.props.body[1].text()
+
+    sec.gen_inputs = {}
+    c.w.panel.select(c.single)
+    assert 'không rõ' in chu(), 'project cũ (chưa có dấu vân tay) phải ghi "không rõ"'
+
+    sec.pt_cables = ['PT-TOP-1']          # để ô Căng cáp mở khoá
+    sec.gen_inputs = dict(p.gen_fingerprint(sec), time=0)
+    c.w.panel.select(c.single)
+    t = chu()
+    assert 'Đã tạo' in t and 'Cần tạo lại' not in t, 'vừa tạo xong mà đã báo cần tạo lại'
+
+    # đổi loại gối bằng nút chọn một trong dock
+    radios = [r for r in c.w.props.sup_editor.findChildren(QRadioButton)
+              if r.isVisible() and not r.isChecked()]
+    assert radios, 'không thấy nút chọn loại gối nào để bấm'
+    radios[0].click()
+    t = chu()
+    assert 'Cần tạo lại' in t and 'gối' in t, 'đổi loại gối mà bảng tóm tắt không báo'
+
+    # đổi kiểu căng bằng ô Căng cáp
+    cb = c.w.props.cb_jacking
+    assert cb.isEnabled(), 'ô Căng cáp vẫn khoá dù mặt cắt có cáp'
+    cb.setCurrentIndex(cb.findData('both'))
+    t = chu()
+    assert 'kiểu căng cáp' in t, 'đổi kiểu căng mà bảng tóm tắt không báo'
+    return 'không rõ → đã tạo → cần tạo lại (gối, kiểu căng) — bấm thật'
+
+
+def kiem_hop_thoai_to_hop(c):
+    """Hộp thoại tổ hợp: chuyển số hạng, sửa hệ số, Đồng ý mới ghi; sai thì báo đúng câu.
+
+    Mẫu hai danh sách của caldintav (mục 3.1). Bấm như người dùng: chọn tổ hợp
+    ở danh sách trái, bấm `>` / `<`, gõ hệ số vào ô, bấm Đồng ý / Hủy.
+    """
+    from PyQt6.QtWidgets import QMessageBox
+    from gui.combo_dialog import ComboDialog
+    from src.mct_frame_writer import combo_names
+
+    d = ComboDialog({}, c.w.t, c.w)
+    d.show()
+    d.lst_combo.setCurrentRow(combo_names().index('Cuong do I'))
+    c.step()
+    n0 = d.tbl.rowCount()
+    d.lst_avail.setCurrentRow(0)
+    ten = d.lst_avail.currentItem().data(0x0100)[1]
+    d.b_add.click()
+    assert d.tbl.rowCount() == n0 + 1, '">" không đưa được số hạng vào tổ hợp'
+    d.tbl.item(0, 2).setText('1,3')          # gõ dấu phẩy thập phân như ở VN
+    assert 'đã sửa' in d.lst_combo.currentItem().text(), \
+        'danh sách trái không đánh dấu tổ hợp đã sửa'
+
+    bao = []
+    goc = QMessageBox.warning
+    QMessageBox.warning = staticmethod(lambda *a, **k: bao.append(a[2]))
+    try:
+        d.tbl.item(1, 2).setText('abc')
+        d.b_ok.click()
+        assert bao and 'không phải số' in bao[0], f'hệ số chữ phải bị chặn: {bao}'
+        assert d.isVisible(), 'lỗi mà hộp thoại vẫn đóng'
+        d.tbl.item(1, 2).setText('1.5')
+        d.b_ok.click()
+    finally:
+        QMessageBox.warning = goc
+    r = d.result_combos()
+    assert list(r) == ['Cuong do I'], f'kết quả lẫn tổ hợp khác: {list(r)}'
+    terms = r['Cuong do I']
+    assert terms[0][2] == 1.3 and any(t[1] == ten for t in terms), terms
+
+    d2 = ComboDialog(r, c.w.t, c.w)
+    d2.lst_combo.setCurrentRow(combo_names().index('Cuong do I'))
+    d2.b_rem_all.click()
+    d2.reject()
+    assert d2.result_combos() == r, 'Hủy mà bảng tổ hợp vẫn đổi'
+    return f'thêm "{ten}", hệ số 1,3 → 1.3, chặn "abc", Hủy không đổi gì'
 
 
 def kiem_moi_the_ve_duoc(c):
@@ -465,7 +712,11 @@ CHECKS = [
     kiem_khong_co_widget_mo_coi,
     kiem_thanh_trang_thai_khong_chong_chu,
     kiem_huy_hieu_nhat_ky,
-    kiem_mui_ten_o_xoay_va_o_xo,
+    kiem_qss_khong_dung_dieu_khien_native,
+    kiem_nut_la_chu_khong_icon,
+    kiem_mot_phong_mot_co_khong_nghieng,
+    kiem_tom_tat_bao_can_tao_lai,
+    kiem_hop_thoai_to_hop,
 ]
 
 
@@ -476,7 +727,6 @@ CHECKS = [
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[1])
     ap.add_argument('--only', default='', help='chỉ chạy phép kiểm có tên chứa chuỗi này')
-    ap.add_argument('--themes', default='light,dark', help='bảng màu, ngăn bằng dấu phẩy')
     ap.add_argument('--list', action='store_true', help='liệt kê phép kiểm rồi thoát')
     args = ap.parse_args()
 
@@ -503,30 +753,29 @@ def main():
         return 1
 
     dat = hong = 0
-    for theme in [t.strip() for t in args.themes.split(',') if t.strip()]:
-        print(f'\n── bảng màu {theme} ' + '─' * 46)
-        for f in chay:
-            # Cửa sổ MỚI cho từng phép kiểm: phép kiểm trước đổi mặt cắt đang
-            # chọn, bật/tắt ô, ghi vào project — để dùng chung thì thứ tự chạy
-            # âm thầm quyết định kết quả.
-            w = R.build_window(sections, theme)
-            R.feed_results(w, sections)
-            c = Ctx(app, w, sections, theme)
-            c.step()
-            try:
-                ghi_chu = f(c) or ''
-                dat += 1
-                print(f'  ĐẠT   {f.__name__:38s} {ghi_chu}')
-            except Exception as e:
-                hong += 1
-                print(f'  HỎNG  {f.__name__:38s} {e}')
-                if not isinstance(e, AssertionError):
-                    import traceback
-                    traceback.print_exc()
-            finally:
-                w.hide()
-                w.deleteLater()
-                app.processEvents()
+    print()
+    for f in chay:
+        # Cửa sổ MỚI cho từng phép kiểm: phép kiểm trước đổi mặt cắt đang
+        # chọn, bật/tắt ô, ghi vào project — để dùng chung thì thứ tự chạy
+        # âm thầm quyết định kết quả.
+        w = R.build_window(sections)
+        R.feed_results(w, sections)
+        c = Ctx(app, w, sections, 'light')
+        c.step()
+        try:
+            ghi_chu = f(c) or ''
+            dat += 1
+            print(f'  ĐẠT   {f.__name__:38s} {ghi_chu}')
+        except Exception as e:
+            hong += 1
+            print(f'  HỎNG  {f.__name__:38s} {e}')
+            if not isinstance(e, AssertionError):
+                import traceback
+                traceback.print_exc()
+        finally:
+            w.hide()
+            w.deleteLater()
+            app.processEvents()
 
     print(f'\n{dat} đạt · {hong} hỏng')
     return 1 if hong else 0

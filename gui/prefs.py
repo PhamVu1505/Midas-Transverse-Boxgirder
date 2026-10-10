@@ -3,12 +3,14 @@ Tùy chọn ứng dụng — lưu trữ + hộp thoại.
 
 Bố cục theo lối phần mềm kỹ thuật (midas Civil *Preferences*, SAP2000
 *Options*, LUSAS *Preferences*): danh sách trang bên trái, nội dung bên phải,
-nút **Khôi phục mặc định / Hủy / Đồng ý** ở đáy. Khác một điểm có chủ ý — trang
-*Giao diện* có ô **xem thử sống**, đổi màu là thấy ngay, không phải bấm Đồng ý
-rồi mới biết mình chọn gì.
+nút **Khôi phục mặc định / Hủy / Đồng ý** ở đáy.
 
-`Prefs` chỉ là dữ liệu và đọc/ghi `QSettings`; nó không biết gì về widget. Cửa
-sổ chính hỏi `Prefs` rồi tự phân phát xuống các panel qua `apply_theme()`.
+**Không còn trang Giao diện** (VuPQ chốt 2026-10-10, theo lối caldintav): bảng
+màu, màu nhấn, mật độ, cỡ chữ và phông đều do Windows quyết. Các khoá cũ
+(`theme`, `accent`, `density`, `font_pt`, `font_family`) còn nằm trong QSettings
+của máy đã cài v1.4.1 — `load()` đọc theo danh sách trường nên bỏ qua chúng.
+
+`Prefs` chỉ là dữ liệu và đọc/ghi `QSettings`; nó không biết gì về widget.
 """
 
 from dataclasses import dataclass, asdict, field, fields
@@ -16,14 +18,11 @@ from dataclasses import dataclass, asdict, field, fields
 from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget,
                              QListWidgetItem, QStackedWidget, QWidget, QLabel,
-                             QComboBox, QRadioButton, QButtonGroup, QSlider,
-                             QPushButton, QCheckBox, QFormLayout, QFrame,
-                             QLineEdit, QFileDialog, QGroupBox,
+                             QComboBox, QPushButton, QCheckBox, QFormLayout,
+                             QFrame, QLineEdit, QFileDialog, QGroupBox,
                              QGridLayout)
 
-from .theme import (THEMES, ACCENTS, DENSITY, FONT_CHOICES, FONT_MONO,
-                    DEFAULT_THEME, DEFAULT_ACCENT, DEFAULT_DENSITY,
-                    make_theme, make_size, build_qss)
+from .theme import make_theme, make_size
 
 # Lớp hiển thị của khung xem, bày đúng thứ tự trong panel Project
 LAYER_LABELS = [
@@ -43,13 +42,6 @@ def _default_layers() -> dict:
 @dataclass
 class Prefs:
     """Tùy chọn người dùng. Đơn vị duy nhất được ghi vào QSettings."""
-
-    # ── Giao diện ──
-    theme: str = DEFAULT_THEME
-    accent: str = DEFAULT_ACCENT
-    density: str = DEFAULT_DENSITY
-    font_pt: int = 10
-    font_family: str = ''
 
     # ── Khung xem ──
     layers: dict = field(default_factory=_default_layers)
@@ -71,10 +63,10 @@ class Prefs:
 
     # ── dẫn xuất ──
     def tokens(self) -> dict:
-        return make_theme(self.theme, self.accent)
+        return make_theme()
 
     def sizes(self) -> dict:
-        return make_size(self.density, self.font_pt)
+        return make_size()
 
     # ── QSettings ──
     _GROUP = 'prefs'
@@ -93,15 +85,6 @@ class Prefs:
                 setattr(p, f.name, _coerce(raw, getattr(p, f.name)))
         finally:
             settings.endGroup()
-        # Khóa lạ (theme cũ bị xóa, accent gõ tay vào registry) → về mặc định
-        # thay vì KeyError lúc dựng cửa sổ.
-        if p.theme not in THEMES:
-            p.theme = DEFAULT_THEME
-        if p.accent not in ACCENTS:
-            p.accent = DEFAULT_ACCENT
-        if p.density not in DENSITY:
-            p.density = DEFAULT_DENSITY
-        p.font_pt = max(8, min(14, int(p.font_pt)))
         base = _default_layers()
         base.update({k: bool(v) for k, v in (p.layers or {}).items() if k in base})
         p.layers = base
@@ -162,8 +145,7 @@ class PreferencesDialog(QDialog):
         self.nav = QListWidget()
         self.nav.setFixedWidth(146)
         self.pages = QStackedWidget()
-        for title, page in (('Giao diện', self._page_appearance()),
-                            ('Khung xem', self._page_viewer()),
+        for title, page in (('Khung xem', self._page_viewer()),
                             ('Mặc định', self._page_defaults()),
                             ('Midas', self._page_midas())):
             QListWidgetItem(title, self.nav)
@@ -188,76 +170,12 @@ class PreferencesDialog(QDialog):
         b_cancel.clicked.connect(self.reject)
         foot.addWidget(b_cancel)
         b_ok = QPushButton('Đồng ý')
-        b_ok.setProperty('primary', True)
         b_ok.setDefault(True)
         b_ok.clicked.connect(self.accept)
         foot.addWidget(b_ok)
         lay.addLayout(foot)
 
         self._sync_widgets()
-
-    # ── trang Giao diện ──
-    def _page_appearance(self):
-        w = QWidget()
-        v = QVBoxLayout(w)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(10)
-
-        gb = QGroupBox('Bảng màu')
-        g = QGridLayout(gb)
-        g.setHorizontalSpacing(16)
-        self.grp_theme = QButtonGroup(self)
-        for i, (key, (label, _)) in enumerate(THEMES.items()):
-            r = QRadioButton(label)
-            r.setProperty('key', key)
-            self.grp_theme.addButton(r, i)
-            r.toggled.connect(lambda on, k=key: on and self._set('theme', k))
-            g.addWidget(r, 0, i)
-        v.addWidget(gb)
-
-        gb2 = QGroupBox('Chữ và mật độ')
-        f = QFormLayout(gb2)
-        f.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        self.cb_accent = QComboBox()
-        for key, (label, hexl, _hexd) in ACCENTS.items():
-            self.cb_accent.addItem(f'●  {label}', key)
-        self.cb_accent.currentIndexChanged.connect(
-            lambda _: self._set('accent', self.cb_accent.currentData()))
-        f.addRow('Màu nhấn', self.cb_accent)
-
-        self.cb_density = QComboBox()
-        for key, (label, _m, _d) in DENSITY.items():
-            self.cb_density.addItem(label, key)
-        self.cb_density.currentIndexChanged.connect(
-            lambda _: self._set('density', self.cb_density.currentData()))
-        f.addRow('Mật độ', self.cb_density)
-
-        row = QWidget()
-        rl = QHBoxLayout(row)
-        rl.setContentsMargins(0, 0, 0, 0)
-        self.sl_font = QSlider(Qt.Orientation.Horizontal)
-        self.sl_font.setRange(8, 14)
-        self.sl_font.setFixedWidth(150)
-        self.lb_font = QLabel('10 pt')
-        self.lb_font.setFixedWidth(46)
-        self.sl_font.valueChanged.connect(self._on_font_pt)
-        rl.addWidget(self.sl_font)
-        rl.addWidget(self.lb_font)
-        rl.addStretch()
-        f.addRow('Cỡ chữ', row)
-
-        self.cb_font = QComboBox()
-        for fam, label in FONT_CHOICES:
-            self.cb_font.addItem(label, fam)
-        self.cb_font.currentIndexChanged.connect(
-            lambda _: self._set('font_family', self.cb_font.currentData()))
-        f.addRow('Phông chữ', self.cb_font)
-        v.addWidget(gb2)
-
-        self.preview = _ThemePreview()
-        v.addWidget(self.preview, 1)
-        return w
 
     # ── trang Khung xem ──
     def _page_viewer(self):
@@ -282,12 +200,12 @@ class PreferencesDialog(QDialog):
         for key, label in VIEW_MODES:
             self.cb_mode.addItem(label, key)
         self.cb_mode.currentIndexChanged.connect(
-            lambda _: self._set('start_mode', self.cb_mode.currentData(), False))
+            lambda _: self._set('start_mode', self.cb_mode.currentData()))
         f.addRow('Chế độ xem mặc định', self.cb_mode)
         v.addWidget(gb2)
 
         note = QLabel('Các lớp này chỉ là trạng thái bật sẵn. Trong lúc làm việc '
-                      'vẫn bật tắt được ở mục <b>Lớp hiển thị</b> panel Project.')
+                      'vẫn bật tắt được ở mục Lớp hiển thị panel Project.')
         note.setWordWrap(True)
         note.setTextFormat(Qt.TextFormat.RichText)
         v.addWidget(note)
@@ -306,12 +224,12 @@ class PreferencesDialog(QDialog):
         self.ed_out, row_out = self._path_row('Chọn thư mục kết quả mặc định',
                                               self._pick_out)
         self.ed_out.textChanged.connect(
-            lambda s: self._set('output_dir', s, False))
+            lambda s: self._set('output_dir', s))
         f.addRow('Thư mục kết quả', row_out)
         self.ed_tpl, row_tpl = self._path_row('Chọn template số liệu mặc định',
                                               self._pick_tpl)
         self.ed_tpl.textChanged.connect(
-            lambda s: self._set('template', s, False))
+            lambda s: self._set('template', s))
         f.addRow('Template số liệu', row_tpl)
         v.addWidget(gb)
 
@@ -319,15 +237,15 @@ class PreferencesDialog(QDialog):
         v2 = QVBoxLayout(gb2)
         self.ck_reopen = QCheckBox('Mở lại project gần nhất khi khởi động')
         self.ck_reopen.toggled.connect(
-            lambda on: self._set('reopen_last', on, False))
+            lambda on: self._set('reopen_last', on))
         v2.addWidget(self.ck_reopen)
         self.ck_select = QCheckBox('Tự chọn mặt cắt vừa thêm để xem trước ngay')
         self.ck_select.toggled.connect(
-            lambda on: self._set('select_on_add', on, False))
+            lambda on: self._set('select_on_add', on))
         v2.addWidget(self.ck_select)
         v.addWidget(gb2)
 
-        note = QLabel('Thư mục và template ở đây chỉ áp cho <b>project mới</b>. '
+        note = QLabel('Thư mục và template ở đây chỉ áp cho project mới. '
                       'Project đã lưu giữ thiết lập riêng của nó.')
         note.setWordWrap(True)
         note.setTextFormat(Qt.TextFormat.RichText)
@@ -355,23 +273,27 @@ class PreferencesDialog(QDialog):
         v2.addWidget(self.ck_midas)
         # Thụt lề để thấy ngay nó phụ thuộc ô trên. Chỉ dựa vào màu "bị khoá" là
         # chưa đủ — ô đã tích nằm ngay dưới ô chưa tích vẫn đọc thành "đang bật".
+        # Thụt bằng layout chứ không bằng QSS `margin-left`: thuộc tính hộp trên
+        # QCheckBox làm Qt thôi để Windows vẽ ô tích.
         self.ck_midas_confirm = QCheckBox('Hỏi lại trước mỗi lần chạy')
-        self.ck_midas_confirm.setStyleSheet('margin-left: 22px;')
         self.ck_midas_confirm.toggled.connect(
-            lambda on: self._set('midas_confirm', on, False))
-        v2.addWidget(self.ck_midas_confirm)
+            lambda on: self._set('midas_confirm', on))
+        indent = QHBoxLayout()
+        indent.setContentsMargins(22, 0, 0, 0)
+        indent.addWidget(self.ck_midas_confirm)
+        v2.addLayout(indent)
         v.addWidget(gb)
 
         self.lb_midas = QLabel()
         self.lb_midas.setWordWrap(True)
         self.lb_midas.setTextFormat(Qt.TextFormat.RichText)
         self.lb_midas.setText(
-            '<b>Mặc định tắt — nên để nguyên nếu không có nhu cầu rõ ràng.</b><br><br>'
+            'Mặc định tắt — nên để nguyên nếu không có nhu cầu rõ ràng.<br><br>'
             'Midas/Civil không có COM và không có API, nên cách duy nhất để tự '
             'động hoá là lái qua chính giao diện của nó. Trong lúc chạy, app '
-            '<b>bấm thật vào ribbon và chiếm tiền cảnh</b> — máy không dùng được, '
+            'bấm thật vào ribbon và chiếm tiền cảnh — máy không dùng được, '
             'khoảng 1–3 phút mỗi mặt cắt.<br><br>'
-            'App <b>không bao giờ tự mở, tự đóng hay tắt Midas</b>. VuPQ tự mở '
+            'App không bao giờ tự mở, tự đóng hay tắt Midas. Người dùng tự mở '
             'Midas, để tài liệu trống, rồi app bám vào phiên đó. Tài liệu đang mở '
             'không sạch thì app dừng và báo, chứ không đè lên.')
         v.addWidget(self.lb_midas)
@@ -379,7 +301,7 @@ class PreferencesDialog(QDialog):
         return w
 
     def _on_midas_auto(self, on):
-        self._set('midas_auto', on, False)
+        self._set('midas_auto', on)
         self.ck_midas_confirm.setEnabled(bool(on))
 
     def _path_row(self, tip, on_pick):
@@ -391,8 +313,7 @@ class PreferencesDialog(QDialog):
         ed.setToolTip(tip)
         h.addWidget(ed, 1)
         b = QPushButton('...')
-        b.setFixedSize(34, 24)
-        b.setStyleSheet('QPushButton { padding: 0 2px; font-weight: 600; }')
+        b.setFixedWidth(34)
         b.clicked.connect(on_pick)
         h.addWidget(b)
         return ed, box
@@ -411,14 +332,8 @@ class PreferencesDialog(QDialog):
             self.ed_tpl.setText(p)
 
     # ── đồng bộ ──
-    def _set(self, name, value, restyle=True):
+    def _set(self, name, value):
         setattr(self.p, name, value)
-        if restyle:
-            self._restyle_preview()
-
-    def _on_font_pt(self, v):
-        self.lb_font.setText(f'{v} pt')
-        self._set('font_pt', int(v))
 
     def _controls(self):
         """Mọi widget nhập liệu của hộp thoại — MỘT danh sách duy nhất.
@@ -428,25 +343,16 @@ class PreferencesDialog(QDialog):
         chặn **vĩnh viễn** — bấm vào không có gì xảy ra, không lỗi, không dấu
         vết. Đúng chuyện đã xảy ra với hai ô của trang Midas.
         """
-        return (self.cb_accent, self.cb_density, self.cb_font, self.cb_mode,
-                self.sl_font, self.ck_reopen, self.ck_select,
+        return (self.cb_mode, self.ck_reopen, self.ck_select,
                 self.ck_midas, self.ck_midas_confirm,
-                self.ed_out, self.ed_tpl, *self.layer_boxes.values(),
-                *self.grp_theme.buttons())
+                self.ed_out, self.ed_tpl, *self.layer_boxes.values())
 
     def _sync_widgets(self):
         """Đổ giá trị từ `self.p` vào widget mà không kích lại tín hiệu."""
         for w in self._controls():
             w.blockSignals(True)
         try:
-            for b in self.grp_theme.buttons():
-                b.setChecked(b.property('key') == self.p.theme)
-            self.cb_accent.setCurrentIndex(max(0, self.cb_accent.findData(self.p.accent)))
-            self.cb_density.setCurrentIndex(max(0, self.cb_density.findData(self.p.density)))
-            self.cb_font.setCurrentIndex(max(0, self.cb_font.findData(self.p.font_family)))
             self.cb_mode.setCurrentIndex(max(0, self.cb_mode.findData(self.p.start_mode)))
-            self.sl_font.setValue(int(self.p.font_pt))
-            self.lb_font.setText(f'{int(self.p.font_pt)} pt')
             self.ck_reopen.setChecked(bool(self.p.reopen_last))
             self.ck_select.setChecked(bool(self.p.select_on_add))
             self.ck_midas.setChecked(bool(self.p.midas_auto))
@@ -459,10 +365,6 @@ class PreferencesDialog(QDialog):
         finally:
             for w in self._controls():
                 w.blockSignals(False)
-        self._restyle_preview()
-
-    def _restyle_preview(self):
-        self.preview.apply(self.p.tokens(), self.p.sizes(), self.p.font_family)
 
     def _restore_defaults(self):
         keep_paths = (self.p.output_dir, self.p.template)
@@ -472,69 +374,3 @@ class PreferencesDialog(QDialog):
 
     def result_prefs(self) -> Prefs:
         return self.p
-
-
-class _ThemePreview(QFrame):
-    """Ô xem thử — vài widget thật, tự khoác stylesheet của theme đang chọn.
-
-    Dùng widget thật chứ không vẽ hình minh họa: nút, ô nhập, danh sách và các
-    màu trạng thái là đúng thứ người dùng sẽ nhìn, kể cả khi QSS đổi về sau.
-    """
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        # Đặt tên để chọn bằng '#themePreview': bộ chọn theo KIỂU của QSS dùng
-        # tên lớp, mà tên lớp bắt đầu bằng gạch dưới thì bộ phân tích bỏ qua.
-        self.setObjectName('themePreview')
-        self.setMinimumHeight(150)
-        v = QVBoxLayout(self)
-        v.setContentsMargins(12, 10, 12, 12)
-        v.setSpacing(8)
-
-        self.cap = QLabel('XEM THỬ')
-        v.addWidget(self.cap)
-
-        row = QHBoxLayout()
-        row.setSpacing(7)
-        self.b1 = QPushButton('Nút thường')
-        self.b2 = QPushButton('Tạo MCT')
-        self.b2.setProperty('primary', True)
-        self.ed = QLineEdit('S16.dxf')
-        row.addWidget(self.b1)
-        row.addWidget(self.b2)
-        row.addWidget(self.ed, 1)
-        v.addLayout(row)
-
-        self.states = QLabel()
-        self.states.setTextFormat(Qt.TextFormat.RichText)
-        self.states.setWordWrap(True)
-        v.addWidget(self.states)
-
-        self.log = QLabel()
-        self.log.setTextFormat(Qt.TextFormat.RichText)
-        self.log.setWordWrap(True)
-        v.addWidget(self.log)
-        v.addStretch()
-
-    def apply(self, t: dict, s: dict, family: str = ''):
-        # setStyleSheet trên chính khung xem thử: QSS con đè QSS của app nên
-        # hộp thoại vẫn giữ theme hiện hành, chỉ ô này đổi sang theme đang chọn.
-        self.setStyleSheet(build_qss(t, s, family) +
-                           f'\n#themePreview {{ background: {t["ground"]};'
-                           f' border: 1px solid {t["border"]}; border-radius: 3px; }}')
-        self.cap.setStyleSheet(
-            f'color:{t["ink_3"]};font-size:8pt;font-weight:600;letter-spacing:1px;'
-            f'background:transparent')
-        self.states.setText(
-            f'<span style="color:{t["ink_2"]}">Trạng thái&nbsp;&nbsp;</span>'
-            f'<span style="color:{t["ink_3"]}">○ Chưa tạo</span>&nbsp;&nbsp;'
-            f'<span style="color:{t["accent"]}">● Đã tạo MCT</span>&nbsp;&nbsp;'
-            f'<span style="color:{t["warn"]}">◐ Đã gán BF</span>&nbsp;&nbsp;'
-            f'<span style="color:{t["ok"]}">✓ Đã kiểm toán</span>&nbsp;&nbsp;'
-            f'<span style="color:{t["err"]}">✕ Lỗi</span>')
-        self.log.setText(
-            f'<span style="font-family:{FONT_MONO};font-size:8pt">'
-            f'<span style="color:{t["ink_3"]}">10:24:07&nbsp;&nbsp;</span>'
-            f'<span style="color:{t["ink"]}">S16 — 66 node · 66 phần tử</span>'
-            f'&nbsp;&nbsp;<span style="color:{t["warn"]}">! thiếu template</span>'
-            f'</span>')

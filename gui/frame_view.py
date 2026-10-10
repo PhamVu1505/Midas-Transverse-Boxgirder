@@ -20,11 +20,11 @@ import json
 import math
 
 from PyQt6.QtCore import Qt, QPointF, QRectF, pyqtSignal
-from PyQt6.QtGui import (QPainter, QPen, QBrush, QColor, QFont, QPainterPath,
+from PyQt6.QtGui import (QPainter, QPen, QBrush, QColor, QPainterPath,
                          QPolygonF, QFontMetrics)
 from PyQt6.QtWidgets import QWidget, QSizePolicy
 
-from .theme import LIGHT, FONT_MONO
+from .theme import LIGHT, ui_font
 
 MODEL, SHAPE, PARTS = 'model', 'shape', 'parts'
 
@@ -268,7 +268,7 @@ class FrameView(QWidget):
 
         if not self.m:
             p.setPen(QPen(QColor(self.t['ink_3'])))
-            f = QFont(); f.setPointSize(9); p.setFont(f)
+            p.setFont(ui_font())
             p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
                        'Chưa có mô hình — thêm DXF (kéo thả được) rồi chọn ở cây mặt cắt')
             return
@@ -305,8 +305,8 @@ class FrameView(QWidget):
 
     def _draw_preview_banner(self, p):
         """Nhắc rõ: đang xem hình DXF, chưa phải mô hình đã ghi ra MCT."""
-        txt = 'XEM TRƯỚC TỪ DXF — chưa chia phần tử, chưa tạo MCT'
-        f = QFont(); f.setPointSize(8); f.setBold(True)
+        txt = 'Xem trước từ DXF — chưa chia phần tử, chưa tạo MCT'
+        f = ui_font()
         p.setFont(f)
         w = QFontMetrics(f).horizontalAdvance(txt) + 18
         ml, mt, _, _ = self.MARGIN
@@ -372,7 +372,7 @@ class FrameView(QWidget):
             p.drawPolygon(self._poly(ip))
 
     def _tag(self, p, txt, x, y):
-        f = QFont(FONT_MONO.split(',')[0].strip()); f.setPointSize(8)
+        f = ui_font(-1)      # chú giải trên hình vẽ
         p.setFont(f)
         w = QFontMetrics(f).horizontalAdvance(txt)
         p.fillRect(QRectF(x - w / 2 - 4, y - 15, w + 8, 14), QColor(self.t['panel']))
@@ -543,7 +543,7 @@ class FrameView(QWidget):
     def _draw_node_ids(self, p):
         if self._s <= 24:
             return
-        f = QFont(FONT_MONO.split(',')[0].strip()); f.setPointSize(7)
+        f = ui_font(-1)      # chú giải trên hình vẽ
         p.setFont(f)
         p.setPen(QPen(QColor(self.t['ink_2'])))
         m = self.m
@@ -558,7 +558,7 @@ class FrameView(QWidget):
             return
         # phần tử ngắn hơn ~26px thì số sẽ chồng lên nhau, bỏ qua
         min_len = 26.0
-        f = QFont(FONT_MONO.split(',')[0].strip()); f.setPointSize(7)
+        f = ui_font(-1)      # chú giải trên hình vẽ
         p.setFont(f)
         fm = QFontMetrics(f)
         m = self.m

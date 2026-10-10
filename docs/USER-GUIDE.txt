@@ -18,9 +18,10 @@ MỤC LỤC
   7. Chạy Midas/Civil
   8. Đọc kết quả
   9. Kiểm toán mặt cắt
-  10. Tùy chọn giao diện
-  11. Phím tắt
-  12. Xử lý sự cố
+  10. Tổ hợp tải trọng
+  11. Tùy chọn
+  12. Phím tắt
+  13. Xử lý sự cố
 
 ==============================================================================
 1. TỔNG QUAN
@@ -56,8 +57,11 @@ CÁC VÙNG TRÊN MÀN HÌNH
                              mục kết quả) · Lớp hiển thị
   Vùng giữa                  Các thẻ chế độ xem: Model, Section shape, Parts,
                              Results table, Kiểm toán mặt cắt, MCT source
-  Panel Properties bên phải  Thông tin mặt cắt, node đang trỏ, danh sách gối ·
-                             thẻ Input data liệt kê số liệu đọc từ template
+  Panel Properties bên phải  Bảng tóm tắt bốn bước — Bản vẽ DXF · Mô hình MCT
+                             · Kết quả Midas · Kiểm toán — mỗi bước một dòng
+                             Trạng thái (Đã tạo / Cần tạo lại — đã đổi gì /
+                             Chưa…), node đang trỏ, danh sách gối · thẻ Input
+                             data liệt kê số liệu đọc từ template
   Messages dưới đáy          Nhật ký. Dòng vàng là cảnh báo, dòng đỏ là lỗi
 
 Ba chế độ xem mặt cắt
@@ -76,7 +80,7 @@ Parts — tô màu theo bộ phận, dùng khi cần kiểm tra chương trình 
 Xem trước từ DXF
 
 Mặt cắt vừa thêm mà chưa tạo MCT vẫn hiện hình: chương trình đọc thẳng biên bê
-tông và đường cáp DƯL từ DXF rồi vẽ ra, kèm dải nhắc XEM TRƯỚC TỪ DXF ở góc
+tông và đường cáp DƯL từ DXF rồi vẽ ra, kèm dải nhắc Xem trước từ DXF ở góc
 trên. Lúc này chưa có node và phần tử vì chưa chia lưới.
 
 Nhờ vậy bản vẽ sai (thiếu layer, sai đơn vị, cáp đặt lệch chỗ) lộ ra ngay khi
@@ -223,8 +227,8 @@ Muốn đổi, bấm nút Sửa gối phía trên khung nhìn. Danh sách gối 
 Properties bên phải, mỗi gối một thẻ:
 
 - Gõ số hiệu node rồi Enter để dời gối sang node khác
-- Bấm một trong ba nút ký hiệu để đổi loại gối
-- Nút ✕ để xoá, ＋ Thêm gối để đặt thêm
+- Chọn Cố định / Di động / Ngàm để đổi loại gối
+- Nút Xóa để xoá, Thêm gối để đặt thêm
 
 Trên hình vẽ: bấm vào node bản đáy để đặt gối, kéo tam giác để dời, bấm chuột
 phải lên tam giác để xoá.
@@ -404,25 +408,41 @@ khi ứng suất kéo ở trạng thái Sử dụng chưa tới 80% fr — lúc 
 nứt. Cột nào bỏ qua thì cột đó ghi rõ lý do ở hàng Ghi chú.
 
 ==============================================================================
-10. TÙY CHỌN GIAO DIỆN
+10. TỔ HỢP TẢI TRỌNG
+==============================================================================
+
+TỔ HỢP TẢI TRỌNG
+----------------
+
+Mở bằng Mô hình → Tổ hợp tải trọng…. Chương trình có sẵn bộ tổ hợp theo TCVN
+11823-3 (Cường độ I…V, Sử dụng I/III, bao str_all / ser_all); ở đây sửa được
+số hạng và hệ số của từng tổ hợp.
+
+- Chọn tổ hợp ở danh sách trái.
+- Danh sách Có sẵn là các trường hợp tải và các tổ hợp định nghĩa trước tổ hợp
+  đang sửa; danh sách Trong tổ hợp là số hạng đang dùng. Chuyển qua lại bằng >
+  >> < << hoặc bấm đúp.
+- Sửa hệ số ngay trong ô (gõ 1,3 hay 1.3 đều được).
+- Đồng ý kiểm lần lượt từng tổ hợp và dừng ở lỗi đầu tiên: tổ hợp rỗng, hệ số
+  bằng 0 hoặc không phải số, số hạng trùng.
+
+LƯU Ý: Tên tổ hợp cố định — không thêm, đổi tên hay xoá được, vì bảng kiểm
+  toán đọc kết quả theo str_all / ser_all. Tổ hợp tự sửa áp cho cả project; số
+  hạng cáp DƯL chỉ ghi vào mặt cắt có cáp. Sửa xong phải tạo lại MCT — bảng
+  tóm tắt ở panel Properties sẽ ghi "Cần tạo lại — đã đổi tổ hợp tải trọng".
+
+==============================================================================
+11. TÙY CHỌN
 ==============================================================================
 
 TÙY CHỌN
 --------
 
-Mở bằng nút ⚙ cuối thanh công cụ, hoặc Công cụ → Tùy chọn (Ctrl+,). Bấm mũi
-tên cạnh nút bánh răng để đổi nhanh bảng màu mà không cần mở hộp thoại. Thiết
-lập áp dụng ngay, không phải khởi động lại, và được nhớ cho lần mở sau.
+Mở bằng nút ⚙ cuối thanh công cụ, hoặc Công cụ → Tùy chọn (Ctrl+,). Thiết lập
+áp dụng ngay, không phải khởi động lại, và được nhớ cho lần mở sau.
 
-Giao diện
-
-  Bảng màu        Sáng — mặc định, nền xám lệch xanh kiểu phần mềm kỹ thuật.
-                  Tối — nền xám than, dùng khi làm việc lâu hoặc phòng thiếu
-                  sáng. Tương phản cao — nền trắng, chữ đen thuần, viền đậm;
-                  hợp khi trình chiếu hoặc chụp màn hình đưa vào báo cáo.
-  Màu nhấn        Màu của nút chính, dòng đang chọn và các chi tiết nhấn.
-  Mật độ          Chặt cho màn hình nhỏ, Thoáng cho màn hình lớn.
-  Cỡ chữ · Phông  8–14 pt. Ô Xem thử ngay bên dưới đổi theo tức thì.
+Nút bấm, ô nhập, phông và cỡ chữ theo đúng thiết lập của Windows — app không
+có bảng màu hay mật độ riêng.
 
 Khung xem
 
@@ -439,7 +459,7 @@ Khôi phục mặc định đưa mọi mục về ban đầu nhưng giữ nguyê
 mục kết quả và template.
 
 ==============================================================================
-11. PHÍM TẮT
+12. PHÍM TẮT
 ==============================================================================
 
 PHÍM TẮT
@@ -458,11 +478,11 @@ PHÍM TẮT
   F7            Kiểm toán mặt cắt
   F             Vừa khung nhìn
   Ctrl+L        Xoá nhật ký
-  Ctrl+,        Tùy chọn giao diện
+  Ctrl+,        Tùy chọn
   F1            Mở hướng dẫn này
 
 ==============================================================================
-12. XỬ LÝ SỰ CỐ
+13. XỬ LÝ SỰ CỐ
 ==============================================================================
 
 CÁC LỖI HAY GẶP

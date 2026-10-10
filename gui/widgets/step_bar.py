@@ -3,14 +3,14 @@ Thanh bước quy trình — làm rõ chỗ phải rời app sang Midas.
 
 Ý tưởng lấy từ wizard theo bước của CSiBridge, nhưng thêm một điều mà không
 phần mềm tham chiếu nào có: bước ③ chạy Midas nằm NGOÀI ứng dụng, nên vẽ nét
-đứt và chữ nghiêng để người dùng mới hiểu ngay vì sao quy trình có hai nửa.
+đứt và chữ phụ "ngoài app" để người dùng mới hiểu ngay vì sao quy trình có hai nửa.
 """
 
 from PyQt6.QtCore import Qt, QRectF, QSize
-from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QFontMetrics
+from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QFontMetrics
 from PyQt6.QtWidgets import QWidget, QSizePolicy
 
-from ..theme import LIGHT
+from ..theme import LIGHT, ui_font
 
 IDLE, ACTIVE, DONE = 'idle', 'active', 'done'
 
@@ -45,7 +45,7 @@ class StepBar(QWidget):
             self.update()
 
     def set_external(self, index: int, external: bool, sub: str = None):
-        """Đổi bước giữa 'ngoài app' (nét đứt, chữ nghiêng) và 'trong app'.
+        """Đổi bước giữa 'ngoài app' (nét đứt + chữ phụ) và 'trong app'.
 
         Bước ③ chạy Midas đổi vai theo tùy chọn: tắt tự động thì nó vẫn là việc
         người dùng làm bên ngoài, bật thì app tự chạy. Vẽ mãi nét đứt trong khi
@@ -74,9 +74,12 @@ class StepBar(QWidget):
         p.setPen(QPen(QColor(t['border']), 1))
         p.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
 
-        f_lb = QFont(); f_lb.setPointSize(9)
-        f_num = QFont(); f_num.setPointSize(8); f_num.setBold(True)
-        f_sub = QFont(); f_sub.setPointSize(8)
+        # Một phông, một cỡ cho chữ; số trong vòng tròn là ký hiệu nên nhỏ hơn
+        # 1 pt. Không in đậm, không in nghiêng: bước đang làm đã có vòng tròn
+        # màu nhấn, bước ngoài app đã có nét đứt + chữ phụ "ngoài app".
+        f_lb = ui_font()
+        f_num = ui_font(-1)
+        f_sub = ui_font()
         _fm_lb, fm_sub = QFontMetrics(f_lb), QFontMetrics(f_sub)
 
         x, cy, r = 10, self.height() / 2, 9
@@ -111,9 +114,7 @@ class StepBar(QWidget):
                        '✓' if st == DONE else str(i + 1))
             x += r * 2 + 7
 
-            f = QFont(f_lb)
-            f.setItalic(external)
-            f.setBold(st == ACTIVE)
+            f = f_lb
             p.setFont(f)
             p.setPen(QPen(QColor(t['ink'] if st != IDLE else t['ink_2'])))
             w = QFontMetrics(f).horizontalAdvance(label)

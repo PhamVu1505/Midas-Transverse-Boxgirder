@@ -98,7 +98,8 @@ class GenerateWorker(QThread):
                                            pt_cables=pt_cables, pt_props=pt_props,
                                            include_pt=include_pt,
                                            supports=job.get('supports') or None,
-                                           pt_jacking=job.get('pt_jacking', 'begin'))
+                                           pt_jacking=job.get('pt_jacking', 'begin'),
+                                           combos=job.get('combos') or None)
                 mct_path = os.path.join(section_dir, f'{name}_frame.mct')
                 with open(mct_path, 'w', encoding='utf-8') as f:
                     f.write(mct_text)

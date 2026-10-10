@@ -9,7 +9,7 @@ file riêng rồi phải dò ghép lại với nhau.
 import os
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QBrush, QFont, QAction
+from PyQt6.QtGui import QColor, QBrush, QAction
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget,
                              QTreeWidgetItem, QLabel, QPushButton, QMenu,
                              QFileDialog, QAbstractItemView, QHeaderView,
@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget,
 
 from src.project import (Project, STATUS_LABEL, NEW, GENERATED, ASSIGNED,
                          CHECKED, ERROR)
-from .theme import LIGHT, FONT_MONO
+from .theme import LIGHT, ui_font
 
 STATUS_COLOR = {
     NEW:       'ink_3',
@@ -77,7 +77,7 @@ class ProjectPanel(QWidget):
 
         # Nhãn cần tô lại khi đổi theme — giữ tham chiếu, đừng để chúng lạc.
         self._heads = []
-        head = QLabel('MẶT CẮT')
+        head = QLabel('Mặt cắt')
         self._heads.append((head, 'top'))
         lay.addWidget(head)
 
@@ -110,7 +110,7 @@ class ProjectPanel(QWidget):
         lay.addWidget(self.lb_sum)
 
         # ── Thiết lập: template chung + thư mục kết quả ──
-        self._sec_head(lay, 'THIẾT LẬP')
+        self._sec_head(lay, 'Thiết lập')
         setb = QWidget()
         sv = QVBoxLayout(setb)
         sv.setContentsMargins(10, 5, 10, 7)
@@ -123,7 +123,7 @@ class ProjectPanel(QWidget):
         lay.addWidget(setb)
 
         from .frame_view import DEFAULT_LAYERS
-        self._sec_head(lay, 'LỚP HIỂN THỊ')
+        self._sec_head(lay, 'Lớp hiển thị')
         box = QWidget()
         lv = QVBoxLayout(box)
         lv.setContentsMargins(10, 4, 10, 6)
@@ -136,7 +136,6 @@ class ProjectPanel(QWidget):
                            ('grid', 'Lưới')):
             c = QCheckBox(label)
             c.setChecked(DEFAULT_LAYERS.get(key, True))
-            c.setStyleSheet('font-size: 9pt;')
             c.toggled.connect(lambda on, k=key: self.layer_toggled.emit(k, on))
             lv.addWidget(c)
             self.layer_boxes[key] = c
@@ -164,17 +163,19 @@ class ProjectPanel(QWidget):
     def _restyle(self):
         """Áp lại toàn bộ style nội tuyến theo `self.t`."""
         t = self.t
+        # Tiêu đề nhóm: in đậm, cỡ thường, viết thường hoa đầu câu — đúng một
+        # nghĩa của chữ đậm trong app (docs/UI-CALDINTAV.md mục 4).
         for lb, where in self._heads:
+            lb.setFont(ui_font(bold=True))
             lb.setStyleSheet(
-                f'color: {t["ink_2"]}; font-size: 8pt; font-weight: 600;'
-                f' letter-spacing: 1px;'
-                f' padding: 9px 12px {6 if where == "top" else 5}px;'
+                f'color: {t["ink"]};'
+                f' padding: 8px 12px {6 if where == "top" else 5}px;'
                 + ('' if where == 'top' else
                    f' border-top: 1px solid {t["border_soft"]};')
                 + f' border-bottom: 1px solid {t["border_soft"]};'
                   f' background: {t["panel"]};')
         self.lb_sum.setStyleSheet(
-            f'color: {t["ink_3"]}; font-family: {FONT_MONO}; font-size: 8pt;'
+            f'color: {t["ink_3"]};'
             f' padding: 6px 12px; border-top: 1px solid {t["border_soft"]};')
 
     def apply_theme(self, theme: dict):
@@ -198,19 +199,13 @@ class ProjectPanel(QWidget):
         ed = QLineEdit()
         ed.setPlaceholderText(label + '…')
         ed.setToolTip(label)
-        ed.setStyleSheet(f'font-family: {FONT_MONO}; font-size: 8pt;')
         # Ô phải co được, nếu không thì kích thước tối thiểu của nó đẩy nút
         # "..." ra ngoài vùng cuộn và nút biến mất.
         ed.setMinimumWidth(60)
         ed.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         h.addWidget(ed, 1)
-        # QPushButton chứ không phải QToolButton: theme đặt QToolButton viền
-        # trong suốt cho thanh công cụ, nên ở đây nút sẽ tàng hình.
         b = QPushButton('...')
-        # QSS chung đặt padding 14px cho QPushButton — trên nút hẹp thì Qt cắt
-        # chữ "..." còn "." nên phải gỡ padding riêng ở đây.
-        b.setStyleSheet('QPushButton { padding: 0 2px; font-weight: 600; }')
-        b.setFixedSize(34, 24)
+        b.setFixedWidth(34)
         b.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         b.setToolTip('Chọn ' + label.lower())
         b.clicked.connect(on_pick)
@@ -259,9 +254,6 @@ class ProjectPanel(QWidget):
         self.tree.blockSignals(True)
         self.tree.clear()
 
-        mono = QFont(FONT_MONO.split(',')[0].strip())
-        mono.setPointSize(8)
-
         for s in self.project:
             it = QTreeWidgetItem(self.tree)
             it.setData(0, Qt.ItemDataRole.UserRole, s.name)
@@ -275,7 +267,6 @@ class ProjectPanel(QWidget):
                 it.setForeground(1, QBrush(QColor(self.t['err'])))
 
             it.setText(2, str(s.n_elems) if s.n_elems else '—')
-            it.setFont(2, mono)
             it.setForeground(2, QBrush(QColor(self.t['ink_3'])))
             it.setTextAlignment(2, Qt.AlignmentFlag.AlignRight
                                 | Qt.AlignmentFlag.AlignVCenter)

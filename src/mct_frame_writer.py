@@ -137,8 +137,13 @@ def write_mct(frame: dict, section_name: str = 'Section',
               include_pt: bool = None,
               supports: list = None,
               pt_jacking: str = 'begin',
-              mct_version: str = None) -> str:
+              mct_version: str = None,
+              combos: dict = None) -> str:
     """Tạo file MCT từ frame data.
+
+    combos: hệ số tổ hợp tự sửa, `{tên tổ hợp: [[ANAL, LCNAME, FACT], …]}` —
+    xem `combo_overrides_clean()`. None/{} = bảng mặc định `_COMBOS`, MCT
+    trùng khít từng byte bản trước.
 
     pt_jacking: 'begin' = căng một đầu · 'both' = căng hai đầu. Chỉ có nghĩa
     khi thực sự ghi khối cáp.
@@ -170,7 +175,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
     if frame.get('section_type') == 'twin_box':
         return _write_mct_twin(frame, section_name, excel_path, pt_cables,
                                pt_props, include_pt, supports, pt_jacking,
-                               mct_version)
+                               mct_version, combos)
 
     # ── Material ──
     if excel_path and os.path.exists(excel_path):
@@ -619,7 +624,7 @@ def write_mct(frame: dict, section_name: str = 'Section',
 
     # ── Load combinations ──
     if ld:
-        _write_load_combinations(blocks, has_pt=pt_written)
+        _write_load_combinations(blocks, has_pt=pt_written, overrides=combos)
 
     # ── Analysis control (P-delta, time-dependent) khi có CSA ──
     if pt_written:
@@ -689,7 +694,8 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                     include_pt: bool = None,
                     supports: list = None,
                     pt_jacking: str = 'begin',
-                    mct_version: str = None) -> tuple:
+                    mct_version: str = None,
+                    combos: dict = None) -> tuple:
     """MCT cho mặt cắt 2 hộp: 3 bụng (ngoài L/R + vách giữa), bản đáy liên tục."""
     # Thiếu thuộc tính cáp vẫn dựng hình học — xem chú thích ở write_mct.
     pt_warnings = []
@@ -1089,7 +1095,7 @@ def _write_mct_twin(frame: dict, section_name: str = 'Section',
                            ll_L_idx, ll_R_idx,
                            n_int_floor=n_int_floor)
     if ld:
-        _write_load_combinations(blocks, has_pt=pt_written)
+        _write_load_combinations(blocks, has_pt=pt_written, overrides=combos)
     if pt_written:
         _write_anal_ctrl_block(blocks)
     blocks.append('*ENDDATA')
@@ -1618,13 +1624,117 @@ _CS_RESULTS = {'Tendon Primary', 'Tendon Secondary',
                'Shrinkage Primary', 'Shrinkage Secondary'}
 
 
-def _write_load_combinations(blocks, has_pt=False):
+# Trường hợp tải tĩnh mà *STLDCASE khai báo khi có template — đúng thứ tự ghi.
+# `combo_references()` đọc từ đây, nên thêm một trường hợp tải mới thì hộp thoại
+# tổ hợp cũng thấy ngay, không phải sửa hai nơi.
+_ST_CASES = ('Self Weight', 'TpG(+)', 'System Temperature', 'WS', 'Barrier',
+             'Pavement', 'Median Strip', 'TpG(-)', 'WL')
+_MV_CASES = ('mv1', 'mv2')
+
+
+def combo_names() -> list:
+    """Tên mọi tổ hợp theo đúng thứ tự ghi. Tên CỐ ĐỊNH — không thêm/đổi/xoá
+    được, vì `result_reader` tra bảng kết quả theo `str_all`/`ser_all`."""
+    return [c['name'] for c in _COMBOS]
+
+
+def combo_default(name: str, has_pt: bool = True) -> list:
+    """Số hạng mặc định của một tổ hợp: `[[ANAL, LCNAME, FACT], …]`."""
+    for c in _COMBOS:
+        if c['name'] == name:
+            return [[a, n, f] for a, n, f, *pt in c['terms']
+                    if has_pt or not pt]
+    raise KeyError(name)
+
+
+def combo_info(name: str) -> dict:
+    """iTYPE (0 cộng · 1 bao), mô tả, có phải tổ hợp chỉ-khi-có-cáp không."""
+    for c in _COMBOS:
+        if c['name'] == name:
+            return {'itype': c['itype'], 'desc': c['desc'],
+                    'pt_only': bool(c.get('pt_only'))}
+    raise KeyError(name)
+
+
+def combo_references(name: str, has_pt: bool = True) -> list:
+    """Những gì một số hạng của tổ hợp `name` ĐƯỢC PHÉP trỏ tới: `[(ANAL, LCNAME)]`.
+
+    Một nguồn duy nhất cho cả hộp thoại (danh sách "Có sẵn") lẫn bộ kiểm khi
+    lưu. CB chỉ được trỏ tới tổ hợp định nghĩa **trước** nó — Midas đọc tuần
+    tự, trỏ tới sau là `(null)`. CS chỉ có khi có cáp (*STAGE).
+    """
+    # KHÔNG có ST 'Prestress': nó chỉ được khai báo khi có cáp, nên tổ hợp trỏ
+    # tới nó ghi sang mặt cắt không cáp là đúng lỗi "(null) does not exist".
+    # Hiệu ứng cáp vào tổ hợp qua CS (Tendon Primary/Secondary) như _COMBOS.
+    refs = [('ST', n) for n in _ST_CASES]
+    refs += [('MV', n) for n in _MV_CASES]
+    for c in _COMBOS:
+        if c['name'] == name:
+            break
+        if c.get('pt_only') and not has_pt:
+            continue
+        refs.append(('CB', c['name']))
+    if has_pt:
+        refs += [('CS', n) for n in sorted(_CS_RESULTS)]
+    return refs
+
+
+def combo_overrides_clean(overrides: dict) -> dict:
+    """Chuẩn hoá bảng tự sửa: bỏ tổ hợp lạ, bỏ tổ hợp trùng mặc định.
+
+    Tổ hợp trùng y mặc định thì KHÔNG lưu — "Khôi phục mặc định" là xoá khoá,
+    và project không mang theo một bản sao bảng hệ số sẽ lạc hậu khi `_COMBOS`
+    đổi ở phiên bản sau.
+    """
+    out = {}
+    for name, terms in (overrides or {}).items():
+        if name not in combo_names():
+            continue
+        norm = [[str(a), str(n), float(f)] for a, n, f in terms]
+        if norm != [[a, n, float(f)] for a, n, f in combo_default(name)]:
+            out[name] = norm
+    return out
+
+
+def combo_problems(overrides: dict, has_pt: bool = True) -> list:
+    """Lỗi của bảng tự sửa, theo THỨ TỰ tổ hợp — câu đầu tiên là câu cần sửa."""
+    probs = []
+    for name in combo_names():
+        if name not in (overrides or {}):
+            continue
+        terms = overrides[name]
+        ok = set(combo_references(name, has_pt=True))
+        if not terms:
+            probs.append(f'Tổ hợp "{name}" chưa có số hạng nào.')
+            continue
+        seen = set()
+        for a, n, f in terms:
+            if (a, n) in seen:
+                probs.append(f'Tổ hợp "{name}": "{n}" có mặt hai lần.')
+            seen.add((a, n))
+            if (a, n) not in ok:
+                probs.append(f'Tổ hợp "{name}": "{n}" không phải trường hợp tải '
+                             f'hay tổ hợp định nghĩa trước nó.')
+            try:
+                if float(f) == 0:
+                    probs.append(f'Tổ hợp "{name}": hệ số của "{n}" bằng 0.')
+            except (TypeError, ValueError):
+                probs.append(f'Tổ hợp "{name}": hệ số của "{n}" không phải số.')
+    return probs
+
+
+def _write_load_combinations(blocks, has_pt=False, overrides=None):
     """Ghi *LOADCOMB — tổ hợp tải trọng theo AASHTO LRFD / TCVN 11823.
 
     has_pt=True thì các tổ hợp bổ sung nội lực do cáp DƯL và biến dạng dài hạn
     (Tendon Primary/Secondary, Creep/Shrinkage Secondary) — theo cấu trúc file
     mẫu LT-MB-S01.mct. Bảng hệ số nằm trong `_COMBOS`.
+
+    overrides: `{tên: [[ANAL, LCNAME, FACT], …]}` thay số hạng của đúng tổ hợp
+    đó. Số hạng CS tự bỏ khi không có cáp (CS chỉ tồn tại khi có *STAGE), và
+    ngắt dòng 3 số hạng một dòng. Tổ hợp không có trong overrides ghi y bản cũ.
     """
+    overrides = combo_overrides_clean(overrides)
     blocks.append('*LOADCOMB    ; Combinations')
     blocks.append('; NAME=NAME, KIND, ACTIVE, bES, iTYPE, DESC, iSERV-TYPE, nLCOMTYPE, nSEISTYPE   ; line 1')
     blocks.append(';      ANAL1, LCNAME1, FACT1, ...                                               ; from line 2')
@@ -1632,8 +1742,16 @@ def _write_load_combinations(blocks, has_pt=False):
     for c in _COMBOS:
         if c.get('pt_only') and not has_pt:
             continue
-        terms = [t for t in c['terms'] if has_pt or len(t) < 4]
-        wrap = c['wrap_pt'] if has_pt else c['wrap_plain']
+        terms = []
+        if c['name'] in overrides:
+            terms = [tuple(t) for t in overrides[c['name']]
+                     if has_pt or t[0] != 'CS']
+            wrap = [min(3, len(terms) - i) for i in range(0, len(terms), 3)]
+        # Tổ hợp tự sửa chỉ toàn số hạng CS mà mặt cắt không có cáp → lọc xong
+        # rỗng; ghi một dòng NAME= trơ trọi là Midas chối. Lui về mặc định.
+        if not terms:
+            terms = [t for t in c['terms'] if has_pt or len(t) < 4]
+            wrap = c['wrap_pt'] if has_pt else c['wrap_plain']
         if sum(wrap) != len(terms):
             raise ValueError(f'{c["name"]}: wrap {wrap} không khớp '
                              f'{len(terms)} số hạng')
