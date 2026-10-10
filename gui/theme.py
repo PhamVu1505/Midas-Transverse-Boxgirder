@@ -83,8 +83,6 @@ LIGHT.update({
     'on_accent':    '#FFFFFF',
 })
 
-FONT_UI = '"Segoe UI", "Noto Sans", sans-serif'
-FONT_MONO = 'Consolas, "Cascadia Mono", monospace'
 
 SIZE = {
     'font_ui':     10,    # pt
@@ -96,6 +94,35 @@ SIZE = {
     'gap':         8,     # px — bước lưới
     'pad':         12,    # px — padding panel
 }
+
+
+# ─────────────────────────────────────────────────────────────
+# Chữ: MỘT phông, MỘT cỡ (theo caldintav — xem docs/UI-CALDINTAV.md)
+# ─────────────────────────────────────────────────────────────
+#
+# Phông và cỡ chữ là của hệ thống (Segoe UI 9 pt trên Windows) — không widget
+# nào được tự đặt `font-size` / `font-family`. Ngoại lệ có tên:
+#   * `mono_font()` — CHỈ cho thẻ MCT source, nơi nội dung là văn bản máy.
+#   * `ui_font(-1)` — CHỈ cho chú giải trên hình vẽ tự vẽ (số hiệu node, kích
+#     thước, giá trị biểu đồ) — nhỏ hơn đúng 1 pt để không đè lên hình.
+# In đậm chỉ mang MỘT nghĩa: tiêu đề nhóm. Không in nghiêng.
+
+def ui_font(delta: int = 0, bold: bool = False):
+    """Phông giao diện của app (từ QApplication), lệch cỡ `delta` pt."""
+    from PyQt6.QtGui import QFont, QGuiApplication
+    f = QFont(QGuiApplication.font()) if QGuiApplication.instance() else QFont()
+    if delta:
+        f.setPointSizeF(max(6.0, f.pointSizeF() + delta))
+    f.setBold(bold)
+    return f
+
+
+def mono_font():
+    """Phông đơn cách — chỉ dùng cho thẻ MCT source."""
+    from PyQt6.QtGui import QFont, QFontDatabase
+    f = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+    f.setPointSizeF(ui_font().pointSizeF())
+    return f
 
 
 def make_theme() -> dict:

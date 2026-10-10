@@ -9,9 +9,9 @@ có dấu, viết theo đúng quy trình thực tế của chương trình.
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget,
                              QListWidgetItem, QTextBrowser, QPushButton,
-                             QLabel, QFrame, QSplitter)
+                             QFrame, QSplitter)
 
-from .theme import LIGHT, FONT_MONO, FONT_UI
+from .theme import LIGHT
 
 
 def _topics(t):
@@ -42,8 +42,8 @@ def _topics(t):
 <tr><td><b style="color:{acc}">2</b></td>
     <td>Tạo file MCT</td></tr>
 <tr><td><b style="color:{ink3}">3</b></td>
-    <td style="color:{ink2}"><i>Mở MCT trong Midas/Civil và chạy phân tích —
-    bước này nằm ngoài chương trình</i></td></tr>
+    <td style="color:{ink2}">Mở MCT trong Midas/Civil và chạy phân tích —
+    bước này nằm ngoài chương trình</td></tr>
 <tr><td><b style="color:{acc}">4</b></td>
     <td>Nạp file Beam Force do Midas xuất ra</td></tr>
 <tr><td><b style="color:{acc}">5</b></td>
@@ -74,7 +74,7 @@ trong quy trình. Bước 3 vẽ nét đứt vì phải làm bên Midas.</p>
 <h3 style="color:{ink}">Ba chế độ xem mặt cắt</h3>
 <p><b>Model</b> — hình dạng khung và cách chia phần tử. Mỗi node có một vạch
 cắt vuông góc nên đếm được số phần tử bằng mắt.</p>
-<p><b>Section shape</b> — vẽ mặt cắt <i>đúng như Midas sẽ dựng</i>: mỗi phần tử
+<p><b>Section shape</b> — vẽ mặt cắt đúng như Midas sẽ dựng: mỗi phần tử
 là một dải vuốt côn theo chiều dày hai đầu, theo quy ước lệch tâm
 <b>CT</b> (bản mặt treo xuống), <b>CB</b> (bản đáy nhô lên), <b>CC</b> (bụng đối
 xứng). Biên bê tông thật từ DXF vẽ nét đứt phía dưới, nên lệch chỗ nào thấy ngay.</p>
@@ -82,9 +82,9 @@ xứng). Biên bê tông thật từ DXF vẽ nét đứt phía dưới, nên l�
 phân loại đúng bản mặt / bụng / bản đáy hay không.</p>
 
 <h3 style="color:{ink}">Xem trước từ DXF</h3>
-<p>Mặt cắt vừa thêm mà <i>chưa tạo MCT</i> vẫn hiện hình: chương trình đọc thẳng
+<p>Mặt cắt vừa thêm mà chưa tạo MCT vẫn hiện hình: chương trình đọc thẳng
 biên bê tông và đường cáp DƯL từ DXF rồi vẽ ra, kèm dải nhắc
-<span style="color:{warn}"><b>XEM TRƯỚC TỪ DXF</b></span> ở góc trên. Lúc này
+<span style="color:{warn}">Xem trước từ DXF</span> ở góc trên. Lúc này
 chưa có node và phần tử vì chưa chia lưới.</p>
 <p>Nhờ vậy bản vẽ sai (thiếu layer, sai đơn vị, cáp đặt lệch chỗ) lộ ra ngay khi
 nạp file, không phải chạy hết một lượt tạo MCT mới biết.</p>
@@ -120,7 +120,7 @@ tim dầm và Z = 0 tại đáy, nên bản vẽ đặt ở đâu trong không g
 <h2 style="color:{ink}">Sheet <code>INPUT</code></h2>
 <p>Toàn bộ tải trọng, vật liệu và thông số cáp đọc từ <b>một sheet duy nhất</b>
 tên <code>INPUT</code>, bố cục khoá – giá trị:</p>
-<table cellpadding="6" cellspacing="0" width="100%" style="font-family:{FONT_MONO}">
+<table cellpadding="6" cellspacing="0" width="100%">
 <tr style="background:{soft}"><td><b>A — khoá</b></td><td><b>B — giá trị</b></td>
     <td><b>C — đơn vị</b></td></tr>
 <tr><td>fc</td><td>=General!H70</td><td>MPa</td></tr>
@@ -152,7 +152,7 @@ thức bị dán thành số cứng.</p>
       'DXF</b> để nạp một lượt. Nhanh nhất là <b>kéo file .dxf (hoặc cả thư '
       'mục) từ Windows Explorer thả vào cửa sổ</b> — thả file .mtbproj thì mở '
       'luôn project đó. Thêm xong mặt cắt hiện hình ngay để kiểm tra bản vẽ.')}
-{step(2, 'Chọn template', 'Xem mục <i>Template số liệu</i>.')}
+{step(2, 'Chọn template', 'Xem mục Template số liệu.')}
 {step(3, 'Đặt thư mục kết quả',
       'Ô <b>Thư mục kết quả</b> trong panel Project. Mỗi mặt cắt sẽ có một thư '
       'mục con riêng.')}
@@ -237,7 +237,7 @@ nên sửa lại DXF hay đổi kích thước phần tử thì gối vẫn nằ
 <h2 style="color:{ink}">Bước ③ — mặc định làm bằng tay</h2>
 <p>Đây là bước duy nhất nằm <b>ngoài</b> chương trình, nên thanh bước vẽ nó bằng
 nét đứt và chữ nghiêng. Cách làm thông thường: mở Midas/Civil, nhập file MCT vừa
-tạo, chạy <i>Perform Analysis</i>, rồi xuất bảng <i>Beam Force</i>.</p>
+tạo, chạy Perform Analysis, rồi xuất bảng Beam Force.</p>
 
 <h3 style="color:{ink}">Đường tự động — phải tự bật</h3>
 <p>Chương trình <b>chạy được Midas thay bạn</b>, nhưng tính năng này
@@ -277,7 +277,7 @@ bước ④ không phải chọn file bằng tay.</p>
 <h3 style="color:{ink}">Tám điểm kiểm toán</h3>
 <p>Bảng kết quả cho mô men, lực cắt và chiều cao tiết diện tại tám điểm:
 <b>A–D</b> trên bản mặt, <b>E–F</b> trên bản đáy, <b>G–H</b> trên bụng. Hình mặt
-cắt phía trên bảng vẽ từ <i>toạ độ DXF thật</i> và chỉ rõ vị trí từng điểm bằng
+cắt phía trên bảng vẽ từ toạ độ DXF thật và chỉ rõ vị trí từng điểm bằng
 ký hiệu vết cắt theo quy ước bản vẽ.</p>
 <p>Hình này <b>lăn chuột để phóng to thu nhỏ, kéo chuột để di chuyển</b>, bấm đúp
 hoặc phím <b>F</b> để vừa khung — như thẻ Model. Kéo thanh chia giữa hình và bảng
@@ -289,13 +289,13 @@ chọn bằng ô <b>Biểu đồ</b>: Cường độ (<code>str_all</code>) ho�
 (<code>ser_all</code>) — đúng hai tổ hợp bao mà bảng bên dưới vẫn tra, nên hình
 và bảng luôn nói cùng một con số.</p>
 <p>Hai đường bao vẽ chồng: <b style="color:{t["part_top"]}">max</b> và
-<b style="color:{t["part_bot"]}">min</b>. Nhìn hình mới thấy được <i>hình dạng</i>
+<b style="color:{t["part_bot"]}">min</b>. Nhìn hình mới thấy được hình dạng
 nội lực — chỗ đổi dấu, chỗ vút, chỗ nào lẽ ra phải trơn mà lại gãy khúc (dấu hiệu
 chia lưới hoặc gán tải sai). Ô này cũng zoom/pan như ô mặt cắt.</p>
 <p style="color:{ink2}">Mặt cắt <b>nhiều hộp</b> có thêm điểm phân giải cho từng
 khoang và từng vách — <b>A1, A2…</b> (giữa mỗi khoang bản mặt), <b>E1, E2…</b>
 (giữa mỗi khoang bản đáy), <b>G1…Gm</b> và <b>H1…Hm</b> (đầu trên và đầu dưới
-mỗi vách). Tám điểm A–H vẫn giữ nguyên ý nghĩa <i>bao</i> để bố trí lưới thép
+mỗi vách). Tám điểm A–H vẫn giữ nguyên ý nghĩa bao để bố trí lưới thép
 chung.</p>
 '''),
 
@@ -318,7 +318,7 @@ theo TCVN 11823-5. Tiết diện xét là <b>lát cắt rộng 1 m</b> của m�
 
 <h3 style="color:{ink}">Cáp dự ứng lực nhận diện tự động</h3>
 <p>Hai hàng <b>Cáp d<sub>p</sub></b> và <b>Cự ly cáp @</b> chỉ mở ở những bộ phận
-<i>thật sự có cáp trong bản vẽ</i>. Mặt cắt chỉ căng cáp ngang ở bản mặt thì các
+thật sự có cáp trong bản vẽ. Mặt cắt chỉ căng cáp ngang ở bản mặt thì các
 cột bản đáy và bụng bị khoá, hiện dấu gạch — không gõ nhầm vào được.</p>
 <p>d<sub>p</sub> tính thẳng từ đường cáp trong DXF: nội suy cao độ cáp tại vị trí
 điểm kiểm toán rồi đo tới thớ chịu nén (thớ nào chịu nén thì suy từ dấu của
@@ -382,7 +382,7 @@ lực, kích thước, diện tích và ứng suất lấy tròn số; hệ số
 <p style="color:{ink2}">Kiểm nứt được bỏ qua khi tiết diện có cáp dự ứng lực
 (chưa xét nén trước) hoặc khi ứng suất kéo ở trạng thái Sử dụng chưa tới 80%
 f<sub>r</sub> — lúc đó tiết diện chưa nứt. Cột nào bỏ qua thì cột đó ghi rõ lý do
-ở hàng <i>Ghi chú</i>.</p>
+ở hàng Ghi chú.</p>
 '''),
 
         ('Tùy chọn', f'''
@@ -405,7 +405,7 @@ lưu giữ thiết lập riêng của nó. Cùng chỗ này tắt được việ
 nhất khi khởi động và việc tự chọn mặt cắt vừa thêm.</p>
 
 <p style="color:{ink2}"><b>Khôi phục mặc định</b> đưa mọi mục về ban đầu nhưng
-<i>giữ nguyên</i> hai đường dẫn thư mục kết quả và template.</p>
+giữ nguyên hai đường dẫn thư mục kết quả và template.</p>
 '''),
 
         ('Phím tắt', f'''
@@ -422,7 +422,7 @@ nhất khi khởi động và việc tự chọn mặt cắt vừa thêm.</p>
 <tr style="background:{soft}"><td><code>Shift+F5</code></td>
     <td>Tạo MCT cho mặt cắt đang chọn</td></tr>
 <tr><td><code>F8</code></td>
-    <td>Chạy Midas/Civil <i>(phải bật ở Tùy chọn → Midas)</i></td></tr>
+    <td>Chạy Midas/Civil (phải bật ở Tùy chọn → Midas)</td></tr>
 <tr style="background:{soft}"><td><code>Ctrl+B</code></td>
     <td>Gán file Beam Force</td></tr>
 <tr><td><code>F6</code></td><td>Xử lý Beam Force</td></tr>
@@ -478,20 +478,9 @@ class HelpDialog(QDialog):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        head = QLabel('  Midas Transverse Boxgirder — Hướng dẫn sử dụng')
-        head.setStyleSheet(
-            f'background:{self.t["accent"]};color:#fff;font-size:12pt;'
-            f'font-weight:600;padding:11px 14px;')
-        lay.addWidget(head)
 
         split = QSplitter(Qt.Orientation.Horizontal)
         self.topics = QListWidget()
-        self.topics.setStyleSheet(
-            f'QListWidget{{border:0;background:{self.t["panel_alt"]};'
-            f'font-size:10pt;padding:6px 0}}'
-            f'QListWidget::item{{padding:8px 14px}}'
-            f'QListWidget::item:selected{{background:{self.t["accent_soft"]};'
-            f'color:{self.t["accent"]};font-weight:600}}')
         self.topics.setFixedWidth(190)
         split.addWidget(self.topics)
 
@@ -499,8 +488,7 @@ class HelpDialog(QDialog):
         self.body.setOpenExternalLinks(True)
         self.body.setStyleSheet(
             f'QTextBrowser{{border:0;background:{self.t["panel"]};'
-            f'padding:6px 18px;font-family:{FONT_UI};font-size:10pt;'
-            f'color:{self.t["ink"]}}}')
+            f'padding:6px 18px;color:{self.t["ink"]}}}')
         split.addWidget(self.body)
         split.setStretchFactor(1, 1)
         lay.addWidget(split, 1)

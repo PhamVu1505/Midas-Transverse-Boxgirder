@@ -21,7 +21,7 @@ from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QFontMetrics
 from PyQt6.QtWidgets import QWidget
 
 from .pan_zoom import PanZoom
-from .theme import LIGHT
+from .theme import LIGHT, ui_font
 
 # (khoá hiển thị, nhãn, trường, nhóm tổ hợp, đơn vị)
 QUANTITIES = [
@@ -245,9 +245,7 @@ class ForceDiagram(PanZoom, QWidget):
 
     def _value_label(self, p, pt, value, col):
         """Số cực trị đặt cạnh đường bao, có nền để không lẫn vào nét kẻ."""
-        f = QFont(self.font())
-        f.setPointSizeF(max(6.5, f.pointSizeF() - 1.5))
-        f.setBold(True)
+        f = ui_font(-1)          # chú giải trên hình vẽ: nhỏ 1 pt, không đậm
         p.setFont(f)
         txt = f'{value:,.1f}'.replace(',', ' ')
         w = QFontMetrics(f).horizontalAdvance(txt) + 8
@@ -266,8 +264,7 @@ class ForceDiagram(PanZoom, QWidget):
     def _legend(self, p, label, unit, hi, lo):
         """Hộp chú giải góc trên trái, theo lối bảng Legend của Midas."""
         t = self.t
-        f = QFont(self.font())
-        f.setPointSizeF(max(6.5, f.pointSizeF() - 1.5))
+        f = ui_font(-1)          # dòng đầu (tên biểu đồ) đậm = tiêu đề hộp
         p.setFont(f)
         fm = QFontMetrics(f)
         rows = [(None, label), (None, f'Đơn vị: {unit}')]

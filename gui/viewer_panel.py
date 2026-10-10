@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QToolButton)
 
 from .frame_view import FrameView, MODEL, SHAPE, PARTS
-from .theme import LIGHT, FONT_MONO
+from .theme import LIGHT, ui_font
 from .icons import icon
 
 
@@ -84,9 +84,11 @@ class ViewerPanel(QWidget):
         self.legend.setStyleSheet(
             f'background: {t["panel"]};'
             f' border: 1px solid {t["border"]}; border-radius: 3px;'
-            f' padding: 7px 9px; font-size: 8pt; color: {t["ink_2"]};')
+            f' padding: 7px 9px; color: {t["ink_2"]};')
+        # Chú giải nổi trên hình vẽ: chữ chú giải bản vẽ, nhỏ hơn đúng 1 pt
+        self.legend.setFont(ui_font(-1))
         self.query.setStyleSheet(
-            f'color: {t["ink_2"]}; font-family: {FONT_MONO}; font-size: 8pt;'
+            f'color: {t["ink_2"]};'
             f' padding: 5px 10px; background: {t["panel_alt"]};'
             f' border-top: 1px solid {t["border"]};')
 
@@ -119,8 +121,8 @@ class ViewerPanel(QWidget):
         SHAPE: ('<b>Mặt cắt như Midas dựng</b><br>'
                 'nét đứt mảnh — biên bê tông thật từ DXF<br>'
                 'nét đứt đậm — trục phần tử (đường node)<br>'
-                '<b>CT</b> bản mặt treo xuống &nbsp; '
-                '<b>CB</b> bản đáy nhô lên &nbsp; <b>CC</b> bụng ±t/2'),
+                'CT bản mặt treo xuống &nbsp; '
+                'CB bản đáy nhô lên &nbsp; CC bụng ±t/2'),
     }
 
     def _legend_parts(self) -> str:

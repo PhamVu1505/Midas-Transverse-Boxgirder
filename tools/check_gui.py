@@ -312,7 +312,7 @@ def kiem_canh_bao_hoat_tai_tra_duoc_bat_ky_luc_nao(c):
         c.step()
         assert c.props_section() == s.name, 'dock không đi theo mặt cắt được chọn'
         chu = c.w.props.input[1].text()
-        assert 'DẢI TƯƠNG ĐƯƠNG' in chu, \
+        assert 'Dải tương đương' in chu, \
             f'{s.name}: dock không có khối đối chiếu dải tương đương'
         assert f'{cmp["S"]["tpl"]:.0f} mm' in chu, \
             f'{s.name}: dock không in trị S mà template đang khai'
@@ -468,6 +468,79 @@ def kiem_qss_khong_dung_dieu_khien_native(c):
     return f'soát {len(ws)} widget + QSS của app · style {c.app.style().metaObject().className()}'
 
 
+def kiem_mot_phong_mot_co_khong_nghieng(c):
+    """Một phông, một cỡ, không in nghiêng — kiểu chữ theo caldintav.
+
+    VuPQ chốt 2026-10-10 (docs/UI-CALDINTAV.md): caldintav dùng đúng một phông,
+    một cỡ, chữ đậm chỉ cho tiêu đề nhóm, gần như không in nghiêng. Bản trước
+    rải 8 pt / 9 pt / 12 pt / Consolas / chữ nghiêng khắp nơi. Soát chữ người
+    dùng thực sự đọc: phông của từng widget, cùng `font-size` / `font-family` /
+    `<i>` lọt vào nội dung hay QSS của nhãn. Ngoại lệ có tên: thẻ MCT source
+    (phông đơn cách) và chú giải nổi trên hình vẽ (nhỏ hơn đúng 1 pt).
+    """
+    import re
+    from PyQt6.QtWidgets import QWidget, QLabel
+    from gui.prefs import PreferencesDialog
+    from gui.help_dialog import HelpDialog
+    goc = c.app.font()
+    ngoai_le = {c.w.mct_view, *c.w.mct_view.findChildren(QWidget), c.w.viewer.legend}
+    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w)]
+    ws = [c.w, *c.w.findChildren(QWidget)]
+    for d in hop_thoai:
+        ws += [d, *d.findChildren(QWidget)]
+    cam = re.compile(r'font-size|font-family|font-style|<i>|<tt>', re.I)
+    loi = []
+    for w in ws:
+        if w in ngoai_le:
+            continue
+        f = w.font()
+        ten = type(w).__name__ + (f'#{w.objectName()}' if w.objectName() else '')
+        if isinstance(w, QLabel):
+            ten += f' {w.text()[:24]!r}'
+        if f.italic():
+            loi.append(f'{ten}: in nghiêng')
+        if f.family() != goc.family():
+            loi.append(f'{ten}: phông {f.family()!r}')
+        if abs(f.pointSizeF() - goc.pointSizeF()) > 0.01:
+            loi.append(f'{ten}: cỡ {f.pointSizeF():g} pt (chung {goc.pointSizeF():g})')
+        noi_dung = w.styleSheet() + (w.text() if isinstance(w, QLabel) else '')
+        if cam.search(noi_dung):
+            loi.append(f'{ten}: {cam.search(noi_dung).group(0)!r} trong nội dung/QSS')
+    for d in hop_thoai:
+        d.deleteLater()
+
+    # Chữ VẼ bằng QPainter (thanh bước, khung xem, biểu đồ, tiêu đề cột) không
+    # nằm trong font() của widget nào: chặn QPainter.setFont rồi vẽ lại mọi thẻ.
+    from PyQt6.QtGui import QPainter
+    da_ve = []
+    goc_set = QPainter.setFont
+
+    def ghi(painter, font):
+        da_ve.append((font.family(), font.pointSizeF(), font.italic()))
+        return goc_set(painter, font)
+    QPainter.setFont = ghi
+    try:
+        for i in range(c.w.tabbar.count()):
+            c.w.tabbar.setCurrentIndex(i)
+            c.step()
+            c.w.repaint()
+    finally:
+        QPainter.setFont = goc_set
+    co_cho_phep = {round(goc.pointSizeF(), 2), round(goc.pointSizeF() - 1, 2)}
+    for fam, pt, nghieng in set(da_ve):
+        if nghieng:
+            loi.append(f'QPainter vẽ chữ nghiêng ({fam} {pt:g} pt)')
+        if fam != goc.family():
+            loi.append(f'QPainter vẽ phông {fam!r}')
+        # huy hiệu điểm kiểm toán (A, A1…) co theo vòng tròn — ký hiệu bản vẽ
+        if round(pt, 2) not in co_cho_phep and pt > goc.pointSizeF():
+            loi.append(f'QPainter vẽ cỡ {pt:g} pt')
+
+    assert not loi, ' · '.join(loi[:5]) + (f' … (+{len(loi) - 5})' if len(loi) > 5 else '')
+    return (f'soát {len(ws)} widget + {len(set(da_ve))} kiểu chữ QPainter · '
+            f'{goc.family()} {goc.pointSizeF():g} pt')
+
+
 def kiem_nut_zoom_doc_duoc(c):
     """Nút zoom của khung xem phải hiện icon đủ lớn, không bị bóp thành chấm.
 
@@ -518,6 +591,7 @@ CHECKS = [
     kiem_huy_hieu_nhat_ky,
     kiem_qss_khong_dung_dieu_khien_native,
     kiem_nut_zoom_doc_duoc,
+    kiem_mot_phong_mot_co_khong_nghieng,
 ]
 
 

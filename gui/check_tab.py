@@ -249,9 +249,6 @@ class CheckTab(QWidget):
 
         row.addStretch()
         self.btn_run = QPushButton('Kiểm toán')
-        _f = self.btn_run.font()
-        _f.setBold(True)          # nút chính: in đậm, để Windows vẽ thân nút
-        self.btn_run.setFont(_f)
         self.btn_run.setSizePolicy(QSizePolicy.Policy.Fixed,
                                    QSizePolicy.Policy.Fixed)
         self.btn_run.clicked.connect(self.run_check)
@@ -301,7 +298,7 @@ class CheckTab(QWidget):
         self.lb_in = QLabel(
             'Ô nền nhấn là ô nhập — As tự tính từ Ø và cự ly. Bỏ trống các điểm '
             'phân giải (A1, E2…) thì tự dùng theo chữ cái đầu. '
-            'Lưu vào <tt>.mtbproj</tt> theo từng mặt cắt.')
+            'Lưu vào file .mtbproj theo từng mặt cắt.')
         self.lb_in.setWordWrap(True)
         self.lb_in.setTextFormat(Qt.TextFormat.RichText)
 
@@ -362,7 +359,7 @@ class CheckTab(QWidget):
         return s
 
     def _apply_inline_styles(self):
-        self.lb_in.setStyleSheet(f'color: {self.t["ink_2"]}; font-size: 8pt;')
+        self.lb_in.setStyleSheet(f'color: {self.t["ink_2"]};')
         self.lb_sum.setStyleSheet(f'color: {self.t["ink_2"]};')
 
     def apply_theme(self, theme: dict, size: dict = None):
@@ -973,7 +970,8 @@ class CheckTab(QWidget):
 
         for i, r in enumerate(rows):
             if r[0] == 'sect':
-                it = QTableWidgetItem('  ' + r[1].upper())
+                # dòng tiêu đề nhóm: in đậm, giữ nguyên chữ (không viết HOA)
+                it = QTableWidgetItem('  ' + r[1])
                 it.setBackground(sunken)
                 it.setForeground(QColor(t['ink_2']))
                 it.setFont(bold)
@@ -984,8 +982,6 @@ class CheckTab(QWidget):
             is_ratio = r[0] == 'ratio'
             head = QTableWidgetItem(r[1])
             head.setBackground(alt)
-            if is_ratio:
-                head.setFont(bold)
             self.tb_out.setItem(i, 0, head)
 
             for j, cell in enumerate(r[2], 1):
@@ -998,7 +994,7 @@ class CheckTab(QWidget):
                 if str(text).startswith('-') or str(text).startswith('−'):
                     it.setForeground(QColor(t['err']))
                 if is_ratio:
-                    it.setFont(bold)
+                    # hàng hệ số: kết luận đọc bằng màu nền, không in đậm
                     fill = verdict_fill(k, t)
                     if fill is not None:
                         it.setBackground(fill)
@@ -1033,8 +1029,7 @@ class CheckTab(QWidget):
                         f'{worst_k:.2f} ({worst_lb})')
         self.lb_sum.setText(' · '.join(bits))
         self.lb_sum.setStyleSheet(
-            f'color: {self.t["ok"] if n_ok == len(R) else self.t["err"]};'
-            f' font-weight: 600;')
+            f'color: {self.t["ok"] if n_ok == len(R) else self.t["err"]};')
 
     # ─────────────────────────────────────────
     def _export(self):

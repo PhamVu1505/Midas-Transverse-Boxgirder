@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                               QHeaderView, QSplitter, QListWidget,
                               QAbstractItemView, QMessageBox)
 from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QBrush
+from PyQt6.QtGui import QColor, QPainter, QPen, QBrush
 
 from .worker import ResultsWorker
 from .widgets import LogView
@@ -358,7 +358,6 @@ class ResultsTab(QWidget):
         self.pair_list = QListWidget()
         self.pair_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.pair_list.setMaximumHeight(112)
-        self.pair_list.setStyleSheet('font-family: Consolas, monospace;')
         self.pair_list.itemDoubleClicked.connect(self._assign_bf_from_item)
         layout.addWidget(self.pair_list)
 
@@ -367,10 +366,10 @@ class ResultsTab(QWidget):
         # ở cuối quy trình.
         self.lb_hint = QLabel(
             '⚠  File Beam Force phải xuất mặc định từ Midas: '
-            '<b>Results → Result Tables → Beam → Beam Force</b>, chọn '
-            '<b>tất cả trường hợp tải và tổ hợp</b> rồi <b>Export → Excel</b>. '
-            'Thiếu <tt>str_all</tt> hoặc <tt>ser_all</tt> thì không dựng được '
-            'bảng kiểm toán. Công cụ tự đọc <b>mọi sheet</b> trong file.')
+            'Results → Result Tables → Beam → Beam Force, chọn '
+            'tất cả trường hợp tải và tổ hợp rồi Export → Excel. '
+            'Thiếu str_all hoặc ser_all thì không dựng được '
+            'bảng kiểm toán. Công cụ tự đọc mọi sheet trong file.')
         self.lb_hint.setWordWrap(True)
         self.lb_hint.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(self.lb_hint)
@@ -378,16 +377,13 @@ class ResultsTab(QWidget):
         row_btn = QHBoxLayout()
         self.lb_ready = QLabel('')
         self.lb_ready.setStyleSheet(
-            f'color: {self.t["ink_2"]}; font-size: 8pt;')
+            f'color: {self.t["ink_2"]};')
         row_btn.addWidget(self.lb_ready)
         row_btn.addStretch()
         btn_bf = QPushButton('Gán Beam Force…')
         btn_bf.clicked.connect(self._assign_bf_selected)
         row_btn.addWidget(btn_bf)
         self.btn_process = QPushButton('Xử lý tất cả')
-        _f = self.btn_process.font()
-        _f.setBold(True)          # nút chính: in đậm, để Windows vẽ thân nút
-        self.btn_process.setFont(_f)
         self.btn_process.clicked.connect(self._process)
         row_btn.addWidget(self.btn_process)
         layout.addLayout(row_btn)
@@ -489,7 +485,7 @@ class ResultsTab(QWidget):
 
     def apply_theme(self, theme: dict, size: dict = None):
         self.t = theme
-        self.lb_ready.setStyleSheet(f'color: {theme["ink_2"]}; font-size: 8pt;')
+        self.lb_ready.setStyleSheet(f'color: {theme["ink_2"]};')
         self.diagram.apply_theme(theme)
         self.forces.apply_theme(theme)
         self.log_area.apply_theme(theme, size)
@@ -701,9 +697,6 @@ class ResultsTab(QWidget):
 
     def _fill_table(self, check_points):
         from src.result_reader import order_points
-        bold_font = QFont()
-        bold_font.setBold(True)
-
         points = order_points(check_points.keys())
         if points != getattr(self, '_points', None):
             self._set_points(points)
@@ -717,8 +710,10 @@ class ResultsTab(QWidget):
                 item.setBackground(color)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignRight
                                       | Qt.AlignmentFlag.AlignVCenter)
-                if not label.startswith(' '):
-                    item.setFont(bold_font)
+                # Dòng tham chiếu "nút · phần tử" chữ nhạt — phân biệt bằng
+                # màu, không in đậm dòng số liệu (đậm chỉ dành cho tiêu đề).
+                if label.startswith(' '):
+                    item.setForeground(QColor(self.t['ink_2']))
                 self.table.setItem(i, j, item)
 
     def _open_folder(self):

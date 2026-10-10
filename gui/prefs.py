@@ -205,7 +205,7 @@ class PreferencesDialog(QDialog):
         v.addWidget(gb2)
 
         note = QLabel('Các lớp này chỉ là trạng thái bật sẵn. Trong lúc làm việc '
-                      'vẫn bật tắt được ở mục <b>Lớp hiển thị</b> panel Project.')
+                      'vẫn bật tắt được ở mục Lớp hiển thị panel Project.')
         note.setWordWrap(True)
         note.setTextFormat(Qt.TextFormat.RichText)
         v.addWidget(note)
@@ -245,7 +245,7 @@ class PreferencesDialog(QDialog):
         v2.addWidget(self.ck_select)
         v.addWidget(gb2)
 
-        note = QLabel('Thư mục và template ở đây chỉ áp cho <b>project mới</b>. '
+        note = QLabel('Thư mục và template ở đây chỉ áp cho project mới. '
                       'Project đã lưu giữ thiết lập riêng của nó.')
         note.setWordWrap(True)
         note.setTextFormat(Qt.TextFormat.RichText)
@@ -288,12 +288,12 @@ class PreferencesDialog(QDialog):
         self.lb_midas.setWordWrap(True)
         self.lb_midas.setTextFormat(Qt.TextFormat.RichText)
         self.lb_midas.setText(
-            '<b>Mặc định tắt — nên để nguyên nếu không có nhu cầu rõ ràng.</b><br><br>'
+            'Mặc định tắt — nên để nguyên nếu không có nhu cầu rõ ràng.<br><br>'
             'Midas/Civil không có COM và không có API, nên cách duy nhất để tự '
             'động hoá là lái qua chính giao diện của nó. Trong lúc chạy, app '
-            '<b>bấm thật vào ribbon và chiếm tiền cảnh</b> — máy không dùng được, '
+            'bấm thật vào ribbon và chiếm tiền cảnh — máy không dùng được, '
             'khoảng 1–3 phút mỗi mặt cắt.<br><br>'
-            'App <b>không bao giờ tự mở, tự đóng hay tắt Midas</b>. VuPQ tự mở '
+            'App không bao giờ tự mở, tự đóng hay tắt Midas. Người dùng tự mở '
             'Midas, để tài liệu trống, rồi app bám vào phiên đó. Tài liệu đang mở '
             'không sạch thì app dừng và báo, chứ không đè lên.')
         v.addWidget(self.lb_midas)

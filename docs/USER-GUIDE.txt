@@ -76,7 +76,7 @@ Parts — tô màu theo bộ phận, dùng khi cần kiểm tra chương trình 
 Xem trước từ DXF
 
 Mặt cắt vừa thêm mà chưa tạo MCT vẫn hiện hình: chương trình đọc thẳng biên bê
-tông và đường cáp DƯL từ DXF rồi vẽ ra, kèm dải nhắc XEM TRƯỚC TỪ DXF ở góc
+tông và đường cáp DƯL từ DXF rồi vẽ ra, kèm dải nhắc Xem trước từ DXF ở góc
 trên. Lúc này chưa có node và phần tử vì chưa chia lưới.
 
 Nhờ vậy bản vẽ sai (thiếu layer, sai đơn vị, cáp đặt lệch chỗ) lộ ra ngay khi

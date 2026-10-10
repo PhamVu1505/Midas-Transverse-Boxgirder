@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QToolButton, QSpinBox, QFrame, QButtonGroup)
 
 from .icons import support_icon, SUPPORT_NAME, SUPPORT_CODE
-from .theme import LIGHT, FONT_MONO
+from .theme import LIGHT, ui_font
 
 KINDS = ('pin', 'roller', 'fixed')
 
@@ -62,14 +62,14 @@ class SupportEditor(QWidget):
         v = self.view
         sups = list(v.supports) if v else []
 
-        head = QLabel(f'GỐI ({len(sups)})')
-        head.setStyleSheet(f'font-size:8pt;font-weight:600;letter-spacing:.7px;'
-                           f'color:{self.t["ink_3"]};padding-top:6px')
+        head = QLabel(f'Gối ({len(sups)})')
+        head.setFont(ui_font(bold=True))          # tiêu đề nhóm
+        head.setStyleSheet(f'color:{self.t["ink"]};padding-top:6px')
         self._lay.addWidget(head)
 
         if not v or not v.m:
             note = QLabel('Chưa nạp mô hình')
-            note.setStyleSheet(f'color:{self.t["ink_3"]};font-size:9pt')
+            note.setStyleSheet(f'color:{self.t["ink_3"]}')
             self._lay.addWidget(note)
             return
 
@@ -79,7 +79,7 @@ class SupportEditor(QWidget):
         if not sups:
             note = QLabel('Chưa đặt gối riêng — khi tạo MCT dùng bộ mặc định')
             note.setWordWrap(True)
-            note.setStyleSheet(f'color:{self.t["ink_3"]};font-size:8pt')
+            note.setStyleSheet(f'color:{self.t["ink_3"]}')
             self._lay.addWidget(note)
 
         btns = QWidget()
@@ -102,7 +102,7 @@ class SupportEditor(QWidget):
         hint = QLabel('Trên hình: bấm node đáy để đặt · kéo tam giác để dời · '
                       'chuột phải để xóa')
         hint.setWordWrap(True)
-        hint.setStyleSheet(f'color:{self.t["ink_3"]};font-size:8pt;padding-top:4px')
+        hint.setStyleSheet(f'color:{self.t["ink_3"]};padding-top:4px')
         self._lay.addWidget(hint)
         self._lay.addStretch()
 
@@ -121,7 +121,7 @@ class SupportEditor(QWidget):
         top = QHBoxLayout()
         top.setSpacing(4)
         cap = QLabel('node')
-        cap.setStyleSheet(f'border:0;color:{self.t["ink_3"]};font-size:8pt')
+        cap.setStyleSheet(f'color:{self.t["ink_3"]}')
         top.addWidget(cap)
 
         spin = QSpinBox()
@@ -130,13 +130,11 @@ class SupportEditor(QWidget):
         spin.setFixedWidth(64)
         spin.setKeyboardTracking(False)      # chỉ báo khi Enter hoặc rời ô
         spin.setToolTip('Gõ số hiệu node bản đáy rồi Enter để dời gối')
-        spin.setStyleSheet(f'font-family:{FONT_MONO}')
         spin.valueChanged.connect(lambda val, k=idx: self._move(k, val))
         top.addWidget(spin)
 
         xlb = QLabel(f'{sp["x"]:+.3f}')
-        xlb.setStyleSheet(f'border:0;color:{self.t["ink_2"]};'
-                          f'font-family:{FONT_MONO};font-size:8pt')
+        xlb.setStyleSheet(f'color:{self.t["ink_2"]}')
         top.addWidget(xlb)
         top.addStretch()
 
@@ -165,7 +163,7 @@ class SupportEditor(QWidget):
             row.addWidget(b)
 
         name = QLabel(SUPPORT_NAME.get(sp.get('kind'), ''))
-        name.setStyleSheet(f'border:0;color:{self.t["ink"]};font-size:8pt')
+        name.setStyleSheet(f'color:{self.t["ink"]}')
         row.addWidget(name)
         row.addStretch()
         outer.addLayout(row)

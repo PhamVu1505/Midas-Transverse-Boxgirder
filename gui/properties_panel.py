@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
                              QLabel, QScrollArea, QFrame, QComboBox)
 
 from .support_editor import SupportEditor
-from .theme import LIGHT, FONT_MONO
+from .theme import LIGHT
 
 # Ô JACKING của *TDN-PRESTRESS. Căng hai đầu thì tổn hao ma sát đối xứng và ứng
 # suất giữa bó cao hơn hẳn — khác biệt thật, nên để người dùng chọn thay vì ghim.
@@ -144,17 +144,16 @@ class PropertiesPanel(QWidget):
 
     # ─────────────────────────────────────────
     def _grp(self, title):
-        return (f'<div style="font-size:8pt;font-weight:600;letter-spacing:.7px;'
-                f'color:{self.t["ink_3"]};padding:11px 0 4px">'
-                f'{title.upper()}</div>')
+        # Tiêu đề nhóm: in đậm, cỡ thường — nghĩa duy nhất của chữ đậm.
+        return (f'<div style="font-weight:600;'
+                f'color:{self.t["ink"]};padding:11px 0 4px">'
+                f'{title}</div>')
 
     def _row(self, k, v, em=False):
         col = self.t['accent'] if em else self.t['ink']
-        weight = '600' if em else '400'
         return (f'<table width="100%" cellspacing="0" cellpadding="0"><tr>'
-                f'<td style="color:{self.t["ink_2"]};font-size:9pt">{k}</td>'
-                f'<td align="right" style="font-family:{FONT_MONO};font-size:9pt;'
-                f'color:{col};font-weight:{weight}">{v}</td></tr></table>')
+                f'<td style="color:{self.t["ink_2"]}">{k}</td>'
+                f'<td align="right" style="color:{col}">{v}</td></tr></table>')
 
     def refresh(self):
         self.refresh_body()
@@ -197,7 +196,7 @@ class PropertiesPanel(QWidget):
                                + ('' if sec.template else ' (chung)')))
 
         if not h:
-            h.append(f'<div style="color:{self.t["ink_3"]};font-size:9pt;'
+            h.append(f'<div style="color:{self.t["ink_3"]};'
                      f'padding-top:8px">Chọn một mặt cắt ở panel trái.</div>')
         self.body[1].setText(''.join(h))
 
@@ -243,10 +242,10 @@ class PropertiesPanel(QWidget):
                                f'<span style="color:{col}">{c["real"]:.0f} mm · '
                                f'{verdict}</span>'))
             if phu:
-                h.append(f'<div style="color:{self.t["ink_3"]};font-size:8pt;'
+                h.append(f'<div style="color:{self.t["ink_3"]};'
                          f'text-align:right">{phu} mm</div>')
         if any(cmp[k]['off'] and cmp[k]['unsafe'] for k in ('S', 'X')):
-            h.append(f'<div style="color:{self.t["err"]};font-size:8pt;'
+            h.append(f'<div style="color:{self.t["err"]};'
                      f'padding-top:4px">Tải bánh đang thiếu — sửa ô S/X ở sheet '
                      f'Load của template cho khớp mặt cắt này, hoặc gán template '
                      f'riêng cho nó.</div>')
@@ -260,7 +259,7 @@ class PropertiesPanel(QWidget):
             tpl = self.project.template_for(sec) if sec else self.project.template
         if not tpl or not os.path.exists(tpl):
             self.input[1].setText(
-                f'<div style="color:{self.t["warn"]};font-size:9pt;padding-top:8px">'
+                f'<div style="color:{self.t["warn"]};padding-top:8px">'
                 f'Chưa gán template số liệu.<br>MCT sẽ thiếu toàn bộ khối tải trọng '
                 f'và vật liệu.</div>')
             return
@@ -269,23 +268,23 @@ class PropertiesPanel(QWidget):
             d = read_inputs(tpl, strict=False)
         except Exception as e:
             self.input[1].setText(
-                f'<div style="color:{self.t["err"]};font-size:9pt">'
+                f'<div style="color:{self.t["err"]};">'
                 f'Không đọc được:<br>{e}</div>')
             return
 
-        h = [f'<div style="font-family:{FONT_MONO};font-size:8pt;'
+        h = [f'<div style="'
              f'color:{self.t["ink_2"]}">{os.path.basename(tpl)}</div>',
-             f'<div style="font-size:8pt;color:'
+             f'<div style="color:'
              f'{self.t["ok"] if d["_source"] == "INPUT" else self.t["warn"]}">'
              f'nguồn {d["_source"]} · {len([k for k in d if not k.startswith("_")])}'
              f' khóa</div>']
         if d['_missing']:
-            h.append(f'<div style="color:{self.t["err"]};font-size:8pt">'
+            h.append(f'<div style="color:{self.t["err"]};">'
                      f'THIẾU: {", ".join(d["_missing"])}</div>')
         try:
             bad = crosscheck(tpl)
             if bad:
-                h.append(f'<div style="color:{self.t["warn"]};font-size:8pt">'
+                h.append(f'<div style="color:{self.t["warn"]};">'
                          f'{len(bad)} khóa lệch so với ô gốc</div>')
         except Exception:
             pass

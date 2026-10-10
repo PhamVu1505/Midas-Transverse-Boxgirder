@@ -20,7 +20,7 @@ from .viewer_panel import ViewerPanel
 from .frame_view import MODEL, SHAPE, PARTS
 from .widgets import LogView
 from .icons import icon
-from .theme import FONT_MONO, apply_theme
+from .theme import apply_theme, mono_font, ui_font
 from .prefs import Prefs, PreferencesDialog
 from .widgets import StepBar, IDLE, ACTIVE, DONE
 from . import assets
@@ -241,15 +241,14 @@ class MainWindow(QMainWindow):
         self._msg_level = 'ok'
 
         self.lb_msg = QLabel('Sẵn sàng')
-        self.lb_msg.setStyleSheet(f'color: {self.t["ok"]}; font-weight: 600;')
+        self.lb_msg.setStyleSheet(f'color: {self.t["ok"]};')
         self.status.addWidget(self.lb_msg)
         self.lb_detail = QLabel('')
         self.status.addWidget(self.lb_detail, 1)
         self.status.detail = self.lb_detail
 
         self.lb_cursor = QLabel('')
-        self.lb_cursor.setStyleSheet(
-            f'font-family: {FONT_MONO}; color: {self.t["ink_3"]};')
+        self.lb_cursor.setStyleSheet(f'color: {self.t["ink_3"]};')
         self.status.addPermanentWidget(self.lb_cursor)
         self.status.addPermanentWidget(self._sep())
 
@@ -259,22 +258,20 @@ class MainWindow(QMainWindow):
         self.prog.setVisible(False)
         self.status.addPermanentWidget(self.prog)
 
-        mono = f'font-family: {FONT_MONO}; color: {self.t["ink_2"]};'
         self.lb_count = QLabel('—')
-        self.lb_count.setStyleSheet(mono)
+        self.lb_count.setStyleSheet(f'color: {self.t["ink_2"]};')
         self.status.addPermanentWidget(self._sep())
         self.status.addPermanentWidget(self.lb_count)
 
         self.lb_units = QLabel('kN, m')
-        self.lb_units.setStyleSheet(mono)
+        self.lb_units.setStyleSheet(f'color: {self.t["ink_2"]};')
         self.lb_units.setToolTip('Hệ đơn vị của mô hình MCT xuất ra')
         self.status.addPermanentWidget(self._sep())
         self.status.addPermanentWidget(self.lb_units)
 
         self.status.addPermanentWidget(self._sep())
         self.lb_ver = QLabel(VERSION)
-        self.lb_ver.setStyleSheet(
-            f'font-family: {FONT_MONO}; color: {self.t["ink_3"]};')
+        self.lb_ver.setStyleSheet(f'color: {self.t["ink_3"]};')
         # Style native là plugin Qt — bản đóng gói thiếu plugin thì lặng lẽ lui
         # về Fusion. Rê chuột lên số phiên bản là biết đang chạy style nào
         # (bản `--windowed` không có console để in ra).
@@ -405,6 +402,14 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
         tb.addAction(self.a_bf)
         tb.addAction(self.a_run)
+        # Mỗi lệnh là một NÚT có viền riêng (Windows vẽ), như hàng nút của
+        # caldintav — mặc định QToolBar để nút phẳng, chữ "Thêm DXF", "Chọn
+        # template…" trôi liền nhau không biết đâu là ranh giới.
+        tb.layout().setSpacing(4)
+        for a in (self.a_dxf, self.a_tpl, self.a_gen, self.a_bf, self.a_run):
+            w = tb.widgetForAction(a)
+            if w is not None:
+                w.setAutoRaise(False)
 
         spacer = QWidget()
         spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy().Expanding,
@@ -418,6 +423,7 @@ class MainWindow(QMainWindow):
         self.btn_prefs.setIcon(icon('gear', theme=self.t))
         self.btn_prefs.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.btn_prefs.setToolTip('Tùy chọn (Ctrl+,)')
+        self.btn_prefs.setAutoRaise(False)
         self.btn_prefs.clicked.connect(self.open_prefs)
         tb.addWidget(self.btn_prefs)
         self._act_icons.append((self.btn_prefs, 'gear'))
@@ -658,29 +664,20 @@ class MainWindow(QMainWindow):
     def _restyle_chrome(self):
         """Style nội tuyến của chính cửa sổ (thanh tab, status bar, nút Tạo MCT)."""
         t = self.t
-        # Có bộ chọn: QSS trơn lan xuống cả hai thanh cuộn con, `border: 0`
-        # làm Windows thôi vẽ chúng.
-        self.mct_view.setStyleSheet(
-            f'QPlainTextEdit {{ font-family: {FONT_MONO};'
-            f' font-size: {self.sizes["font_mono"]}pt; border: 0; }}')
-        mono = f'font-family: {FONT_MONO}; color: {t["ink_2"]};'
-        self.lb_count.setStyleSheet(mono)
-        self.lb_units.setStyleSheet(mono)
+        # Phông đơn cách CHỈ ở đây — nội dung là văn bản máy (file MCT). Có bộ
+        # chọn: QSS trơn lan `border: 0` xuống hai thanh cuộn con.
+        self.mct_view.setFont(mono_font())
+        self.mct_view.setStyleSheet('QPlainTextEdit { border: 0; }')
+        for lb in (self.lb_count, self.lb_units):
+            lb.setStyleSheet(f'color: {t["ink_2"]};')
         for lb in (self.lb_cursor, self.lb_ver):
-            lb.setStyleSheet(f'font-family: {FONT_MONO}; color: {t["ink_3"]};')
+            lb.setStyleSheet(f'color: {t["ink_3"]};')
         for f in self._seps:
             f.setStyleSheet(f'color: {t["border"]};')
         self.status_msg(self.lb_msg.text(), self._msg_level)
 
         for a, ic in self._act_icons:
             a.setIcon(icon(ic, theme=t))
-        # Nút chính chỉ in đậm — tô nền màu nhấn bằng QSS thì Windows thôi vẽ nó
-        # và nó lạc loài giữa các nút native còn lại.
-        w = self.tb.widgetForAction(self.a_gen) if hasattr(self, 'tb') else None
-        if w:
-            f = w.font()
-            f.setBold(True)
-            w.setFont(f)
 
     def _select_start_mode(self):
         want = {'model': 0, 'shape': 1, 'parts': 2}.get(self.prefs.start_mode, 0)
@@ -843,9 +840,9 @@ class MainWindow(QMainWindow):
         box.setWindowTitle('Chạy Midas/Civil')
         box.setText(f'Sắp chạy Midas cho {len(jobs)} mặt cắt.')
         box.setInformativeText(
-            'Trong lúc chạy, app <b>bấm thật vào ribbon Midas và chiếm tiền '
-            'cảnh</b> — máy không dùng được, khoảng 1–3 phút mỗi mặt cắt.<br><br>'
-            'Midas phải đang mở với tài liệu trống. App <b>không</b> tự mở, tự '
+            'Trong lúc chạy, app bấm thật vào ribbon Midas và chiếm tiền '
+            'cảnh — máy không dùng được, khoảng 1–3 phút mỗi mặt cắt.<br><br>'
+            'Midas phải đang mở với tài liệu trống. App không tự mở, tự '
             'đóng hay tắt Midas; tài liệu đang mở không sạch thì app dừng và báo.')
         box.setTextFormat(Qt.TextFormat.RichText)
         box.setDetailedText('\n'.join(f'{j["name"]}  ←  {j["mct"]}' for j in jobs))
@@ -969,20 +966,27 @@ class MainWindow(QMainWindow):
         app_lb.setPixmap(assets.app_icon().pixmap(72, 72))
         top.addWidget(app_lb, 0, Qt.AlignmentFlag.AlignTop)
 
+        # Tên chương trình là chỗ DUY NHẤT dùng cỡ chữ lớn — như tiêu đề
+        # "CALDINTAV 3.0" (docs/UI-CALDINTAV.md mục 4).
+        col = QVBoxLayout()
+        col.setSpacing(6)
+        title = QLabel(APP_NAME)
+        title.setFont(ui_font(4, bold=True))
+        title.setWordWrap(True)
+        col.addWidget(title)
         txt = QLabel(
-            f'<div style="color:{self.t["ink"]};font-size:14pt;'
-            f'font-weight:600">{APP_NAME}</div>'
-            f'<div style="color:{self.t["ink_2"]};font-size:10pt">{VERSION}</div>'
+            f'<div style="color:{self.t["ink_2"]}">{VERSION}</div>'
             f'<div style="height:8px"></div>'
             f'<div style="color:{self.t["ink"]}">Phân tích khung ngang dầm hộp '
             f'bê tông cốt thép dự ứng lực.</div>'
             f'<div style="color:{self.t["ink_2"]}">Tự động hóa từ mặt cắt DXF '
             f'đến bảng kiểm toán.</div>'
             f'<div style="height:10px"></div>'
-            f'<div style="color:{self.t["ink_2"]};font-size:9pt">DXF → MCT → '
+            f'<div style="color:{self.t["ink_2"]}">DXF → MCT → '
             f'Midas/Civil → Beam Force → Bảng kiểm toán</div>')
         txt.setWordWrap(True)
-        top.addWidget(txt, 1)
+        col.addWidget(txt)
+        top.addLayout(col, 1)
 
         tedi = QLabel()
         tedi.setPixmap(assets.tedi_full(96))
@@ -996,7 +1000,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(line)
 
         foot = QHBoxLayout()
-        cr = QLabel(f'<span style="color:{self.t["ink_3"]};font-size:9pt">'
+        cr = QLabel(f'<span style="color:{self.t["ink_3"]}">'
                     f'TEDI — Tổng công ty Tư vấn thiết kế GTVT</span>')
         foot.addWidget(cr)
         foot.addStretch()
@@ -1015,7 +1019,7 @@ class MainWindow(QMainWindow):
                'err': self.t['err'], 'busy': self.t['accent']}[level]
         self._msg_level = level
         self.lb_msg.setText(text)
-        self.lb_msg.setStyleSheet(f'color: {col}; font-weight: 600;')
+        self.lb_msg.setStyleSheet(f'color: {col};')
 
     def set_progress(self, done, total):
         if total <= 0 or done >= total:
