@@ -65,8 +65,10 @@ trong quy trình. Bước 3 vẽ nét đứt vì phải làm bên Midas.</p>
         <b>Results table</b>, <b>Kiểm toán mặt cắt</b>, <b>MCT source</b></td></tr>
 <tr style="background:{soft}">
     <td><b>Panel Properties</b><br><span style="color:{ink2}">bên phải</span></td>
-    <td>Thông tin mặt cắt, node đang trỏ, danh sách gối · thẻ
-        <b>Input data</b> liệt kê số liệu đọc từ template</td></tr>
+    <td>Bảng tóm tắt bốn bước — Bản vẽ DXF · Mô hình MCT · Kết quả Midas ·
+        Kiểm toán — mỗi bước một dòng Trạng thái (Đã tạo / Cần tạo lại — đã đổi
+        gì / Chưa…), node đang trỏ, danh sách gối · thẻ <b>Input data</b> liệt
+        kê số liệu đọc từ template</td></tr>
 <tr><td><b>Messages</b><br><span style="color:{ink2}">dưới đáy</span></td>
     <td>Nhật ký. Dòng vàng là cảnh báo, dòng đỏ là lỗi</td></tr>
 </table>
@@ -211,8 +213,8 @@ khi lập template. Mặt cắt nhiều bụng thì so với <b>nhịp ngắn nh
 panel Properties bên phải, mỗi gối một thẻ:</p>
 <ul>
 <li>Gõ <b>số hiệu node</b> rồi Enter để dời gối sang node khác</li>
-<li>Bấm một trong <b>ba nút ký hiệu</b> để đổi loại gối</li>
-<li>Nút <b>✕</b> để xoá, <b>＋ Thêm gối</b> để đặt thêm</li>
+<li>Chọn <b>Cố định / Di động / Ngàm</b> để đổi loại gối</li>
+<li>Nút <b>Xóa</b> để xoá, <b>Thêm gối</b> để đặt thêm</li>
 </ul>
 <p>Trên hình vẽ: bấm vào node bản đáy để đặt gối, kéo tam giác để dời, bấm chuột
 phải lên tam giác để xoá.</p>
@@ -383,6 +385,28 @@ lực, kích thước, diện tích và ứng suất lấy tròn số; hệ số
 (chưa xét nén trước) hoặc khi ứng suất kéo ở trạng thái Sử dụng chưa tới 80%
 f<sub>r</sub> — lúc đó tiết diện chưa nứt. Cột nào bỏ qua thì cột đó ghi rõ lý do
 ở hàng Ghi chú.</p>
+'''),
+
+        ('Tổ hợp tải trọng', f'''
+<h2 style="color:{ink}">Tổ hợp tải trọng</h2>
+<p>Mở bằng <b>Mô hình → Tổ hợp tải trọng…</b>. Chương trình có sẵn bộ tổ hợp
+theo TCVN 11823-3 (Cường độ I…V, Sử dụng I/III, bao <code>str_all</code> /
+<code>ser_all</code>); ở đây sửa được số hạng và hệ số của từng tổ hợp.</p>
+<ul>
+<li>Chọn tổ hợp ở danh sách trái.</li>
+<li>Danh sách <b>Có sẵn</b> là các trường hợp tải và các tổ hợp định nghĩa
+    trước tổ hợp đang sửa; danh sách <b>Trong tổ hợp</b> là số hạng đang dùng.
+    Chuyển qua lại bằng <b>&gt;</b> <b>&gt;&gt;</b> <b>&lt;</b> <b>&lt;&lt;</b>
+    hoặc bấm đúp.</li>
+<li>Sửa hệ số ngay trong ô (gõ <code>1,3</code> hay <code>1.3</code> đều được).</li>
+<li><b>Đồng ý</b> kiểm lần lượt từng tổ hợp và dừng ở lỗi đầu tiên: tổ hợp
+    rỗng, hệ số bằng 0 hoặc không phải số, số hạng trùng.</li>
+</ul>
+{note('Tên tổ hợp cố định — không thêm, đổi tên hay xoá được, vì bảng kiểm '
+      'toán đọc kết quả theo <code>str_all</code> / <code>ser_all</code>. '
+      'Tổ hợp tự sửa áp cho cả project; số hạng cáp DƯL chỉ ghi vào mặt cắt có '
+      'cáp. Sửa xong phải tạo lại MCT — bảng tóm tắt ở panel Properties sẽ ghi '
+      '"Cần tạo lại — đã đổi tổ hợp tải trọng".', warn, t['warn_bg'])}
 '''),
 
         ('Tùy chọn', f'''

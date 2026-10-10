@@ -595,32 +595,45 @@ def kiem_tom_tat_bao_can_tao_lai(c):
     """Bảng tóm tắt ở dock Properties phải nói "Cần tạo lại" và nói VÌ SAO.
 
     Mẫu *Project Summary* của caldintav (docs/UI-CALDINTAV.md mục 2.3): thứ
-    hiển thị là số liệu đã dùng; đổi gối / kiểu căng / tổ hợp sau khi tạo MCT
-    thì MCT trên đĩa không còn khớp, mà trước đây không có gì báo — mặt cắt vẫn
-    chấm xanh "đã tạo". Project cũ chưa có dấu vân tay thì phải nói "không rõ"
-    chứ không được kêu "cần tạo lại" cho mọi mặt cắt.
+    hiển thị là số liệu đã dùng; đổi gối / kiểu căng sau khi tạo MCT thì MCT
+    trên đĩa không còn khớp, mà trước đây không có gì báo. Bấm như người dùng
+    (nút chọn loại gối, ô Căng cáp) rồi đọc dock **không gọi refresh tay** —
+    nối dây thiếu ở đâu là phép kiểm đỏ ở đó. Project cũ chưa có dấu vân tay
+    thì phải nói "không rõ" chứ không kêu "cần tạo lại" cho mọi mặt cắt.
     """
-    p, sec = c.w.project, c.w.project.find(c.single)
-    c.w.panel.select(c.single)
-    c.step()
+    from PyQt6.QtWidgets import QRadioButton
+    p = c.w.project
+    sec = p.find(c.single)
 
     def chu():
-        c.w.props.refresh()
+        c.step()
         return c.w.props.body[1].text()
 
     sec.gen_inputs = {}
+    c.w.panel.select(c.single)
     assert 'không rõ' in chu(), 'project cũ (chưa có dấu vân tay) phải ghi "không rõ"'
+
+    sec.pt_cables = ['PT-TOP-1']          # để ô Căng cáp mở khoá
     sec.gen_inputs = dict(p.gen_fingerprint(sec), time=0)
-    assert 'Trạng thái' in chu() and 'Cần tạo lại' not in chu(), \
-        'vừa tạo xong mà đã báo cần tạo lại'
-    sec.set_supports([{'x': 0.0, 'kind': 'pin'}])
+    c.w.panel.select(c.single)
     t = chu()
-    assert 'Cần tạo lại' in t and 'gối' in t, 'đổi gối mà bảng tóm tắt không báo'
-    p.combos = {'TG': [['ST', 'TpG(+)', 1.2], ['ST', 'TpG(-)', 1.0]]}
+    assert 'Đã tạo' in t and 'Cần tạo lại' not in t, 'vừa tạo xong mà đã báo cần tạo lại'
+
+    # đổi loại gối bằng nút chọn một trong dock
+    radios = [r for r in c.w.props.sup_editor.findChildren(QRadioButton)
+              if r.isVisible() and not r.isChecked()]
+    assert radios, 'không thấy nút chọn loại gối nào để bấm'
+    radios[0].click()
     t = chu()
-    assert 'tổ hợp tải trọng' in t, 'đổi tổ hợp mà bảng tóm tắt không báo'
-    assert 'tự sửa 1' in t, 'bảng tóm tắt không hiện số tổ hợp đã sửa'
-    return 'không rõ → đã tạo → cần tạo lại (gối, tổ hợp)'
+    assert 'Cần tạo lại' in t and 'gối' in t, 'đổi loại gối mà bảng tóm tắt không báo'
+
+    # đổi kiểu căng bằng ô Căng cáp
+    cb = c.w.props.cb_jacking
+    assert cb.isEnabled(), 'ô Căng cáp vẫn khoá dù mặt cắt có cáp'
+    cb.setCurrentIndex(cb.findData('both'))
+    t = chu()
+    assert 'kiểu căng cáp' in t, 'đổi kiểu căng mà bảng tóm tắt không báo'
+    return 'không rõ → đã tạo → cần tạo lại (gối, kiểu căng) — bấm thật'
 
 
 def kiem_hop_thoai_to_hop(c):

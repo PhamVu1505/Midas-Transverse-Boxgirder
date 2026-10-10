@@ -16,6 +16,7 @@ Template theo từng mặt cắt: các mặt cắt cùng số sườn và cùng 
 chung được, nên `Section.template` để rỗng nghĩa là lấy `Project.template`.
 """
 
+import hashlib
 import json
 import os
 import time
@@ -39,6 +40,14 @@ STATUS_LABEL = {
     ERROR:     'Lỗi',
 }
 STATUS_ORDER = [NEW, GENERATED, ASSIGNED, CHECKED, ERROR]
+
+
+def _md5(path) -> str:
+    try:
+        with open(path, 'rb') as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except OSError:
+        return ''
 
 
 @dataclass
@@ -297,7 +306,15 @@ class Project:
         if not s:
             return
         if inputs is not None:
-            s.gen_inputs = dict(inputs, time=time.time())
+            # Mốc thời gian chỉ đổi khi NỘI DUNG MCT đổi: "Tạo MCT toàn bộ" ra
+            # file y hệt thì Beam Force đã gán vẫn là của đúng mô hình đó —
+            # đóng dấu lại mỗi lần thì "Cũ hơn MCT" kêu sau thao tác hay dùng
+            # nhất, và người dùng thôi đọc.
+            digest = _md5(mct)
+            old = s.gen_inputs or {}
+            t = (old.get('time') if old.get('mct_md5') == digest and digest
+                 else time.time())
+            s.gen_inputs = dict(inputs, time=t, mct_md5=digest)
         s.mct, s.topo = mct, topo
         s.section_type = section_type
         s.n_nodes, s.n_elems = n_nodes, n_elems

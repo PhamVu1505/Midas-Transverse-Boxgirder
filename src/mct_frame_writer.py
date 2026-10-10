@@ -1663,9 +1663,10 @@ def combo_references(name: str, has_pt: bool = True) -> list:
     lưu. CB chỉ được trỏ tới tổ hợp định nghĩa **trước** nó — Midas đọc tuần
     tự, trỏ tới sau là `(null)`. CS chỉ có khi có cáp (*STAGE).
     """
+    # KHÔNG có ST 'Prestress': nó chỉ được khai báo khi có cáp, nên tổ hợp trỏ
+    # tới nó ghi sang mặt cắt không cáp là đúng lỗi "(null) does not exist".
+    # Hiệu ứng cáp vào tổ hợp qua CS (Tendon Primary/Secondary) như _COMBOS.
     refs = [('ST', n) for n in _ST_CASES]
-    if has_pt:
-        refs.insert(0, ('ST', 'Prestress'))
     refs += [('MV', n) for n in _MV_CASES]
     for c in _COMBOS:
         if c['name'] == name:
@@ -1741,11 +1742,14 @@ def _write_load_combinations(blocks, has_pt=False, overrides=None):
     for c in _COMBOS:
         if c.get('pt_only') and not has_pt:
             continue
+        terms = []
         if c['name'] in overrides:
             terms = [tuple(t) for t in overrides[c['name']]
                      if has_pt or t[0] != 'CS']
             wrap = [min(3, len(terms) - i) for i in range(0, len(terms), 3)]
-        else:
+        # Tổ hợp tự sửa chỉ toàn số hạng CS mà mặt cắt không có cáp → lọc xong
+        # rỗng; ghi một dòng NAME= trơ trọi là Midas chối. Lui về mặc định.
+        if not terms:
             terms = [t for t in c['terms'] if has_pt or len(t) < 4]
             wrap = c['wrap_pt'] if has_pt else c['wrap_plain']
         if sum(wrap) != len(terms):

@@ -504,6 +504,7 @@ class MainWindow(QMainWindow):
         self.project.set_pt_jacking(name, jacking)
         label = 'hai đầu' if jacking == 'both' else 'một đầu'
         self.log.info(f'{name}: căng cáp {label} — tạo lại MCT để áp thay đổi')
+        self.props.refresh()        # bảng tóm tắt: "Cần tạo lại — đã đổi kiểu căng"
         self._update_title()
 
     def edit_combos(self):

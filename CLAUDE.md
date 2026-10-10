@@ -129,6 +129,7 @@ phải **tra được bất cứ lúc nào**, không chỉ trong khoảnh khắc
 - Danh sách *Có sẵn* = `combo_references(name)` của writer (ST trong `_ST_CASES`, MV, **CB định nghĩa trước nó**, CS khi có cáp) — hộp thoại không giữ bản sao. Kiểm lúc *Đồng ý*: `combo_problems()`, dừng ở câu đầu tiên.
 - Số hạng tự sửa: PT suy từ `ANAL == 'CS'`, ngắt dòng 3 số hạng/dòng. Không có template thì không có `*LOADCOMB` nên tổ hợp tự sửa không tác dụng — hộp thoại nói rõ.
 - **CLI (`run.py`) bỏ qua tổ hợp tự sửa**; bản build cũ mở rồi lưu lại `.mtbproj` sẽ **mất** khoá `combos` (không tăng `FORMAT_VERSION` vì khoá thêm là tương thích ngược).
+- **Không có `ST Prestress` trong danh sách có sẵn** — nó chỉ được khai báo khi có cáp, cho chọn là mở lại đúng lỗi `(null)` trên mặt cắt không cáp. Tổ hợp tự sửa toàn CS mà mặt cắt không có cáp thì lọc xong rỗng → **lui về mặc định**, không ghi dòng `NAME=` trơ trọi. `test_combo_overrides` khoá cả hai.
 - `kiem_hop_thoai_to_hop` bấm thật: `>`, gõ `1,3`, chặn `abc`, Hủy không đổi. Chính nó tìm ra lỗi báo lỗi hệ số của `"DW"` trong *Cuong do I* thì danh sách **nhảy nhầm sang tổ hợp DW** (tìm tên trong câu thay vì đầu câu).
 
 ### Hoạt tải: mạch tính trong Excel (đã giải, 2026-07-27)
@@ -240,7 +241,7 @@ Vỏ ứng dụng theo lối phần mềm kỹ thuật (midas / CSI / LUSAS): me
 - `Project.template_for(section)`: template riêng nếu có, không thì lấy chung. Mặt cắt cùng số sườn + cùng bề rộng dùng chung được.
 - `Project.__bool__` trả `True`: có `__len__` nên project rỗng sẽ falsy, `x or Project()` từng âm thầm thay bằng đối tượng khác.
 - `gui/project_panel.py` — cây mặt cắt dock trái, dùng chung cả hai tab (lối Works Tree của midas).
-- **Bảng tóm tắt (2026-10-10, mẫu *Project Summary* của caldintav)**: thẻ *Properties* của dock phải chia **Bản vẽ DXF · Mô hình MCT · Kết quả Midas · Kiểm toán**, mỗi bước một dòng *Trạng thái*. `Section.gen_inputs` ghi **dấu vân tay** số liệu lúc giao việc tạo MCT (`Project.gen_fingerprint`: DXF + template kèm mtime, cáp, kiểu căng, gối, tổ hợp); `Project.stale_reasons()` trả `None` (project cũ — ghi "không rõ", **không** kêu "cần tạo lại") · `[]` · `[lý do…]`. `beam_force_older_than_mct()` báo Beam Force của mô hình cũ. `refresh_body` chạy mỗi lần rê chuột nên **không đọc Excel** — cờ hoạt tải THIẾU lấy từ cache `_ll_flags` do `refresh_input` để lại (cùng một phép tính với khối *Dải tương đương*). `kiem_tom_tat_bao_can_tao_lai` khoá ba trạng thái.
+- **Bảng tóm tắt (2026-10-10, mẫu *Project Summary* của caldintav)**: thẻ *Properties* của dock phải chia **Bản vẽ DXF · Mô hình MCT · Kết quả Midas · Kiểm toán**, mỗi bước một dòng *Trạng thái*. `Section.gen_inputs` ghi **dấu vân tay** số liệu lúc giao việc tạo MCT (`Project.gen_fingerprint`: DXF + template kèm mtime, cáp, kiểu căng, gối, tổ hợp); `Project.stale_reasons()` trả `None` (project cũ — ghi "không rõ", **không** kêu "cần tạo lại") · `[]` · `[lý do…]`. `beam_force_older_than_mct()` báo Beam Force của mô hình cũ — mốc thời gian **chỉ đổi khi nội dung MCT đổi** (md5), không thì "Tạo MCT toàn bộ" ra file y hệt cũng làm mọi mặt cắt kêu "chạy lại Midas" (`test_beam_force_stale_only_when_mct_content_changes`). `refresh_body` chạy mỗi lần rê chuột nên **không đọc Excel** — cờ hoạt tải THIẾU lấy từ cache `_ll_flags` do `refresh_input` để lại (cùng một phép tính với khối *Dải tương đương*). `kiem_tom_tat_bao_can_tao_lai` bấm thật (nút chọn loại gối, ô Căng cáp) rồi đọc dock **không refresh tay** — nó tìm ra `_on_pt_jacking` không làm mới dock.
 - `QSettings` nhớ project gần đây, vị trí cửa sổ, layout dock.
 
 ### Logo và nhận diện
@@ -256,7 +257,7 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 |------|----------|
 | Dock trái `Project` | Cây mặt cắt · Thiết lập (template + thư mục kết quả) · Lớp hiển thị |
 | Trung tâm | Thanh bước → tab chế độ xem + nút Sửa gối → canvas (zoom nổi góc trên phải, chú giải góc dưới trái, dòng truy vấn đáy) |
-| Dock phải `Properties` | Tab Properties (mặt cắt · node đang rê · gối) và Input data (40 khóa template) |
+| Dock phải `Properties` | Tab Properties (**bảng tóm tắt bốn bước có Trạng thái** · node đang rê · gối) và Input data (40 khóa template) |
 | Dock đáy `Messages` | Nhật ký phân cấp màu, trải hết bề ngang |
 | Status bar | Trạng thái · chi tiết · toạ độ con trỏ · progress · số mặt cắt · đơn vị · phiên bản |
 
@@ -311,7 +312,7 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 ## Lệnh thường dùng
 ```bash
 python run_gui.py
-python -m pytest tests -q                        # 100 bài: MCT, kiểm toán, số liệu, driver, NX
+python -m pytest tests -q                        # 101 bài: MCT, kiểm toán, số liệu, driver, NX
 python tools/check_gui.py                        # 18 phép kiểm, bấm thật (skill kiem-gui)
 python tools/audit_gui.py                        # soát ĐỘ PHỦ: bấm hết 56 điều khiển
 python tools/nx_crosscheck.py                    # kiểm chéo nội lực bằng Midas NX API
@@ -561,7 +562,7 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 ## Current Sprint
 **Goal:** phát hành **V1 = sinh MCT cho Midas Civil 2022**. Thẻ Midas NX để sau (VuPQ chốt 2026-08-20).
 
-**Trạng thái:** `pytest tests -q` **100 bài** (113 − 21 bài bảng màu cũ + 7 bài mới + `test_combo_overrides`; trên Linux đo được 85/86 trừ 8 bài driver chỉ chạy Windows, bài hỏng `test_pt_detected_only_where_cables_exist` hỏng y hệt ở baseline) · `tools/check_gui.py` **18/18** (sau đợt giao diện native + kiểu chữ + tóm tắt/tổ hợp 2026-10-10, đo trên Linux; `audit_gui` chưa chạy lại — số cũ **53 đạt · 0 hỏng** là trước khi bỏ trang Giao diện) · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ. **`master` = `4bf929c`**, đã gồm cả `feature/t13-twin-box` lẫn `feature/v1-release-qa` (bộ kiểm thử `audit_gui` + tài liệu kiểm thử · `*VERSION` · ba bản vá driver), đã đẩy remote. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
+**Trạng thái:** `pytest tests -q` **101 bài** (113 − 21 bài bảng màu cũ + 7 bài mới + 2 bài tổ hợp/Beam Force; trên Linux đo được 86/87 trừ 8 bài driver chỉ chạy Windows, bài hỏng `test_pt_detected_only_where_cables_exist` hỏng y hệt ở baseline) · `tools/check_gui.py` **18/18** (sau đợt giao diện native + kiểu chữ + tóm tắt/tổ hợp 2026-10-10, đo trên Linux; `audit_gui` chưa chạy lại — số cũ **53 đạt · 0 hỏng** là trước khi bỏ trang Giao diện) · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ. **`master` = `4bf929c`**, đã gồm cả `feature/t13-twin-box` lẫn `feature/v1-release-qa` (bộ kiểm thử `audit_gui` + tài liệu kiểm thử · `*VERSION` · ba bản vá driver), đã đẩy remote. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
