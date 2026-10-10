@@ -65,8 +65,9 @@ chụp cũng không thấy — mục xám trông vẫn "bình thường".
 
 ### `render_ui.py` — diện mạo
 
-Chụp mọi thẻ, hai bảng màu, cả mặt cắt một hộp lẫn hai hộp, ghi khoảng 26 ảnh
-vào `docs/ui-snapshots/`.
+Chụp mọi thẻ, cả mặt cắt một hộp lẫn hai hộp, ghi khoảng 13 ảnh vào
+`docs/ui-snapshots/`. Từ 2026-10-10 app để Windows tự vẽ nút/ô nhập — ảnh chụp
+ngoài Windows là style Fusion, chỉ soát được bố cục, không soát được dáng nút.
 
 Lỗi bố cục Qt **không có traceback**. Chỉ nhìn mới thấy. Nếu bạn sắp sửa giao
 diện, hãy chạy lệnh này và mở thư mục ảnh trước, đừng đọc lại nghìn dòng widget.
@@ -95,7 +96,7 @@ Chạy đủ chín bước sau, theo thứ tự. Bước nào hỏng thì dừng
 tiếp.
 
 1. `python -m pytest tests -q` — phải **toàn bộ pass**.
-2. `python tools/check_gui.py` — phải **0 hỏng**, cả hai bảng màu.
+2. `python tools/check_gui.py` — phải **0 hỏng** (app chỉ còn bảng màu Sáng từ 2026-10-10).
 3. `python tools/audit_gui.py` — phải **0 hỏng**. Mục **XEM LẠI** thì phải giải
    thích được từng mục; đừng bỏ qua.
 4. `python tools/render_ui.py` rồi mở `docs/ui-snapshots/` xem bằng mắt.

@@ -300,7 +300,7 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 ## Lệnh thường dùng
 ```bash
 python run_gui.py
-python -m pytest tests -q                        # 100 bài: MCT, kiểm toán, số liệu, driver, NX
+python -m pytest tests -q                        # 99 bài: MCT, kiểm toán, số liệu, driver, NX
 python tools/check_gui.py                        # 15 phép kiểm, bấm thật (skill kiem-gui)
 python tools/audit_gui.py                        # soát ĐỘ PHỦ: bấm hết 56 điều khiển
 python tools/nx_crosscheck.py                    # kiểm chéo nội lực bằng Midas NX API
@@ -550,7 +550,7 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 ## Current Sprint
 **Goal:** phát hành **V1 = sinh MCT cho Midas Civil 2022**. Thẻ Midas NX để sau (VuPQ chốt 2026-08-20).
 
-**Trạng thái:** `pytest tests -q` **100 bài** · `tools/check_gui.py` **15/15** (sau đợt giao diện native 2026-10-10, đo trên Linux; `audit_gui` chưa chạy lại — số cũ **53 đạt · 0 hỏng** là trước khi bỏ trang Giao diện) · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ. **`master` = `4bf929c`**, đã gồm cả `feature/t13-twin-box` lẫn `feature/v1-release-qa` (bộ kiểm thử `audit_gui` + tài liệu kiểm thử · `*VERSION` · ba bản vá driver), đã đẩy remote. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
+**Trạng thái:** `pytest tests -q` **99 bài** (113 − 21 bài bảng màu cũ + 7 bài mới; trên Linux đo được 84/85 trừ 8 bài driver chỉ chạy Windows, bài hỏng `test_pt_detected_only_where_cables_exist` hỏng y hệt ở baseline) · `tools/check_gui.py` **15/15** (sau đợt giao diện native 2026-10-10, đo trên Linux; `audit_gui` chưa chạy lại — số cũ **53 đạt · 0 hỏng** là trước khi bỏ trang Giao diện) · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ. **`master` = `4bf929c`**, đã gồm cả `feature/t13-twin-box` lẫn `feature/v1-release-qa` (bộ kiểm thử `audit_gui` + tài liệu kiểm thử · `*VERSION` · ba bản vá driver), đã đẩy remote. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
