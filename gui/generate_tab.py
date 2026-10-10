@@ -219,8 +219,13 @@ class GenerateController(QObject):
                  'excel': self.project.template_for(s),
                  'include_pt': self.include_pt and s.include_pt,
                  'supports': list(s.supports),
-                 'pt_jacking': s.pt_jacking}
+                 'pt_jacking': s.pt_jacking,
+                 'combos': dict(self.project.combos)}
                 for s in secs]
+        # Số liệu "đã Submit" cho từng mặt cắt — chụp lúc giao việc, không phải
+        # lúc xong, để người dùng sửa gì trong lúc chạy thì vẫn thấy "cần tạo lại".
+        self._inputs = {s.name: self.project.gen_fingerprint(
+            s, self.include_pt and s.include_pt) for s in secs}
 
         if self.log_area:
             self.log_area.clear()
@@ -240,7 +245,8 @@ class GenerateController(QObject):
     def _on_info(self, name, info):
         self.project.record_generated(
             name, info['mct'], info['topo'], info['section_type'],
-            info['n_nodes'], info['n_elems'], info.get('pt_cables'))
+            info['n_nodes'], info['n_elems'], info.get('pt_cables'),
+            inputs=getattr(self, '_inputs', {}).get(name))
         self.project_changed.emit()
 
     def _on_error(self, name, msg):

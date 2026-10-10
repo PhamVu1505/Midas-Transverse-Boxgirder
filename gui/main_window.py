@@ -338,6 +338,10 @@ class MainWindow(QMainWindow):
         # Mục vẫn HIỆN khi tính năng tắt, chỉ bị khoá kèm chú thích chỉ đường.
         # Giấu hẳn thì người dùng không biết là có, mà bật sẵn thì app tự giành
         # lấy chuột — cả hai đều sai. `_sync_midas_action()` lo phần khoá/mở.
+        self.a_combos = self._act('Tổ hợp tải trọn&g…', self.edit_combos, None,
+                                  'Sửa hệ số tổ hợp bằng hai danh sách có sẵn ↔ trong tổ hợp')
+        m.addAction(self.a_combos)
+        m.addSeparator()
         self.a_midas = self._act('Chạy &Midas/Civil', self.run_midas, 'F8')
         m.addAction(self.a_midas)
         m.addSeparator()
@@ -501,6 +505,26 @@ class MainWindow(QMainWindow):
         label = 'hai đầu' if jacking == 'both' else 'một đầu'
         self.log.info(f'{name}: căng cáp {label} — tạo lại MCT để áp thay đổi')
         self._update_title()
+
+    def edit_combos(self):
+        """Hộp thoại tổ hợp tải trọng (T21) — chung cho cả project."""
+        from .combo_dialog import ComboDialog
+        has_tpl = bool(self.project.template
+                       or any(s.template for s in self.project))
+        d = ComboDialog(self.project.combos, self.t, self, has_template=has_tpl)
+        if d.exec() != QDialog.DialogCode.Accepted:
+            return
+        new = d.result_combos()
+        if new == self.project.combos:
+            return
+        self.project.combos = new
+        self.project._dirty = True
+        if new:
+            self.log.info(f'Tổ hợp tải trọng: đã sửa {len(new)} tổ hợp '
+                          f'({", ".join(new)}) — tạo lại MCT để áp dụng')
+        else:
+            self.log.info('Tổ hợp tải trọng: về mặc định — tạo lại MCT để áp dụng')
+        self._on_project_changed()
 
     def _on_project_changed(self):
         self.panel.refresh()

@@ -8,7 +8,7 @@ description: Kiểm giao diện PyQt của app Midas Transverse Boxgirder bằng
 ## Chạy
 
 ```bash
-python tools/check_gui.py                 # 16 phép kiểm
+python tools/check_gui.py                 # 18 phép kiểm
 python tools/check_gui.py --list          # liệt kê rồi thoát
 python tools/check_gui.py --only dong_bo  # lọc theo tên
 ```

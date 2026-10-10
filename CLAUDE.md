@@ -25,7 +25,7 @@ Toàn bộ pipeline đã hoàn thiện. **Tested**: S1, S7, S12, S16, S20, SLT, 
 | Task | Ưu tiên | Mô tả |
 |------|---------|--------|
 | T20 | TB | Cảnh báo/thông báo lỗi khi import DXF (không hợp lệ, thiếu layer, sai số đỉnh) |
-| T21 | TB | Tùy biến load combinations |
+| ~~T21~~ | — | **Xong (2026-10-10)**: tổ hợp tải tuỳ biến — xem *Tổ hợp tải trọng* |
 | T22 | TB | Tối ưu GUI xuất kết quả theo folder (batch scan) |
 
 ## Quy ước quan trọng
@@ -122,6 +122,14 @@ phải **tra được bất cứ lúc nào**, không chỉ trong khoảnh khắc
 - Không khai báo **"Sử dụng II"**: tổ hợp của kết cấu thép (trượt bu lông). Bản cũ có `LCB2` nhưng không tổ hợp bao nào lấy.
 - Tổ hợp **kiểm nứt** chỉ ghi khi có cáp: khác `Sử dụng I/III` duy nhất ở chỗ không lấy `Tendon Primary`, mà số hạng đó không tồn tại khi không có cáp → Midas chạy hai tổ hợp cho ra cùng một con số.
 - `_validate_load_references()` soi mọi số hạng xem có trỏ tới `ST/CB/MV/CS` đã định nghĩa hay chưa; số hạng `CS` còn đòi phải có `*STAGE`. Kết quả vào `topo['combo_warnings']`, log ra GUI và CLI. Đây đúng là lỗi đã xảy ra thật (`(null)`), nên `tests/test_regression.py` khoá **cả hai chiều**: không tổ hợp mồ côi, và bộ kiểm phải bắt được lỗi khi dựng lại lỗi cũ.
+
+**Tổ hợp tự sửa (T21, 2026-10-10)** — *Mô hình → Tổ hợp tải trọng…* (`gui/combo_dialog.py`, mẫu hai danh sách của caldintav):
+- Lưu ở `Project.combos` = `{tên: [[ANAL, LCNAME, FACT], …]}`, **chung cả project** (tổ hợp theo quy phạm, không theo mặt cắt), **chỉ tổ hợp khác mặc định** (`combo_overrides_clean`) — "Khôi phục mặc định" là xoá khoá. `write_mct(..., combos=None)` mặc định **trùng khít từng byte**; `tests/test_regression.py::test_combo_overrides` khoá trên cả ba hình: None/{}/bản sao mặc định không đổi file, sửa một hệ số chỉ đổi đúng khối `NAME=` đó, CS tự rơi khi không có cáp.
+- **Tên tổ hợp cố định** — không thêm/đổi tên/xoá; chỉ sửa số hạng và hệ số. iTYPE (cộng/bao) chỉ hiển thị.
+- Danh sách *Có sẵn* = `combo_references(name)` của writer (ST trong `_ST_CASES`, MV, **CB định nghĩa trước nó**, CS khi có cáp) — hộp thoại không giữ bản sao. Kiểm lúc *Đồng ý*: `combo_problems()`, dừng ở câu đầu tiên.
+- Số hạng tự sửa: PT suy từ `ANAL == 'CS'`, ngắt dòng 3 số hạng/dòng. Không có template thì không có `*LOADCOMB` nên tổ hợp tự sửa không tác dụng — hộp thoại nói rõ.
+- **CLI (`run.py`) bỏ qua tổ hợp tự sửa**; bản build cũ mở rồi lưu lại `.mtbproj` sẽ **mất** khoá `combos` (không tăng `FORMAT_VERSION` vì khoá thêm là tương thích ngược).
+- `kiem_hop_thoai_to_hop` bấm thật: `>`, gõ `1,3`, chặn `abc`, Hủy không đổi. Chính nó tìm ra lỗi báo lỗi hệ số của `"DW"` trong *Cuong do I* thì danh sách **nhảy nhầm sang tổ hợp DW** (tìm tên trong câu thay vì đầu câu).
 
 ### Hoạt tải: mạch tính trong Excel (đã giải, 2026-07-27)
 Sheet `Load` mục 2.3 dùng **phương pháp dải tương đương**. Mọi con số trong `*VEHICLE` tái lập được từ công thức quy phạm, lệch 0.0000 — đừng sửa tay, sửa ở Excel.
@@ -232,6 +240,7 @@ Vỏ ứng dụng theo lối phần mềm kỹ thuật (midas / CSI / LUSAS): me
 - `Project.template_for(section)`: template riêng nếu có, không thì lấy chung. Mặt cắt cùng số sườn + cùng bề rộng dùng chung được.
 - `Project.__bool__` trả `True`: có `__len__` nên project rỗng sẽ falsy, `x or Project()` từng âm thầm thay bằng đối tượng khác.
 - `gui/project_panel.py` — cây mặt cắt dock trái, dùng chung cả hai tab (lối Works Tree của midas).
+- **Bảng tóm tắt (2026-10-10, mẫu *Project Summary* của caldintav)**: thẻ *Properties* của dock phải chia **Bản vẽ DXF · Mô hình MCT · Kết quả Midas · Kiểm toán**, mỗi bước một dòng *Trạng thái*. `Section.gen_inputs` ghi **dấu vân tay** số liệu lúc giao việc tạo MCT (`Project.gen_fingerprint`: DXF + template kèm mtime, cáp, kiểu căng, gối, tổ hợp); `Project.stale_reasons()` trả `None` (project cũ — ghi "không rõ", **không** kêu "cần tạo lại") · `[]` · `[lý do…]`. `beam_force_older_than_mct()` báo Beam Force của mô hình cũ. `refresh_body` chạy mỗi lần rê chuột nên **không đọc Excel** — cờ hoạt tải THIẾU lấy từ cache `_ll_flags` do `refresh_input` để lại (cùng một phép tính với khối *Dải tương đương*). `kiem_tom_tat_bao_can_tao_lai` khoá ba trạng thái.
 - `QSettings` nhớ project gần đây, vị trí cửa sổ, layout dock.
 
 ### Logo và nhận diện
@@ -302,8 +311,8 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 ## Lệnh thường dùng
 ```bash
 python run_gui.py
-python -m pytest tests -q                        # 99 bài: MCT, kiểm toán, số liệu, driver, NX
-python tools/check_gui.py                        # 16 phép kiểm, bấm thật (skill kiem-gui)
+python -m pytest tests -q                        # 100 bài: MCT, kiểm toán, số liệu, driver, NX
+python tools/check_gui.py                        # 18 phép kiểm, bấm thật (skill kiem-gui)
 python tools/audit_gui.py                        # soát ĐỘ PHỦ: bấm hết 56 điều khiển
 python tools/nx_crosscheck.py                    # kiểm chéo nội lực bằng Midas NX API
 python tools/render_ui.py                        # ảnh mọi thẻ → docs/ui-snapshots/
@@ -552,7 +561,7 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 ## Current Sprint
 **Goal:** phát hành **V1 = sinh MCT cho Midas Civil 2022**. Thẻ Midas NX để sau (VuPQ chốt 2026-08-20).
 
-**Trạng thái:** `pytest tests -q` **99 bài** (113 − 21 bài bảng màu cũ + 7 bài mới; trên Linux đo được 84/85 trừ 8 bài driver chỉ chạy Windows, bài hỏng `test_pt_detected_only_where_cables_exist` hỏng y hệt ở baseline) · `tools/check_gui.py` **16/16** (sau đợt giao diện native + kiểu chữ 2026-10-10, đo trên Linux; `audit_gui` chưa chạy lại — số cũ **53 đạt · 0 hỏng** là trước khi bỏ trang Giao diện) · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ. **`master` = `4bf929c`**, đã gồm cả `feature/t13-twin-box` lẫn `feature/v1-release-qa` (bộ kiểm thử `audit_gui` + tài liệu kiểm thử · `*VERSION` · ba bản vá driver), đã đẩy remote. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
+**Trạng thái:** `pytest tests -q` **100 bài** (113 − 21 bài bảng màu cũ + 7 bài mới + `test_combo_overrides`; trên Linux đo được 85/86 trừ 8 bài driver chỉ chạy Windows, bài hỏng `test_pt_detected_only_where_cables_exist` hỏng y hệt ở baseline) · `tools/check_gui.py` **18/18** (sau đợt giao diện native + kiểu chữ + tóm tắt/tổ hợp 2026-10-10, đo trên Linux; `audit_gui` chưa chạy lại — số cũ **53 đạt · 0 hỏng** là trước khi bỏ trang Giao diện) · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ. **`master` = `4bf929c`**, đã gồm cả `feature/t13-twin-box` lẫn `feature/v1-release-qa` (bộ kiểm thử `audit_gui` + tài liệu kiểm thử · `*VERSION` · ba bản vá driver), đã đẩy remote. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
@@ -618,6 +627,7 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-10-10 (tối): **Bỏ icon khỏi nút/menu · bảng tóm tắt có Trạng thái · tổ hợp tải tự sửa (T21).** Theo caldintav: nút là chữ (loại gối thành nút chọn một). VuPQ chốt làm mục 1 và 2 của đề xuất: dock Properties thành bảng tóm tắt bốn bước với "Cần tạo lại — đã đổi …" suy từ dấu vân tay; hộp thoại tổ hợp hai danh sách, mặc định MCT trùng khít. Phép kiểm mới tìm ra hai lỗi thật: báo lỗi hệ số nhảy nhầm tổ hợp, và chính phép kiểm kiểu chữ trả `QPainter.setFont` sai cách làm vỡ phép kiểm chạy sau.
 - 2026-10-10 (chiều): **Kiểu chữ + phân tích caldintav.** VuPQ chỉ ra nút thanh công cụ không có viền ngăn, chữ đậm/nghiêng tuỳ tiện, quá nhiều cỡ/phông, và nhờ phân tích kỹ *cấu trúc* giao diện caldintav (thứ tự thẻ, Submit từng thẻ, bảng tóm tắt, chọn tải hai danh sách, ô tích + ô phụ thuộc). Viết `docs/UI-CALDINTAV.md`; gom chữ về một phông/một cỡ, đậm chỉ cho tiêu đề nhóm, bỏ nghiêng; nút thanh công cụ có viền. Thêm `kiem_mot_phong_mot_co_khong_nghieng` (bắt 3/3 lỗi dựng lại). Các đề xuất cấu trúc ở mục 6.2 của tài liệu **chờ VuPQ chốt**.
 - 2026-10-10: **Giao diện native Windows.** VuPQ nhờ so với `caldintav` vì nút/ô của nó đẹp hơn. Hoá ra caldintav không có QSS nào — chỉ Qt Designer + style native; khác biệt nằm ở việc ta ép Fusion + phủ QSS lên mọi điều khiển. Lượt đầu tôi dựng lại độ nổi bằng QSS (dấu tích PNG, gradient nút…) rồi VuPQ chốt hướng ngược lại: **để Windows tự vẽ**, chỉ giữ bảng Sáng, bỏ trang Giao diện như caldintav. Gỡ toàn bộ QSS điều khiển, `spin_arrows`/`tick_image`, bảng Tối/Tương phản, màu nhấn, mật độ, phông. Thêm `kiem_qss_khong_dung_dieu_khien_native` (tìm ra ngay `mct_view` mang `border: 0` lan xuống thanh cuộn). **Chưa nhìn trên Windows thật** — ảnh chụp ở đây là Fusion.
 - 2026-08-21: **Phương ngữ MCT — đo xong, hoá ra chỉ cần MỘT file.** VuPQ đề xuất sinh hai bản MCT (2022 / NX) theo lẽ "bản cao đọc được bản thấp". Lẽ đúng, nhưng bằng chứng bác chính phương án hai file: `9.1.0` là tag **chính Civil 2022 ghi ra khi export** (`output/TP_BL_test/S1/S1.mct` nằm cạnh `S1.mcb` + `S1.CA*` cùng lượt giải), tức ta ghi tag **thấp** và NX đọc xuống — hai file sẽ khác nhau đúng 0 dòng. Cài thành tham số `mct_version` mặc định TẮT, rồi **chạy A/B 12 lượt trên Civil 2022 thật**: 6/6 trùng khít, 44.940 bản ghi, `ΔMy = ΔVz = 0,0000`. VuPQ chốt V1 vẫn để TẮT, bật ở v1.5. Vá 3 lỗi lộ ra dọc đường: `nargs='?'` nuốt mất DXF đầu tiên · Midas **cắt tiêu đề cửa sổ ở 159 ký tự** làm driver từ chối chính sản phẩm của nó (hỏng dây chuyền cả loạt 6 mặt cắt) · NX và Civil 2022 **dùng chung lớp cửa sổ** nên driver đếm 2 rồi từ chối, mà nếu chỉ NX mở thì bám nhầm vào NX. `pytest` 113/113.

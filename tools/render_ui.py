@@ -162,7 +162,9 @@ def build_window(sections):
         n_node = sum(len(topo.get(k, []))
                      for k in ('top_ids', 'bot_ids', 'wL_ids', 'wC_ids', 'wR_ids'))
         p.sections.append(Section(
-            name=name, dxf=os.path.join('input', f'{name}.dxf'),
+            name=name, dxf=next((d for d in (os.path.join('input', 'dxf', f'{name}.dxf'),
+                                          os.path.join('data', 'TP_BL', f'{name}.dxf'))
+                                if os.path.exists(d)), os.path.join('input', f'{name}.dxf')),
             topo=topo_path, beam_force=bf,
             mct=os.path.join('output', name, f'{name}_frame.mct'),
             n_nodes=n_node, n_elems=n_elem, status=GENERATED,

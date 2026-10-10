@@ -187,23 +187,31 @@ Khung: nhóm điều khiển nằm trong `QFrame` `StyledPanel` (viền nổi) h
   soát phông của mọi widget, chữ trong nội dung/QSS của nhãn, và chặn
   `QPainter.setFont` để soát cả chữ tự vẽ.
 
+- **Bảng tóm tắt có dòng Trạng thái** (mục 2.3, VuPQ chốt làm): thẻ
+  *Properties* của dock phải chia bốn bước — *Bản vẽ DXF · Mô hình MCT · Kết quả
+  Midas · Kiểm toán* — mỗi bước kê số liệu (template, cáp, kiểu căng, gối, tổ
+  hợp, node/phần tử, cờ hoạt tải THIẾU…) và một dòng *Trạng thái*. "Cần tạo lại
+  — đã đổi gối, tổ hợp tải trọng" suy từ **dấu vân tay** số liệu lúc tạo MCT
+  (`Section.gen_inputs`, `Project.stale_reasons`); project cũ chưa có dấu vân
+  tay thì ghi "không rõ" chứ không kêu bừa. Beam Force gán trước lần tạo MCT
+  gần nhất thì báo "Cũ hơn MCT".
+- **Tổ hợp tải trọng bằng hai danh sách** (mục 3.1, T21, VuPQ chốt làm): *Mô
+  hình → Tổ hợp tải trọng…* — danh sách tổ hợp bên trái, *Có sẵn* ↔ *Trong tổ
+  hợp* với bốn nút `>> > < <<`, ô hệ số sửa trực tiếp (nhận cả dấu phẩy thập
+  phân). Sửa trên bản nháp; *Đồng ý* kiểm theo thứ tự và dừng ở lỗi đầu tiên
+  bằng một câu (tổ hợp rỗng, hệ số 0/không phải số, số hạng trùng, trỏ tới tổ
+  hợp định nghĩa sau). Danh sách *Có sẵn* lấy từ chính writer
+  (`combo_references`), không giữ bản sao.
+
 ### 6.2 Đề xuất — chưa làm, cần VuPQ chốt
-1. **Bảng tóm tắt có dòng Trạng thái** (mục 2.3). Ta đã có cây mặt cắt với chấm
-   trạng thái `new → generated → assigned → checked`; thiếu là *một chỗ nhìn
-   thấy số đã chốt*: template nào, cáp có/không, căng một/hai đầu, Beam Force
-   nào, cảnh báo hoạt tải còn treo không. Dock Properties gần làm được việc
-   này — có thể đổi thành bảng tóm tắt kiểu caldintav.
-2. **Cổng trước khi chạy nói đúng bước thiếu** (mục 2.4). `Tạo MCT toàn bộ` /
+1. **Cổng trước khi chạy nói đúng bước thiếu** (mục 2.4). `Tạo MCT toàn bộ` /
    `Xử lý Beam Force` / `Kiểm toán` hiện báo lỗi rải trong Messages; có thể gom
    thành một lượt kiểm theo thứ tự (DXF hợp lệ? template đủ 40 khoá? hoạt tải
    khớp hình học? Beam Force đủ `str_all`/`ser_all`?) rồi dừng ở bước đầu tiên
    thiếu với một câu hướng dẫn.
-3. **Tổ hợp tải tuỳ biến (T21) dùng mẫu hai danh sách** (mục 3.1): *Trường hợp
-   tải có sẵn* ↔ *Đưa vào tổ hợp*, kèm hệ số. Đây đúng là chỗ "lựa chọn tải
-   trọng" của dự án.
-4. **Ô tích + ô phụ thuộc cùng hàng** (mục 3.2) cho *Kể đến cáp DƯL* ↔ hai cột
+2. **Ô tích + ô phụ thuộc cùng hàng** (mục 3.2) cho *Kể đến cáp DƯL* ↔ hai cột
    `dp`/cự ly cáp ở thẻ Kiểm toán, và *Cho phép app tự lái Midas* ↔ *Hỏi lại
    trước mỗi lần chạy*.
-5. **Phím tắt Alt cho mọi nút** (mục 3.4). Menu đã có; nút trong thẻ thì chưa.
-6. **Nhắc lưu project sau mỗi bước tốn thời gian** (chạy Midas, xử lý Beam
+3. **Phím tắt Alt cho mọi nút** (mục 3.4). Menu đã có; nút trong thẻ thì chưa.
+4. **Nhắc lưu project sau mỗi bước tốn thời gian** (chạy Midas, xử lý Beam
    Force) như caldintav nhắc sau Submit Job.

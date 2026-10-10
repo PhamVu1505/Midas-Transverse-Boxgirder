@@ -18,6 +18,7 @@ chung được, nên `Section.template` để rỗng nghĩa là lấy `Project.t
 
 import json
 import os
+import time
 from dataclasses import dataclass, field, asdict
 
 FILE_EXT = '.mtbproj'
@@ -75,6 +76,12 @@ class Section:
     # *TDN-PRESTRESS. Mặc định 'begin' để MCT của project cũ giống hệt bản trước.
     pt_jacking: str = 'begin'
 
+    # Số liệu ĐÃ DÙNG lần tạo MCT gần nhất — xem `Project.gen_fingerprint()`.
+    # Như bảng tóm tắt của caldintav: thứ hiển thị là cái đã "Submit", không
+    # phải cái đang gõ; lệch nhau thì mặt cắt "cần tạo lại" và nói rõ vì sao.
+    # Rỗng = project cũ chưa ghi dấu vân tay → trạng thái "không rõ".
+    gen_inputs: dict = field(default_factory=dict)
+
     status: str = NEW
     note: str = ''
 
@@ -102,6 +109,10 @@ class Project:
     output_dir: str = 'output'
     template: str = ''
     sections: list = field(default_factory=list)
+    # Hệ số tổ hợp tự sửa (T21), chung cho cả project vì tổ hợp theo quy phạm
+    # chứ không theo mặt cắt: {tên tổ hợp: [[ANAL, LCNAME, FACT], …]}. Chỉ lưu
+    # tổ hợp KHÁC mặc định — xem `mct_frame_writer.combo_overrides_clean()`.
+    combos: dict = field(default_factory=dict)
 
     path: str = ''             # đường dẫn .mtbproj (rỗng = chưa lưu)
     _dirty: bool = False
@@ -232,11 +243,61 @@ class Project:
                 s.status = ASSIGNED if path else GENERATED
             self._dirty = True
 
+    # ── dấu vân tay số liệu đầu vào ──
+    @staticmethod
+    def _file_sig(path):
+        if not path:
+            return ['', 0]
+        try:
+            return [os.path.abspath(path), round(os.path.getmtime(path), 1)]
+        except OSError:
+            return [os.path.abspath(path), 0]
+
+    def gen_fingerprint(self, s, include_pt=None) -> dict:
+        """Mọi thứ quyết định nội dung MCT của mặt cắt `s`, ở dạng so được."""
+        return {
+            'dxf': self._file_sig(s.dxf),
+            'template': self._file_sig(self.template_for(s)),
+            'include_pt': bool(s.include_pt if include_pt is None else include_pt),
+            'pt_jacking': s.pt_jacking,
+            'supports': [[round(float(x['x']), 4), x.get('kind', '')]
+                         for x in s.supports],
+            'combos': json.dumps(self.combos, sort_keys=True),
+        }
+
+    _FP_LABEL = {'dxf': 'bản vẽ DXF', 'template': 'template số liệu',
+                 'include_pt': 'tuỳ chọn cáp DƯL', 'pt_jacking': 'kiểu căng cáp',
+                 'supports': 'gối', 'combos': 'tổ hợp tải trọng'}
+
+    def stale_reasons(self, s, include_pt=None):
+        """Vì sao MCT của `s` không còn khớp số liệu hiện tại.
+
+        None = không biết (project cũ, chưa có dấu vân tay) · [] = khớp ·
+        [lý do…] = cần tạo lại. Không biết thì nói không biết — báo "cần tạo
+        lại" cho mọi project cũ thì cảnh báo kêu suốt và người dùng thôi đọc.
+        """
+        if not s.mct or not s.gen_inputs:
+            return None
+        now = self.gen_fingerprint(s, include_pt)
+        if include_pt is None:
+            now['include_pt'] = s.gen_inputs.get('include_pt', now['include_pt'])
+        return [self._FP_LABEL[k] for k in self._FP_LABEL
+                if s.gen_inputs.get(k) != now[k]]
+
+    def beam_force_older_than_mct(self, s) -> bool:
+        """Beam Force gán từ trước lần tạo MCT gần nhất → là của mô hình cũ."""
+        t = (s.gen_inputs or {}).get('time')
+        if not (s.beam_force and t and os.path.exists(s.beam_force)):
+            return False
+        return os.path.getmtime(s.beam_force) < t - 1
+
     def record_generated(self, name, mct, topo, section_type,
-                         n_nodes, n_elems, pt_cables=None):
+                         n_nodes, n_elems, pt_cables=None, inputs=None):
         s = self.find(name)
         if not s:
             return
+        if inputs is not None:
+            s.gen_inputs = dict(inputs, time=time.time())
         s.mct, s.topo = mct, topo
         s.section_type = section_type
         s.n_nodes, s.n_elems = n_nodes, n_elems
@@ -266,6 +327,7 @@ class Project:
             'name': self.name,
             'output_dir': self.output_dir,
             'template': self.template,
+            'combos': self.combos,
             'sections': [
                 {k: v for k, v in asdict(s).items() if not k.startswith('_')}
                 for s in self.sections
@@ -297,6 +359,7 @@ class Project:
             name=d.get('name', 'Project'),
             output_dir=d.get('output_dir', 'output'),
             template=d.get('template', ''),
+            combos=d.get('combos') or {},
             sections=[Section(**{k: v for k, v in s.items() if k in fields})
                       for s in d.get('sections', [])],
         )

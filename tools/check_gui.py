@@ -446,7 +446,9 @@ def kiem_qss_khong_dung_dieu_khien_native(c):
     # Cả hai hộp thoại riêng: chúng không phải con của cửa sổ chính
     from gui.prefs import PreferencesDialog
     from gui.help_dialog import HelpDialog
-    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w)]
+    from gui.combo_dialog import ComboDialog
+    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w),
+                 ComboDialog({}, c.w.t, c.w)]
     ws = [c.w, *c.w.findChildren(QWidget)]
     for d in hop_thoai:
         ws += [d, *d.findChildren(QWidget)]
@@ -484,7 +486,9 @@ def kiem_mot_phong_mot_co_khong_nghieng(c):
     from gui.help_dialog import HelpDialog
     goc = c.app.font()
     ngoai_le = {c.w.mct_view, *c.w.mct_view.findChildren(QWidget), c.w.viewer.legend}
-    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w)]
+    from gui.combo_dialog import ComboDialog
+    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w),
+                 ComboDialog({}, c.w.t, c.w)]
     ws = [c.w, *c.w.findChildren(QWidget)]
     for d in hop_thoai:
         ws += [d, *d.findChildren(QWidget)]
@@ -513,6 +517,10 @@ def kiem_mot_phong_mot_co_khong_nghieng(c):
     # nằm trong font() của widget nào: chặn QPainter.setFont rồi vẽ lại mọi thẻ.
     from PyQt6.QtGui import QPainter
     da_ve = []
+    # Lấy đúng descriptor trong __dict__ để trả lại nguyên trạng: gán lại
+    # `QPainter.setFont` lấy qua thuộc tính thì mất ràng buộc `self`, mọi
+    # paintEvent sau đó văng TypeError (đã xảy ra với phép kiểm chạy kế tiếp).
+    goc_desc = QPainter.__dict__['setFont']
     goc_set = QPainter.setFont
 
     def ghi(painter, font):
@@ -525,7 +533,7 @@ def kiem_mot_phong_mot_co_khong_nghieng(c):
             c.step()
             c.w.repaint()
     finally:
-        QPainter.setFont = goc_set
+        setattr(QPainter, 'setFont', goc_desc)
     co_cho_phep = {round(goc.pointSizeF(), 2), round(goc.pointSizeF() - 1, 2)}
     for fam, pt, nghieng in set(da_ve):
         if nghieng:
@@ -554,7 +562,9 @@ def kiem_nut_la_chu_khong_icon(c):
     from PyQt6.QtGui import QAction
     from gui.prefs import PreferencesDialog
     from gui.help_dialog import HelpDialog
-    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w)]
+    from gui.combo_dialog import ComboDialog
+    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w),
+                 ComboDialog({}, c.w.t, c.w)]
     goc = [c.w, *hop_thoai]
     loi, so_nut, so_lenh = [], 0, 0
     for g in goc:
@@ -579,6 +589,86 @@ def kiem_nut_la_chu_khong_icon(c):
         d.deleteLater()
     assert not loi, ' · '.join(loi[:5]) + (f' … (+{len(loi) - 5})' if len(loi) > 5 else '')
     return f'{so_nut} nút + {so_lenh} lệnh đều là chữ, không cắt chữ'
+
+
+def kiem_tom_tat_bao_can_tao_lai(c):
+    """Bảng tóm tắt ở dock Properties phải nói "Cần tạo lại" và nói VÌ SAO.
+
+    Mẫu *Project Summary* của caldintav (docs/UI-CALDINTAV.md mục 2.3): thứ
+    hiển thị là số liệu đã dùng; đổi gối / kiểu căng / tổ hợp sau khi tạo MCT
+    thì MCT trên đĩa không còn khớp, mà trước đây không có gì báo — mặt cắt vẫn
+    chấm xanh "đã tạo". Project cũ chưa có dấu vân tay thì phải nói "không rõ"
+    chứ không được kêu "cần tạo lại" cho mọi mặt cắt.
+    """
+    p, sec = c.w.project, c.w.project.find(c.single)
+    c.w.panel.select(c.single)
+    c.step()
+
+    def chu():
+        c.w.props.refresh()
+        return c.w.props.body[1].text()
+
+    sec.gen_inputs = {}
+    assert 'không rõ' in chu(), 'project cũ (chưa có dấu vân tay) phải ghi "không rõ"'
+    sec.gen_inputs = dict(p.gen_fingerprint(sec), time=0)
+    assert 'Trạng thái' in chu() and 'Cần tạo lại' not in chu(), \
+        'vừa tạo xong mà đã báo cần tạo lại'
+    sec.set_supports([{'x': 0.0, 'kind': 'pin'}])
+    t = chu()
+    assert 'Cần tạo lại' in t and 'gối' in t, 'đổi gối mà bảng tóm tắt không báo'
+    p.combos = {'TG': [['ST', 'TpG(+)', 1.2], ['ST', 'TpG(-)', 1.0]]}
+    t = chu()
+    assert 'tổ hợp tải trọng' in t, 'đổi tổ hợp mà bảng tóm tắt không báo'
+    assert 'tự sửa 1' in t, 'bảng tóm tắt không hiện số tổ hợp đã sửa'
+    return 'không rõ → đã tạo → cần tạo lại (gối, tổ hợp)'
+
+
+def kiem_hop_thoai_to_hop(c):
+    """Hộp thoại tổ hợp: chuyển số hạng, sửa hệ số, Đồng ý mới ghi; sai thì báo đúng câu.
+
+    Mẫu hai danh sách của caldintav (mục 3.1). Bấm như người dùng: chọn tổ hợp
+    ở danh sách trái, bấm `>` / `<`, gõ hệ số vào ô, bấm Đồng ý / Hủy.
+    """
+    from PyQt6.QtWidgets import QMessageBox
+    from gui.combo_dialog import ComboDialog
+    from src.mct_frame_writer import combo_names
+
+    d = ComboDialog({}, c.w.t, c.w)
+    d.show()
+    d.lst_combo.setCurrentRow(combo_names().index('Cuong do I'))
+    c.step()
+    n0 = d.tbl.rowCount()
+    d.lst_avail.setCurrentRow(0)
+    ten = d.lst_avail.currentItem().data(0x0100)[1]
+    d.b_add.click()
+    assert d.tbl.rowCount() == n0 + 1, '">" không đưa được số hạng vào tổ hợp'
+    d.tbl.item(0, 2).setText('1,3')          # gõ dấu phẩy thập phân như ở VN
+    assert 'đã sửa' in d.lst_combo.currentItem().text(), \
+        'danh sách trái không đánh dấu tổ hợp đã sửa'
+
+    bao = []
+    goc = QMessageBox.warning
+    QMessageBox.warning = staticmethod(lambda *a, **k: bao.append(a[2]))
+    try:
+        d.tbl.item(1, 2).setText('abc')
+        d.b_ok.click()
+        assert bao and 'không phải số' in bao[0], f'hệ số chữ phải bị chặn: {bao}'
+        assert d.isVisible(), 'lỗi mà hộp thoại vẫn đóng'
+        d.tbl.item(1, 2).setText('1.5')
+        d.b_ok.click()
+    finally:
+        QMessageBox.warning = goc
+    r = d.result_combos()
+    assert list(r) == ['Cuong do I'], f'kết quả lẫn tổ hợp khác: {list(r)}'
+    terms = r['Cuong do I']
+    assert terms[0][2] == 1.3 and any(t[1] == ten for t in terms), terms
+
+    d2 = ComboDialog(r, c.w.t, c.w)
+    d2.lst_combo.setCurrentRow(combo_names().index('Cuong do I'))
+    d2.b_rem_all.click()
+    d2.reject()
+    assert d2.result_combos() == r, 'Hủy mà bảng tổ hợp vẫn đổi'
+    return f'thêm "{ten}", hệ số 1,3 → 1.3, chặn "abc", Hủy không đổi gì'
 
 
 def kiem_moi_the_ve_duoc(c):
@@ -612,6 +702,8 @@ CHECKS = [
     kiem_qss_khong_dung_dieu_khien_native,
     kiem_nut_la_chu_khong_icon,
     kiem_mot_phong_mot_co_khong_nghieng,
+    kiem_tom_tat_bao_can_tao_lai,
+    kiem_hop_thoai_to_hop,
 ]
 
 
