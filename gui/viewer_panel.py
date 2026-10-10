@@ -6,13 +6,12 @@ truy vấn ở đáy. Thanh chế độ nằm ngoài (do cửa sổ chính quả
 của cả vùng trung tâm chứ không riêng canvas.
 """
 
-from PyQt6.QtCore import Qt, QSize, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QToolButton)
 
 from .frame_view import FrameView, MODEL, SHAPE, PARTS
 from .theme import LIGHT, ui_font
-from .icons import icon
 
 
 class ViewerPanel(QWidget):
@@ -37,21 +36,20 @@ class ViewerPanel(QWidget):
         tl = QHBoxLayout(self.tools)
         tl.setContentsMargins(3, 3, 3, 3)
         tl.setSpacing(2)
-        # Icon vẽ tay thay cho ký tự: `⤢` phụ thuộc phông, máy thiếu glyph thì
-        # ra một vạch chéo khó hiểu (đúng như ảnh chụp bản v1.4.1).
+        # Nút chữ, không icon (theo caldintav). Không dùng ký tự `⤢`: phụ thuộc
+        # phông, máy thiếu glyph thì ra một vạch chéo khó hiểu (ảnh v1.4.1).
         self.tools.setObjectName('zoomTools')
         self._zoom_btns = []
-        for ic, tip, fn in (('remove', 'Thu nhỏ', lambda: self.view.zoom_by(1 / 1.25)),
-                            ('add', 'Phóng to', lambda: self.view.zoom_by(1.25)),
-                            ('fit', 'Vừa khung (F)', lambda: self.view.fit())):
+        for txt, tip, fn in (('−', 'Thu nhỏ', lambda: self.view.zoom_by(1 / 1.25)),
+                             ('+', 'Phóng to', lambda: self.view.zoom_by(1.25)),
+                             ('Vừa khung', 'Vừa khung (F)', lambda: self.view.fit())):
             b = QToolButton()
+            b.setText(txt)
             b.setToolTip(tip)
-            b.setFixedSize(28, 28)
-            b.setIconSize(QSize(16, 16))
             b.setAutoRaise(True)
             b.clicked.connect(fn)
             tl.addWidget(b)
-            self._zoom_btns.append((b, ic))
+            self._zoom_btns.append(b)
         self.tools.adjustSize()
 
         self.legend = QLabel(stage)
@@ -79,8 +77,6 @@ class ViewerPanel(QWidget):
         self.tools.setStyleSheet(
             f'QWidget#zoomTools {{ background: {t["panel"]};'
             f' border: 1px solid {t["border"]}; border-radius: 4px; }}')
-        for b, ic in self._zoom_btns:
-            b.setIcon(icon(ic, size=16, theme=t))
         self.legend.setStyleSheet(
             f'background: {t["panel"]};'
             f' border: 1px solid {t["border"]}; border-radius: 3px;'

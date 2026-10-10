@@ -9,14 +9,17 @@ Ba nút icon vẽ đúng ký hiệu sẽ hiện trên mô hình — mượn lố
 SAP2000: nhìn hình là biết chọn gì, không phải đọc chữ trong danh sách xổ.
 """
 
-from PyQt6.QtCore import QSize, pyqtSignal
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                             QToolButton, QSpinBox, QFrame, QButtonGroup)
+                             QToolButton, QSpinBox, QFrame, QButtonGroup,
+                             QRadioButton)
 
-from .icons import support_icon, SUPPORT_NAME, SUPPORT_CODE
+from src.mct_frame_writer import SUPPORT_CODE
 from .theme import LIGHT, ui_font
 
 KINDS = ('pin', 'roller', 'fixed')
+# Nhãn ngắn cho nút chọn một — đủ ngắn để ba nút nằm vừa một hàng của dock
+SUPPORT_NAME = {'pin': 'Cố định', 'roller': 'Di động', 'fixed': 'Ngàm'}
 
 
 class SupportEditor(QWidget):
@@ -87,7 +90,7 @@ class SupportEditor(QWidget):
         h.setContentsMargins(0, 6, 0, 0)
         h.setSpacing(5)
         b_add = QToolButton()
-        b_add.setText('＋ Thêm gối')
+        b_add.setText('Thêm gối')
         b_add.setToolTip('Đặt thêm một gối trên bản đáy')
         b_add.clicked.connect(self._add)
         h.addWidget(b_add)
@@ -139,32 +142,25 @@ class SupportEditor(QWidget):
         top.addStretch()
 
         bx = QToolButton()
-        bx.setText('✕')
-        bx.setFixedSize(22, 22)
-        bx.setAutoRaise(True)
+        bx.setText('Xóa')                 # chữ, không ký hiệu ✕
         bx.setToolTip('Xóa gối này')
         bx.clicked.connect(lambda _=False, k=idx: self._remove(k))
         top.addWidget(bx)
         outer.addLayout(top)
 
+        # Loại gối loại trừ nhau → nút chọn một có chữ, như "Dynamic analysis
+        # type" của caldintav. Bản trước là ba nút icon + một nhãn tên lặp lại.
         row = QHBoxLayout()
         row.setSpacing(4)
         grp = QButtonGroup(box)
         for kind in KINDS:
-            b = QToolButton()
-            b.setIcon(support_icon(kind, theme=self.t))
-            b.setIconSize(QSize(22, 22))
-            b.setCheckable(True)
+            b = QRadioButton(SUPPORT_NAME[kind])
             b.setChecked(sp.get('kind') == kind)
-            b.setFixedSize(34, 30)
-            b.setToolTip(f'{SUPPORT_NAME[kind]} — {SUPPORT_CODE[kind]}')
+            b.setToolTip(f'Gối {SUPPORT_NAME[kind].lower()} — '
+                         f'khoá {SUPPORT_CODE[kind]}')
             b.clicked.connect(lambda _=False, k=idx, kk=kind: self._kind(k, kk))
             grp.addButton(b)
             row.addWidget(b)
-
-        name = QLabel(SUPPORT_NAME.get(sp.get('kind'), ''))
-        name.setStyleSheet(f'color:{self.t["ink"]}')
-        row.addWidget(name)
         row.addStretch()
         outer.addLayout(row)
         return box

@@ -175,6 +175,10 @@ Khung: nhóm điều khiển nằm trong `QFrame` `StyledPanel` (viền nổi) h
   hoa nhỏ giãn ký tự.
 - Nút trên thanh công cụ có viền riêng (Windows vẽ) để tách rõ `Thêm DXF` /
   `Chọn template` / … thay vì chữ trôi trên nền.
+- **Nút và mục menu là chữ, không icon** — caldintav không có icon nào ngoài
+  icon cửa sổ. Thanh công cụ chỉ chữ, nút *Tùy chọn* là chữ thay vì bánh răng,
+  nút zoom `− + Vừa khung`, loại gối là nút chọn một (mục 3.3) thay vì ba nút
+  icon.
 - Ngoại lệ có tên, giống caldintav giữ một tiêu đề lớn: tên chương trình trong
   hộp *Giới thiệu* (lớn hơn 4 pt, đậm). Tài liệu *Hướng dẫn* (F1) là văn bản đọc
   nên giữ chữ đậm cho tên mục giao diện/menu và `code` cho tên khoá — nhưng

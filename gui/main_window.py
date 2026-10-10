@@ -2,7 +2,7 @@
 
 import os
 
-from PyQt6.QtCore import Qt, QSize, QSettings
+from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QTabBar, QStackedWidget,
                              QStatusBar, QLabel, QPlainTextEdit,
@@ -19,7 +19,6 @@ from .properties_panel import PropertiesPanel
 from .viewer_panel import ViewerPanel
 from .frame_view import MODEL, SHAPE, PARTS
 from .widgets import LogView
-from .icons import icon
 from .theme import apply_theme, mono_font, ui_font
 from .prefs import Prefs, PreferencesDialog
 from .widgets import StepBar, IDLE, ACTIVE, DONE
@@ -292,16 +291,10 @@ class MainWindow(QMainWindow):
         self._seps.append(f)
         return f
 
-    _act_icons = None
-
-    def _act(self, text, slot, shortcut=None, ic=None, tip=None):
+    # Lệnh KHÔNG mang icon — cả trên menu lẫn thanh công cụ, như caldintav:
+    # nút là chữ có động từ đầy đủ, đọc là biết bấm xong có gì.
+    def _act(self, text, slot, shortcut=None, tip=None):
         a = QAction(text, self)
-        if self._act_icons is None:
-            self._act_icons = []
-        if ic:
-            a.setIcon(icon(ic, theme=self.t))
-            # Icon là pixmap tô sẵn màu — đổi theme phải vẽ lại, nhớ đường về.
-            self._act_icons.append((a, ic))
         if shortcut:
             a.setShortcut(QKeySequence(shortcut))
         if tip:
@@ -313,30 +306,30 @@ class MainWindow(QMainWindow):
         mb = self.menuBar()
 
         m = mb.addMenu('&Tệp')
-        m.addAction(self._act('Project &mới', self.new_project, 'Ctrl+N', 'new'))
-        m.addAction(self._act('&Mở project…', self.open_project, 'Ctrl+Shift+O', 'open'))
-        self.a_save = self._act('&Lưu project', self.save_project, 'Ctrl+S', 'save')
+        m.addAction(self._act('Project &mới', self.new_project, 'Ctrl+N'))
+        m.addAction(self._act('&Mở project…', self.open_project, 'Ctrl+Shift+O'))
+        self.a_save = self._act('&Lưu project', self.save_project, 'Ctrl+S')
         m.addAction(self.a_save)
         m.addAction(self._act('Lưu project &thành…', self.save_project_as, 'Ctrl+Shift+S'))
         self.recent_menu = m.addMenu('Project &gần đây')
         m.addSeparator()
-        self.a_dxf = self._act('Thêm &DXF…', self.panel_add_dxf, 'Ctrl+O', 'add',
+        self.a_dxf = self._act('Thêm &DXF…', self.panel_add_dxf, 'Ctrl+O',
                                'Thêm mặt cắt DXF vào project')
         self.a_dxf_dir = self._act('Thêm cả thư &mục DXF…', self.panel_add_folder,
-                                   None, 'folder')
+                                   None)
         self.a_tpl = self._act('Chọn &template số liệu…', self.pick_template,
-                               'Ctrl+T', 'template',
+                               'Ctrl+T',
                                'Template chung; từng mặt cắt có thể gán riêng')
         m.addAction(self.a_dxf)
         m.addAction(self.a_dxf_dir)
         m.addAction(self.a_tpl)
         m.addSeparator()
-        m.addAction(self._act('Mở thư mục &kết quả', self.open_output, None, 'folder'))
+        m.addAction(self._act('Mở thư mục &kết quả', self.open_output, None))
         m.addSeparator()
         m.addAction(self._act('T&hoát', self.close, 'Alt+F4'))
 
         m = mb.addMenu('&Mô hình')
-        self.a_gen = self._act('&Tạo MCT toàn bộ', self.generate_all, 'F5', 'generate')
+        self.a_gen = self._act('&Tạo MCT toàn bộ', self.generate_all, 'F5')
         self.a_gen_sel = self._act('Tạo MCT cho mặt cắt &đang chọn',
                                    self.generate_selected, 'Shift+F5')
         m.addAction(self.a_gen)
@@ -345,19 +338,19 @@ class MainWindow(QMainWindow):
         # Mục vẫn HIỆN khi tính năng tắt, chỉ bị khoá kèm chú thích chỉ đường.
         # Giấu hẳn thì người dùng không biết là có, mà bật sẵn thì app tự giành
         # lấy chuột — cả hai đều sai. `_sync_midas_action()` lo phần khoá/mở.
-        self.a_midas = self._act('Chạy &Midas/Civil', self.run_midas, 'F8', 'run')
+        self.a_midas = self._act('Chạy &Midas/Civil', self.run_midas, 'F8')
         m.addAction(self.a_midas)
         m.addSeparator()
-        m.addAction(self._act('&Xóa nhật ký', self.clear_log, 'Ctrl+L', 'clear'))
+        m.addAction(self._act('&Xóa nhật ký', self.clear_log, 'Ctrl+L'))
 
         m = mb.addMenu('&Kết quả')
-        self.a_bf = self._act('&Gán file Beam Force…', self.assign_bf, 'Ctrl+B', 'load')
-        self.a_run = self._act('&Xử lý Beam Force', self.process_results, 'F6', 'check')
+        self.a_bf = self._act('&Gán file Beam Force…', self.assign_bf, 'Ctrl+B')
+        self.a_run = self._act('&Xử lý Beam Force', self.process_results, 'F6')
         m.addAction(self.a_bf)
         m.addAction(self.a_run)
         m.addSeparator()
         self.a_check = self._act('&Kiểm toán mặt cắt', self.run_section_check,
-                                 'F7', 'check',
+                                 'F7',
                                  'Nhập cốt thép và kiểm toán theo TCVN 11823')
         m.addAction(self.a_check)
 
@@ -374,10 +367,10 @@ class MainWindow(QMainWindow):
 
         m = mb.addMenu('&Công cụ')
         m.addAction(self._act('Kiểm tra &template số liệu…', self.check_template,
-                              None, 'info',
+                              None,
                               'Đọc thử Excel, liệt kê 40 khóa và đối chiếu ô gốc'))
         m.addSeparator()
-        self.a_prefs = self._act('&Tùy chọn…', self.open_prefs, 'Ctrl+,', 'gear',
+        self.a_prefs = self._act('&Tùy chọn…', self.open_prefs, 'Ctrl+,',
                                  'Khung xem, giá trị mặc định và chạy Midas')
         m.addAction(self.a_prefs)
 
@@ -391,8 +384,7 @@ class MainWindow(QMainWindow):
         tb = self.tb = QToolBar('Chính')
         tb.setObjectName('mainToolbar')
         tb.setMovable(False)
-        tb.setIconSize(QSize(17, 17))
-        tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.addToolBar(tb)
 
         for a in (self.a_dxf, self.a_tpl):
@@ -416,17 +408,11 @@ class MainWindow(QMainWindow):
                              spacer.sizePolicy().verticalPolicy().Preferred)
         tb.addWidget(spacer)
 
-        # Nút bánh răng cuối thanh mở Tùy chọn. Chỉ icon: thanh công cụ đã kín
-        # chỗ vì nhãn tiếng Việt dài, thêm chữ nữa là nút bị đẩy khuất khỏi mép
-        # phải trên màn hình hẹp.
-        self.btn_prefs = QToolButton()
-        self.btn_prefs.setIcon(icon('gear', theme=self.t))
-        self.btn_prefs.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.btn_prefs.setToolTip('Tùy chọn (Ctrl+,)')
+        # Tùy chọn cuối thanh: nút chữ như mọi nút khác (bản trước là bánh
+        # răng chỉ có icon — người dùng phải rê chuột mới biết nó là gì).
+        tb.addAction(self.a_prefs)
+        self.btn_prefs = tb.widgetForAction(self.a_prefs)
         self.btn_prefs.setAutoRaise(False)
-        self.btn_prefs.clicked.connect(self.open_prefs)
-        tb.addWidget(self.btn_prefs)
-        self._act_icons.append((self.btn_prefs, 'gear'))
         tb.addSeparator()
 
         # Dấu hiệu TEDI ở mép phải — badge đơn vị, không phải nút bấm
@@ -675,9 +661,6 @@ class MainWindow(QMainWindow):
         for f in self._seps:
             f.setStyleSheet(f'color: {t["border"]};')
         self.status_msg(self.lb_msg.text(), self._msg_level)
-
-        for a, ic in self._act_icons:
-            a.setIcon(icon(ic, theme=t))
 
     def _select_start_mode(self):
         want = {'model': 0, 'shape': 1, 'parts': 2}.get(self.prefs.start_mode, 0)

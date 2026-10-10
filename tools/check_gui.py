@@ -541,24 +541,44 @@ def kiem_mot_phong_mot_co_khong_nghieng(c):
             f'{goc.family()} {goc.pointSizeF():g} pt')
 
 
-def kiem_nut_zoom_doc_duoc(c):
-    """Nút zoom của khung xem phải hiện icon đủ lớn, không bị bóp thành chấm.
+def kiem_nut_la_chu_khong_icon(c):
+    """Nút bấm và mục menu là CHỮ, không icon; chữ trên nút không bị cắt.
 
-    Bản v1.4.1 dùng ký tự `− + ⤢` (máy thiếu glyph `⤢` thì ra vạch chéo) và QSS
-    padding chung ăn hết chỗ của icon. Đo trên **điểm ảnh đã vẽ**.
+    VuPQ chốt 2026-10-10 theo caldintav: nút mang động từ đầy đủ, không icon
+    (bản trước có icon cạnh chữ ở thanh công cụ + menu, và nút Tùy chọn chỉ là
+    một bánh răng). Soát mọi nút + mọi QAction của menu/thanh công cụ ở cửa sổ
+    chính và hai hộp thoại; với nút có chữ thì đo chữ có vừa bề rộng nút
+    không — nút zoom từng bị QSS bóp thành một chấm.
     """
-    # "điểm tối" chứ không so đúng mã màu mực: nét 1,35 px được khử răng cưa,
-    # dấu − nằm trên nửa điểm ảnh nên không điểm nào mang đúng màu 'ink'.
-    def gan(q):
-        return q.lightness() < 128
-    rong = []
-    for b, ic in c.w.viewer._zoom_btns:
-        bi = b.grab().toImage()
-        xs = [x for x in range(bi.width()) for y in range(bi.height())
-              if gan(bi.pixelColor(x, y))]
-        rong.append((max(xs) - min(xs) + 1) if xs else 0)
-        assert rong[-1] >= 8, f'icon {ic!r} chỉ rộng {rong[-1]} px — bị bóp thành chấm'
-    return 'icon rộng ' + ' · '.join(f'{r} px' for r in rong)
+    from PyQt6.QtWidgets import QAbstractButton
+    from PyQt6.QtGui import QAction
+    from gui.prefs import PreferencesDialog
+    from gui.help_dialog import HelpDialog
+    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w)]
+    goc = [c.w, *hop_thoai]
+    loi, so_nut, so_lenh = [], 0, 0
+    for g in goc:
+        for b in g.findChildren(QAbstractButton):
+            # nút đóng/thả nổi của dock, nút cuộn của thanh thẻ: Qt tự vẽ
+            cha = type(b.parent()).__name__ if b.parent() is not None else ''
+            if b.objectName().startswith('qt_') or cha in ('QDockWidget', 'QTabBar'):
+                continue
+            so_nut += 1
+            ten = f'{type(b).__name__} {b.text()!r}'
+            if not b.icon().isNull():
+                loi.append(f'{ten}: có icon')
+            if b.isVisible() and b.text():
+                can = b.fontMetrics().horizontalAdvance(b.text().replace('&', ''))
+                if b.width() < can:
+                    loi.append(f'{ten}: rộng {b.width()} px < chữ {can} px')
+        for a in g.findChildren(QAction):
+            so_lenh += 1
+            if not a.icon().isNull():
+                loi.append(f'lệnh {a.text()!r}: có icon')
+    for d in hop_thoai:
+        d.deleteLater()
+    assert not loi, ' · '.join(loi[:5]) + (f' … (+{len(loi) - 5})' if len(loi) > 5 else '')
+    return f'{so_nut} nút + {so_lenh} lệnh đều là chữ, không cắt chữ'
 
 
 def kiem_moi_the_ve_duoc(c):
@@ -590,7 +610,7 @@ CHECKS = [
     kiem_thanh_trang_thai_khong_chong_chu,
     kiem_huy_hieu_nhat_ky,
     kiem_qss_khong_dung_dieu_khien_native,
-    kiem_nut_zoom_doc_duoc,
+    kiem_nut_la_chu_khong_icon,
     kiem_mot_phong_mot_co_khong_nghieng,
 ]
 
