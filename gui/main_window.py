@@ -415,6 +415,10 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy().Expanding,
                              spacer.sizePolicy().verticalPolicy().Preferred)
+        # Trong suốt: quy tắc `QWidget` của theme tô nền 'ground' cho nó, nên
+        # khoảng đệm hiện thành một ô xám trống giữa thanh công cụ — trông như ô
+        # tìm kiếm bị hỏng.
+        spacer.setStyleSheet('background: transparent;')
         tb.addWidget(spacer)
 
         # Nút bánh răng cuối thanh: bấm mở Tùy chọn, giữ/mũi tên xổ menu đổi

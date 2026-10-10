@@ -31,6 +31,10 @@ LIGHT = {
     'border':      '#D0D5DD',
     'border_soft': '#E4E7EC',
     'scroll':      '#D0D5DD',   # tay nắm thanh cuộn — bản cũ dùng chính 'border'
+    # độ nổi của nút + viền đậm (đáy nút, ô nhập khi rê) — 2026-10
+    'btn_top':     '#FFFFFF',
+    'btn_bot':     '#EEF1F5',
+    'border_strong': '#AEB6C2',
 
     'ink':         '#1A1D21',   # chữ chính
     'ink_2':       '#667085',   # chữ phụ
@@ -70,6 +74,9 @@ DARK = {
     'border':      '#3C434E',
     'border_soft': '#2F353E',
     'scroll':      '#4A525E',
+    'btn_top':     '#30363F',
+    'btn_bot':     '#292E36',
+    'border_strong': '#525B68',
 
     'ink':         '#E7EAEF',
     'ink_2':       '#A0AAB8',
@@ -107,6 +114,10 @@ CONTRAST = {
     'border':      '#000000',
     'border_soft': '#767676',
     'scroll':      '#8C8C8C',
+    # Tương phản cao: nút phẳng, không gradient — độ nổi đến từ viền đen
+    'btn_top':     '#FFFFFF',
+    'btn_bot':     '#FFFFFF',
+    'border_strong': '#000000',
 
     'ink':         '#000000',
     'ink_2':       '#1F1F1F',
@@ -293,10 +304,15 @@ def _spin_qss(t: dict) -> str:
     nên Qt thôi vẽ mũi tên xổ, ô còn trơ như một ô chỉ đọc — nhìn không ra là
     bấm được. Dùng lại chính ảnh mũi tên xuống.
     """
-    from .icons import spin_arrows              # nạp muộn: icons import theme
+    from .icons import spin_arrows, tick_image  # nạp muộn: icons import theme
     up, down = spin_arrows(t)
     if not up:
         return ''
+    # Mũi tên mờ cho ô xổ BỊ KHOÁ: bỏ hẳn mũi tên (bản cũ) thì ô "Căng cáp" của
+    # mặt cắt không cáp đọc thành ô nhập chữ, không phải ô xổ đang bị khoá.
+    _, down_off = spin_arrows({'ink_2': t['ink_3']})
+    tick = tick_image(t['on_accent'])
+    tick_off = tick_image(t['panel'])
     return f"""
 QSpinBox::up-button, QDoubleSpinBox::up-button {{
     subcontrol-origin: border; subcontrol-position: top right;
@@ -321,7 +337,9 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
 QComboBox::down-arrow {{
     image: url({down}); width: 14px; height: 14px;
 }}
-QComboBox::down-arrow:disabled {{ image: none; }}
+QComboBox::down-arrow:disabled {{ image: url({down_off}); }}
+QCheckBox::indicator:checked {{ image: url({tick}); }}
+QCheckBox::indicator:checked:disabled {{ image: url({tick_off}); }}
 """
 
 
@@ -339,6 +357,10 @@ QWidget {{
     font-size: {s['font_ui']}pt;
 }}
 QMainWindow, QDialog {{ background: {t['ground']}; }}
+/* Chữ và ô tích KHÔNG được mang nền cửa sổ: quy tắc QWidget ở trên tô nền
+   'ground' cho mọi widget, nên nhãn đặt trong group box / panel trắng hiện thành
+   một mảng xám sau chữ. Để trong suốt thì chúng ăn theo nền của cha. */
+QLabel, QCheckBox, QRadioButton, QSlider {{ background: transparent; }}
 
 /* ── Menu bar ── */
 QMenuBar {{
@@ -377,8 +399,13 @@ QToolButton {{
     min-height: {s['button'] - 12}px;
     color: {t['ink']};
 }}
-QToolButton:hover {{ background: {t['panel']}; border-color: {t['border']}; }}
-QToolButton:pressed {{ background: {t['sunken']}; }}
+QToolButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 {t['btn_top']}, stop:1 {t['btn_bot']});
+    border-color: {t['border']};
+    border-bottom-color: {t['border_strong']};
+}}
+QToolButton:pressed {{ background: {t['sunken']}; border-color: {t['border_strong']}; }}
 QToolButton:checked {{
     background: {t['accent_soft']};
     border-color: {t['accent_line']};
@@ -410,40 +437,71 @@ QTabBar::tab:selected {{
 }}
 
 /* ── Buttons ── */
+/* Nút phải NHÌN RA là bấm được: gradient nhẹ trên→dưới + viền đáy đậm hơn,
+   đúng cái "nổi" mà nút native của Windows có còn nút phẳng 1 px thì không.
+   Bản Tương phản cao đặt btn_top = btn_bot nên vẫn phẳng. */
 QPushButton {{
-    background: {t['panel']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 {t['btn_top']}, stop:1 {t['btn_bot']});
     color: {t['ink']};
     border: 1px solid {t['border']};
-    border-radius: 3px;
+    border-bottom-color: {t['border_strong']};
+    border-radius: 4px;
     padding: 6px 14px;
     min-height: {s['button'] - 14}px;
 }}
-QPushButton:hover {{ border-color: {t['accent']}; color: {t['accent']}; }}
-QPushButton:pressed {{ background: {t['sunken']}; }}
-QPushButton:disabled {{ color: {t['ink_3']}; border-color: {t['border_soft']}; }}
+QPushButton:hover {{
+    border-color: {t['accent_line']};
+    border-bottom-color: {t['accent']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 {t['btn_top']}, stop:1 {t['accent_soft']});
+}}
+QPushButton:focus {{ border-color: {t['accent']}; }}
+QPushButton:pressed {{
+    background: {t['sunken']};
+    border-color: {t['border_strong']};
+    padding-top: 7px; padding-bottom: 5px;
+}}
+QPushButton:disabled {{
+    background: {t['panel_alt']};
+    color: {t['ink_3']};
+    border-color: {t['border_soft']};
+}}
 QPushButton[primary="true"] {{
     background: {t['accent']};
     color: {t['on_accent']};
     border-color: {t['accent']};
+    border-bottom-color: {t['accent_hover']};
     font-weight: 600;
     padding: 6px 20px;
 }}
-QPushButton[primary="true"]:hover {{ background: {t['accent_hover']}; color: {t['on_accent']}; }}
+QPushButton[primary="true"]:hover {{
+    background: {t['accent_hover']}; color: {t['on_accent']};
+    border-color: {t['accent_hover']};
+}}
 QPushButton[primary="true"]:disabled {{ background: {t['ink_3']}; border-color: {t['ink_3']}; }}
 
 /* ── Inputs ── */
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
     background: {t['panel']};
     border: 1px solid {t['border']};
-    border-radius: 3px;
+    border-radius: 4px;
     padding: 5px 8px;
     min-height: {s['input'] - 12}px;
     selection-background-color: {t['accent']};
     selection-color: {t['on_accent']};
 }}
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border-color: {t['accent']}; }}
+QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {{
+    border-color: {t['border_strong']};
+}}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
+    border-color: {t['accent']};
+}}
+QComboBox:on {{ border-color: {t['accent']}; }}
 QLineEdit:read-only {{ background: {t['panel_alt']}; color: {t['ink_2']}; }}
-QLineEdit:disabled, QComboBox:disabled {{ background: {t['sunken']}; color: {t['ink_3']}; }}
+QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {{
+    background: {t['sunken']}; color: {t['ink_3']}; border-color: {t['border_soft']};
+}}
 QComboBox::drop-down {{ border: 0; width: 20px; }}
 QComboBox QAbstractItemView {{
     background: {t['panel']};
@@ -485,12 +543,12 @@ QTableCornerButton::section {{ background: {t['panel_alt']}; border: 0; }}
 
 /* ── Check / radio ── */
 QCheckBox, QRadioButton {{ spacing: 7px; padding: 3px 0; }}
-QCheckBox::indicator, QRadioButton::indicator {{ width: 15px; height: 15px; }}
+QCheckBox::indicator, QRadioButton::indicator {{ width: 16px; height: 16px; }}
 QCheckBox::indicator:unchecked {{
-    border: 1px solid {t['border']}; border-radius: 2px; background: {t['panel']};
+    border: 1px solid {t['border_strong']}; border-radius: 3px; background: {t['panel']};
 }}
 QCheckBox::indicator:checked {{
-    border: 1px solid {t['accent']}; border-radius: 2px; background: {t['accent']};
+    border: 1px solid {t['accent']}; border-radius: 3px; background: {t['accent']};
 }}
 QCheckBox::indicator:hover {{ border-color: {t['accent']}; }}
 /* Ô tích BỊ KHOÁ phải nhìn ra là khoá.
@@ -505,15 +563,36 @@ QCheckBox::indicator:unchecked:disabled {{
 QCheckBox::indicator:checked:disabled {{
     border: 1px solid {t['border']}; background: {t['ink_3']};
 }}
-QRadioButton::indicator {{ border-radius: 8px; border: 1px solid {t['border']};
-                           background: {t['panel']}; }}
-QRadioButton::indicator:checked {{
-    border: 4px solid {t['accent']}; background: {t['panel']};
+/* Chấm tròn vẽ bằng gradient xuyên tâm: viền dày 4 px (bản cũ) trên ô 15 px
+   thì Qt vẽ ra hình vuông bo góc, đọc thành ô tích chứ không phải nút chọn. */
+QRadioButton::indicator {{
+    border-radius: 9px; border: 1px solid {t['border_strong']};
+    background: {t['panel']};
 }}
+QRadioButton::indicator:hover {{ border-color: {t['accent']}; }}
+QRadioButton::indicator:checked {{
+    border: 1px solid {t['accent']};
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+                                stop:0 {t['accent']}, stop:0.42 {t['accent']},
+                                stop:0.52 {t['panel']}, stop:1 {t['panel']});
+}}
+QRadioButton::indicator:disabled {{ border-color: {t['border']}; background: {t['sunken']}; }}
 
-/* Cố tình KHÔNG tạo kiểu cho QDockWidget::title: bản v1.3.0 để nguyên kiểu
-   Fusion và giao diện mặc định phải giống hệt bản đó. Nền/chữ của thanh tiêu đề
-   dock đã theo theme qua quy tắc QWidget ở trên. */
+/* ── Dock ── thanh tiêu đề có nền + vạch đáy để tách khỏi nội dung (2026-10).
+   Bản trước để nguyên kiểu Fusion: chữ "Project"/"Messages" trôi trên nền cửa
+   sổ, không có gì cho biết đâu là đầu panel. */
+QDockWidget::title {{
+    background: {t['panel_alt']};
+    border-bottom: 1px solid {t['border']};
+    padding: 5px 8px;
+    text-align: left;
+}}
+QDockWidget::close-button, QDockWidget::float-button {{
+    border: 1px solid transparent; border-radius: 3px; padding: 1px;
+}}
+QDockWidget::close-button:hover, QDockWidget::float-button:hover {{
+    background: {t['sunken']}; border-color: {t['border']};
+}}
 
 /* ── Splitter ── */
 QSplitter::handle {{ background: {t['border_soft']}; }}
@@ -553,7 +632,7 @@ QProgressBar::chunk {{ background: {t['ok']}; border-radius: 3px; }}
 QGroupBox {{
     background: {t['panel']};
     border: 1px solid {t['border']};
-    border-radius: 3px;
+    border-radius: 4px;
     margin-top: 10px;
     padding: {s['gap']}px;
 }}

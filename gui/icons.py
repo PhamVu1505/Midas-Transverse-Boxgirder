@@ -27,6 +27,7 @@ _P = {
     'save':     'M2.5 2.5h8L13.5 5.5v8a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-10'
                 'a1 1 0 0 1 1-1z M5 2.5v4h5v-4 M5 14.5v-4h6v4',
     'add':      'M8 3.5v9 M3.5 8h9',
+    'remove':   'M3.5 8h9',
     'generate': 'M3 8h3.4l1.6-3.2 2 6.4L11.6 8H13',
     'template': 'M2.5 2.5h11v11h-11z M2.5 6.5h11 M6.5 2.5v11',
     'load':     'M8 2.5v7 M5 6.8l3 3 3-3 M2.5 13h11',
@@ -141,6 +142,50 @@ def spin_arrows(theme: dict = None):
 
     _arrow_cache[col] = (out[0], out[1])
     return _arrow_cache[col]
+
+
+def tick_image(col: str):
+    """PNG dấu tích cho ``QCheckBox::indicator:checked`` — trả đường dẫn, None nếu chưa có Qt.
+
+    Cùng lý do với `spin_arrows()`: QSS đã đặt nền/viền cho indicator thì Qt
+    thôi vẽ dấu tích, ô đã tích chỉ còn là một ô vuông tô đặc màu nhấn — nhìn
+    không phân biệt được với một nút màu. Tên file theo mã màu.
+    """
+    key = ('tick', col)
+    if key in _arrow_cache:
+        return _arrow_cache[key]
+
+    from PyQt6.QtGui import QGuiApplication
+    if QGuiApplication.instance() is None:
+        return None
+
+    from PyQt6.QtCore import QStandardPaths, QPointF
+    from PyQt6.QtGui import QColor, QPen
+    root = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.TempLocation)
+    folder = os.path.join(root or '.', 'MidasTransverseBoxgirder', 'qss')
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except OSError:                                   # pragma: no cover
+        return None
+    path = os.path.join(folder, f'tick-{col.lstrip("#")}.png')
+    if not os.path.exists(path):
+        # vẽ ở 2× rồi để Qt thu về 16 px: nét chéo đỡ răng cưa trên màn 100%
+        pm = QPixmap(32, 32)
+        pm.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor(col), 4.2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen)
+        p.drawPolyline([QPointF(7.5, 16.5), QPointF(13.5, 22.5),
+                        QPointF(24.5, 9.5)])
+        p.end()
+        if not pm.save(path):                         # pragma: no cover
+            return None
+    _arrow_cache[key] = path.replace('\\', '/')
+    return _arrow_cache[key]
 
 
 def level_image(level: str, theme: dict = None, size: int = 15):

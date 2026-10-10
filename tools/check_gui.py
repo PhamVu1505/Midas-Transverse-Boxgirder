@@ -437,6 +437,63 @@ def kiem_mui_ten_o_xoay_va_o_xo(c):
     return 'ô xoay và ô xổ đều có ảnh mũi tên'
 
 
+def kiem_o_tich_nut_zoom_va_nen_nhan(c):
+    """Ô đã tích phải có dấu tích · nhãn trong group box không mang nền xám · nút zoom đọc được.
+
+    Ba lỗi cùng một gốc — QSS đè lên phần style tự vẽ — và cả ba chỉ lộ ra trong
+    ảnh chụp (v1.4.1): ô tích chỉ là ô vuông tô đặc màu nhấn, nhãn trong group
+    box hiện trên một mảng 'ground', nút zoom của khung xem thu dấu `+` thành
+    một chấm vì padding chung của QToolButton ăn hết chỗ của icon. So trên
+    **điểm ảnh đã vẽ**, không so chuỗi QSS.
+    """
+    from PyQt6.QtGui import QColor
+    from PyQt6.QtWidgets import QCheckBox, QGroupBox, QLabel, QVBoxLayout
+    t = c.w.t
+
+    box = QGroupBox('mẫu')
+    lay = QVBoxLayout(box)
+    ck = QCheckBox('Bê tông'); ck.setChecked(True)
+    lb = QLabel('Nhãn')
+    lay.addWidget(ck); lay.addWidget(lb)
+    box.resize(200, 120); box.show(); c.step()
+
+    # Chụp từ group box CHA: widget con nền trong suốt, chụp riêng thì điểm
+    # trong suốt đọc ra #000000 và phép kiểm đo nhầm.
+    img = box.grab().toImage()
+    acc, tick = QColor(t['accent']), QColor(t['on_accent'])
+    def gan(q, m):
+        return (abs(q.red() - m.red()) + abs(q.green() - m.green())
+                + abs(q.blue() - m.blue())) < 60
+    g = ck.geometry()
+    nen = [(x, y) for x in range(g.x(), g.x() + 24)
+           for y in range(g.y(), g.bottom()) if gan(img.pixelColor(x, y), acc)]
+    co_nen = len(nen)
+    assert co_nen > 20, 'ô đã tích không tô màu nhấn'
+    # chỉ đếm BÊN TRONG khung tô màu nhấn: ở bản Sáng dấu tích trắng trùng nền
+    # panel trắng, đếm cả vùng quanh ô thì không tích vẫn ra hàng trăm điểm
+    x0, x1 = min(p[0] for p in nen) + 2, max(p[0] for p in nen) - 2
+    y0, y1 = min(p[1] for p in nen) + 2, max(p[1] for p in nen) - 2
+    co_tich = sum(gan(img.pixelColor(x, y), tick)
+                  for x in range(x0, x1 + 1) for y in range(y0, y1 + 1))
+    assert co_tich > 6, (f'ô đã tích không có dấu tích ({co_tich} điểm màu '
+                         f'{t["on_accent"]}) — chỉ là ô vuông tô đặc')
+
+    gl = lb.geometry()
+    goc = img.pixelColor(gl.right() - 2, gl.y() + 1)
+    assert goc.name().upper() == QColor(t['panel']).name().upper(), \
+        f'nhãn trong group box mang nền {goc.name()}, không phải nền panel {t["panel"]}'
+    box.close()
+
+    btn, _ = c.w.viewer._zoom_btns[1]
+    bi = btn.grab().toImage()
+    ink = QColor(t['ink'])
+    xs = [x for x in range(bi.width()) for y in range(bi.height())
+          if gan(bi.pixelColor(x, y), ink)]
+    rong = (max(xs) - min(xs) + 1) if xs else 0
+    assert rong >= 8, f'icon nút phóng to chỉ rộng {rong} px — bị bóp thành chấm'
+    return f'dấu tích {co_tich} điểm · nhãn nền {goc.name()} · icon zoom {rong} px'
+
+
 def kiem_moi_the_ve_duoc(c):
     """Mở lần lượt mọi thẻ chế độ xem và vẽ lại — bắt lỗi trong paintEvent.
 
@@ -466,6 +523,7 @@ CHECKS = [
     kiem_thanh_trang_thai_khong_chong_chu,
     kiem_huy_hieu_nhat_ky,
     kiem_mui_ten_o_xoay_va_o_xo,
+    kiem_o_tich_nut_zoom_va_nen_nhan,
 ]
 
 

@@ -6,12 +6,13 @@ truy vấn ở đáy. Thanh chế độ nằm ngoài (do cửa sổ chính quả
 của cả vùng trung tâm chứ không riêng canvas.
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QToolButton)
 
 from .frame_view import FrameView, MODEL, SHAPE, PARTS
 from .theme import LIGHT, FONT_MONO
+from .icons import icon
 
 
 class ViewerPanel(QWidget):
@@ -36,15 +37,21 @@ class ViewerPanel(QWidget):
         tl = QHBoxLayout(self.tools)
         tl.setContentsMargins(3, 3, 3, 3)
         tl.setSpacing(2)
-        for label, tip, fn in (('−', 'Thu nhỏ', lambda: self.view.zoom_by(1 / 1.25)),
-                               ('+', 'Phóng to', lambda: self.view.zoom_by(1.25)),
-                               ('⤢', 'Vừa khung (F)', lambda: self.view.fit())):
+        # Icon vẽ tay thay cho ký tự: `⤢` phụ thuộc phông, máy thiếu glyph thì
+        # ra một vạch chéo khó hiểu (đúng như ảnh chụp bản v1.4.1).
+        self.tools.setObjectName('zoomTools')
+        self._zoom_btns = []
+        for ic, tip, fn in (('remove', 'Thu nhỏ', lambda: self.view.zoom_by(1 / 1.25)),
+                            ('add', 'Phóng to', lambda: self.view.zoom_by(1.25)),
+                            ('fit', 'Vừa khung (F)', lambda: self.view.fit())):
             b = QToolButton()
-            b.setText(label)
             b.setToolTip(tip)
-            b.setFixedSize(26, 24)
+            b.setFixedSize(28, 28)
+            b.setIconSize(QSize(16, 16))
+            b.setAutoRaise(True)
             b.clicked.connect(fn)
             tl.addWidget(b)
+            self._zoom_btns.append((b, ic))
         self.tools.adjustSize()
 
         self.legend = QLabel(stage)
@@ -67,9 +74,16 @@ class ViewerPanel(QWidget):
     # ─────────────────────────────────────────
     def _restyle(self):
         t = self.t
+        # Có bộ chọn: style trơn không bộ chọn lan xuống cả ba nút con, mỗi nút
+        # mang thêm một khung viền riêng chồng trong khung chung.
         self.tools.setStyleSheet(
-            f'background: {t["panel"]};'
-            f' border: 1px solid {t["border"]}; border-radius: 3px;')
+            f'QWidget#zoomTools {{ background: {t["panel"]};'
+            f' border: 1px solid {t["border"]}; border-radius: 4px; }}'
+            # padding 0: QSS chung cho QToolButton có `padding: 5px 10px`, nút
+            # 28 px chỉ còn 8 px cho icon nên Qt thu dấu + thành một chấm.
+            f'QWidget#zoomTools QToolButton {{ padding: 0; min-height: 0; }}')
+        for b, ic in self._zoom_btns:
+            b.setIcon(icon(ic, size=16, theme=t))
         self.legend.setStyleSheet(
             f'background: {t["panel"]};'
             f' border: 1px solid {t["border"]}; border-radius: 3px;'
