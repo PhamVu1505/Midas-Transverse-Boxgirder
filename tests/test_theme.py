@@ -1,34 +1,31 @@
-"""Khoá giao diện: mặc định lần chạy đầu và tính đầy đủ của bảng token.
+"""Khoá giao diện: style native của Windows + bảng token cho phần app tự vẽ.
 
 Chạy:
     pytest tests/test_theme.py -v
 
-Hai điều được khoá ở đây:
+VuPQ chốt 2026-10-10 (sau khi so với caldintav): **nút, ô nhập, ô tích… để
+Windows tự vẽ**, chỉ giữ bảng màu Sáng, bỏ trang Giao diện trong Tùy chọn. Ba
+điều được khoá ở đây:
 
-1. **Mặc định lúc chạy lần đầu phải giống hệt v1.3.0** — bản Sáng, màu nhấn
-   Xanh kỹ thuật, mật độ Vừa, chữ 10pt. Các sắc thái nhấn của bản cũ chọn bằng
-   mắt chứ không phải pha tuyến tính, nên `make_theme` phải ghim mã màu gốc;
-   nếu ai đó gỡ phần ghim ra thì công thức sẽ cho màu lệch vài đơn vị và không
-   ai nhận ra bằng mắt.
+1. **QSS của app không nhắc tới điều khiển native nào** — một thuộc tính hộp
+   trên `QPushButton` là đủ để Qt thôi để Windows vẽ mọi nút trong app.
+2. **Mã màu tự vẽ giữ nguyên v1.3.0** — khung xem, sơ đồ điểm kiểm toán, chữ
+   trạng thái vẫn đọc từ `LIGHT`; đổi ở đây là đổi màu bản vẽ kỹ thuật.
+3. **Thiết lập cũ của v1.4.1 nạp được** — máy đã cài còn `theme='dark'`,
+   `density`… trong registry; đọc phải bỏ qua chứ không nổ.
 
-2. **Ba bảng màu cùng một bộ khóa** — widget đọc `t['dia_edge']` mà bản Tối
-   thiếu khóa đó thì KeyError, và chỉ nổ khi người dùng đổi sang bản Tối.
-
-Chỉ cần QtGui (QColor), không dựng QApplication.
+Chỉ cần QtGui/QtCore, không dựng QApplication.
 """
 
 import os
+import re
 import sys
-
-import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from gui.theme import (THEMES, ACCENTS, DENSITY, LIGHT, SIZE, DEFAULT_THEME,
-                       DEFAULT_ACCENT, DEFAULT_DENSITY, make_theme, make_size,
-                       build_qss)
+from gui.theme import LIGHT, NATIVE_CONTROLS, make_theme, build_qss
 
-# Mã màu bản v1.3.0 — không được đổi mà không có lý do rõ ràng.
+# Mã màu bản v1.3.0 — widget tự vẽ vẫn dùng đúng các mã này.
 LEGACY_LIGHT = {
     'ground': '#F0F2F5', 'panel': '#FFFFFF', 'panel_alt': '#F7F8FA',
     'sunken': '#E9ECF1', 'border': '#D0D5DD', 'border_soft': '#E4E7EC',
@@ -40,58 +37,27 @@ LEGACY_LIGHT = {
 }
 
 
-def test_first_run_defaults():
-    """Prefs mặc định = bản Sáng + Xanh kỹ thuật + mật độ Vừa + 10pt."""
-    from gui.prefs import Prefs
-    p = Prefs()
-    assert (p.theme, p.accent) == ('light', 'blue')
-    assert (p.density, p.font_pt, p.font_family) == ('normal', 10, '')
-    assert DEFAULT_THEME == 'light' and DEFAULT_ACCENT == 'blue'
-    assert THEMES['light'][0] == 'Sáng'
-    assert ACCENTS['blue'][0] == 'Xanh kỹ thuật'
+def test_app_qss_leaves_native_controls_alone():
+    """QSS của app không được nhắm vào bất kỳ điều khiển nào Windows vẽ."""
+    qss = build_qss()
+    hit = [n for n in NATIVE_CONTROLS if re.search(rf'\b{n}\b', qss)]
+    assert not hit, f'QSS của app nhắm vào {hit} — Windows sẽ thôi vẽ chúng'
+    # Quy tắc `QWidget {{ background }}` trơn chạm tới MỌI nút và ô nhập
+    assert not re.search(r'(^|[\s,}])QWidget\s*\{', qss), \
+        'QSS của app có quy tắc QWidget chung — nó lan xuống mọi điều khiển'
 
 
 def test_default_tokens_match_v130():
-    """Bảng token mặc định trùng từng mã màu với v1.3.0."""
     t = make_theme()
     wrong = {k: (v, t.get(k)) for k, v in LEGACY_LIGHT.items() if t.get(k) != v}
-    assert not wrong, f'lệch mã màu so với v1.3.0: {wrong}'
+    assert not wrong, f'token lệch v1.3.0: {wrong}'
 
 
-def test_default_sizes_match_v130():
-    s = make_size(DEFAULT_DENSITY, 10)
-    for k in ('font_ui', 'font_mono', 'font_small', 'row', 'button', 'input',
-              'gap', 'pad'):
-        assert s[k] == SIZE[k], f'{k}: {s[k]} != {SIZE[k]}'
-
-
-def test_default_qss_has_legacy_colors():
-    """QSS sinh với mặc định không được lòi ra mã màu suy diễn nào khác."""
-    qss = build_qss(make_theme(), make_size(), '')
-    for token in ('accent', 'accent_soft', 'accent_line', 'accent_hover'):
-        assert LEGACY_LIGHT[token] in qss, f'{token} vắng mặt trong QSS'
-    # Mật độ Vừa phải cho đúng các trị số cứng của bản cũ
-    assert 'padding: 9px 16px;' in qss      # QTabBar::tab
-    assert 'padding: 5px 8px;' in qss       # QToolBar
-    assert 'font-size: 10pt;' in qss        # QWidget
-
-
-@pytest.mark.parametrize('key', list(THEMES))
-def test_palettes_share_one_key_set(key):
-    """Mọi bảng màu phải có đủ khóa như bản Sáng — thiếu là KeyError lúc đổi."""
-    full_light = set(make_theme('light', DEFAULT_ACCENT))
-    missing = full_light - set(make_theme(key, DEFAULT_ACCENT))
-    assert not missing, f'bảng {key} thiếu token: {sorted(missing)}'
-
-
-@pytest.mark.parametrize('theme_key', list(THEMES))
-@pytest.mark.parametrize('accent_key', list(ACCENTS))
-def test_every_combination_builds(theme_key, accent_key):
-    """Mọi cặp bảng màu × màu nhấn phải dựng được QSS, không thiếu khóa nào."""
-    t = make_theme(theme_key, accent_key)
-    for d in DENSITY:
-        qss = build_qss(t, make_size(d, 10), '')
-        assert '{' in qss and 'None' not in qss
+def test_make_theme_returns_copy():
+    """Panel giữ bản sao riêng; sửa nó không được đụng bảng gốc."""
+    t = make_theme()
+    t['ink'] = '#000000'
+    assert LIGHT['ink'] == '#1A1D21'
 
 
 def test_light_palette_is_complete_at_import():
@@ -102,10 +68,34 @@ def test_light_palette_is_complete_at_import():
 
 
 def test_check_point_colors_unchanged_on_light():
-    """Sơ đồ điểm kiểm toán giữ nguyên màu v1.3.0 ở bản Sáng."""
+    """Sơ đồ điểm kiểm toán giữ nguyên màu v1.3.0."""
     from gui.results_tab import point_color
     t = make_theme()
     legacy = {'A': '#dc3232', 'B': '#c85050', 'C': '#b43c3c', 'D': '#a02828',
               'E': '#3250c8', 'F': '#4664dc', 'G': '#28a03c', 'H': '#3c8c50'}
     got = {k: point_color(k, t).name() for k in legacy}
     assert got == legacy, got
+
+
+def test_prefs_drop_appearance_fields():
+    """Không còn trường giao diện nào trong Prefs."""
+    from gui.prefs import Prefs
+    p = Prefs()
+    for gone in ('theme', 'accent', 'density', 'font_pt', 'font_family'):
+        assert not hasattr(p, gone), f'Prefs còn trường {gone}'
+
+
+def test_prefs_load_ignores_v141_appearance_keys(tmp_path):
+    """QSettings của v1.4.1 còn khoá bảng màu/mật độ — nạp phải bỏ qua êm."""
+    from PyQt6.QtCore import QSettings
+    from gui.prefs import Prefs
+    s = QSettings(str(tmp_path / 'old.ini'), QSettings.Format.IniFormat)
+    s.beginGroup('prefs')
+    for k, v in (('theme', 'dark'), ('accent', 'orange'), ('density', 'roomy'),
+                 ('font_pt', '13'), ('font_family', 'Tahoma'),
+                 ('output_dir', 'D:/ketqua'), ('reopen_last', 'false')):
+        s.setValue(k, v)
+    s.endGroup()
+    p = Prefs.load(s)
+    assert p.output_dir == 'D:/ketqua' and p.reopen_last is False
+    assert not hasattr(p, 'theme')

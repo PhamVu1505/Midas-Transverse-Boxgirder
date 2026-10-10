@@ -1,10 +1,9 @@
 """
 Kiểm giao diện tự động — dựng cửa sổ thật, bấm thật, rồi đối chiếu.
 
-    python tools/check_gui.py                 # chạy hết, cả hai bảng màu
+    python tools/check_gui.py                 # chạy hết
     python tools/check_gui.py --list          # liệt kê các phép kiểm rồi thoát
     python tools/check_gui.py --only dong_bo  # chỉ chạy phép kiểm có tên chứa chuỗi
-    python tools/check_gui.py --themes dark
 
 Vì sao có công cụ này
 ─────────────────────
@@ -420,78 +419,73 @@ def kiem_huy_hieu_nhat_ky(c):
     return f'4 mức có ảnh · khoá huy hiệu gồm mã màu ({c.theme})'
 
 
-def kiem_mui_ten_o_xoay_va_o_xo(c):
-    """QSS phải trỏ tới ảnh mũi tên thật cho ô xoay và ô xổ.
+def kiem_qss_khong_dung_dieu_khien_native(c):
+    """Không QSS nào được chạm vào nút, ô nhập, ô tích… — để Windows tự vẽ.
 
-    Đặt `border`/`background` lên `QSpinBox`/`QComboBox` là Qt thôi nhờ style
-    vẽ mũi tên, mà hai sub-control này **chỉ** nhận `image: url(...)`.
+    Chỉ một thuộc tính hộp (`border`/`background`/`padding`/`margin`) trên một
+    điều khiển là Qt thôi nhờ style native vẽ nó. Bản v1.3–v1.4.1 phủ QSS lên
+    mọi thứ rồi phải tự dựng lại mũi tên ô xoay, dấu tích, độ nổi của nút — mà
+    vẫn thua bản Windows vẽ (VuPQ chốt bỏ, 2026-10-10). Soát ba đường QSS có thể
+    lọt vào: QSS của app · QSS nội tuyến trên chính điều khiển · QSS không bộ
+    chọn đặt trên khung cha (nó lan xuống mọi con).
     """
-    from gui.theme import build_qss, make_size
-    qss = build_qss(c.w.t, make_size(), '')
-    for luat in ('QSpinBox::up-arrow', 'QSpinBox::down-arrow',
-                 'QComboBox::down-arrow'):
-        assert luat in qss, f'QSS thiếu quy tắc {luat}'
-        khuc = qss.split(luat, 1)[1][:200]
-        assert 'image: url(' in khuc, \
-            f'{luat} không trỏ tới ảnh — mũi tên sẽ biến mất'
-    return 'ô xoay và ô xổ đều có ảnh mũi tên'
+    import re
+    from PyQt6.QtWidgets import QWidget
+    from gui.theme import NATIVE_CONTROLS
+    hop = re.compile(r'\b(border|background|padding|margin)\b')
+    loai = tuple(getattr(__import__('PyQt6.QtWidgets', fromlist=['x']), n)
+                 for n in NATIVE_CONTROLS)
+
+    def ten_trong(qss):
+        return [n for n in NATIVE_CONTROLS if re.search(rf'\b{n}\b', qss)]
+
+    loi = []
+    app_qss = c.app.styleSheet()
+    if ten_trong(app_qss):
+        loi.append(f'QSS của app nhắc tới {ten_trong(app_qss)}')
+    # Cả hai hộp thoại riêng: chúng không phải con của cửa sổ chính
+    from gui.prefs import PreferencesDialog
+    from gui.help_dialog import HelpDialog
+    hop_thoai = [PreferencesDialog(c.w.prefs, c.w), HelpDialog(c.w.t, c.w)]
+    ws = [c.w, *c.w.findChildren(QWidget)]
+    for d in hop_thoai:
+        ws += [d, *d.findChildren(QWidget)]
+    for w in ws:
+        q = w.styleSheet()
+        if not q:
+            continue
+        ten = type(w).__name__ + (f'#{w.objectName()}' if w.objectName() else '')
+        if ten_trong(q):
+            loi.append(f'{ten}: QSS nhắm vào {ten_trong(q)}')
+        elif isinstance(w, loai) and hop.search(q):
+            loi.append(f'{ten}: QSS có thuộc tính hộp — {q[:60]!r}')
+        elif '{' not in q and hop.search(q) and any(
+                isinstance(k, loai) for k in w.findChildren(QWidget)):
+            loi.append(f'{ten}: QSS không bộ chọn lan xuống điều khiển con — {q[:60]!r}')
+    assert not loi, ' · '.join(loi[:5]) + (f' … (+{len(loi) - 5})' if len(loi) > 5 else '')
+    for d in hop_thoai:
+        d.deleteLater()
+    return f'soát {len(ws)} widget + QSS của app · style {c.app.style().metaObject().className()}'
 
 
-def kiem_o_tich_nut_zoom_va_nen_nhan(c):
-    """Ô đã tích phải có dấu tích · nhãn trong group box không mang nền xám · nút zoom đọc được.
+def kiem_nut_zoom_doc_duoc(c):
+    """Nút zoom của khung xem phải hiện icon đủ lớn, không bị bóp thành chấm.
 
-    Ba lỗi cùng một gốc — QSS đè lên phần style tự vẽ — và cả ba chỉ lộ ra trong
-    ảnh chụp (v1.4.1): ô tích chỉ là ô vuông tô đặc màu nhấn, nhãn trong group
-    box hiện trên một mảng 'ground', nút zoom của khung xem thu dấu `+` thành
-    một chấm vì padding chung của QToolButton ăn hết chỗ của icon. So trên
-    **điểm ảnh đã vẽ**, không so chuỗi QSS.
+    Bản v1.4.1 dùng ký tự `− + ⤢` (máy thiếu glyph `⤢` thì ra vạch chéo) và QSS
+    padding chung ăn hết chỗ của icon. Đo trên **điểm ảnh đã vẽ**.
     """
-    from PyQt6.QtGui import QColor
-    from PyQt6.QtWidgets import QCheckBox, QGroupBox, QLabel, QVBoxLayout
-    t = c.w.t
-
-    box = QGroupBox('mẫu')
-    lay = QVBoxLayout(box)
-    ck = QCheckBox('Bê tông'); ck.setChecked(True)
-    lb = QLabel('Nhãn')
-    lay.addWidget(ck); lay.addWidget(lb)
-    box.resize(200, 120); box.show(); c.step()
-
-    # Chụp từ group box CHA: widget con nền trong suốt, chụp riêng thì điểm
-    # trong suốt đọc ra #000000 và phép kiểm đo nhầm.
-    img = box.grab().toImage()
-    acc, tick = QColor(t['accent']), QColor(t['on_accent'])
-    def gan(q, m):
-        return (abs(q.red() - m.red()) + abs(q.green() - m.green())
-                + abs(q.blue() - m.blue())) < 60
-    g = ck.geometry()
-    nen = [(x, y) for x in range(g.x(), g.x() + 24)
-           for y in range(g.y(), g.bottom()) if gan(img.pixelColor(x, y), acc)]
-    co_nen = len(nen)
-    assert co_nen > 20, 'ô đã tích không tô màu nhấn'
-    # chỉ đếm BÊN TRONG khung tô màu nhấn: ở bản Sáng dấu tích trắng trùng nền
-    # panel trắng, đếm cả vùng quanh ô thì không tích vẫn ra hàng trăm điểm
-    x0, x1 = min(p[0] for p in nen) + 2, max(p[0] for p in nen) - 2
-    y0, y1 = min(p[1] for p in nen) + 2, max(p[1] for p in nen) - 2
-    co_tich = sum(gan(img.pixelColor(x, y), tick)
-                  for x in range(x0, x1 + 1) for y in range(y0, y1 + 1))
-    assert co_tich > 6, (f'ô đã tích không có dấu tích ({co_tich} điểm màu '
-                         f'{t["on_accent"]}) — chỉ là ô vuông tô đặc')
-
-    gl = lb.geometry()
-    goc = img.pixelColor(gl.right() - 2, gl.y() + 1)
-    assert goc.name().upper() == QColor(t['panel']).name().upper(), \
-        f'nhãn trong group box mang nền {goc.name()}, không phải nền panel {t["panel"]}'
-    box.close()
-
-    btn, _ = c.w.viewer._zoom_btns[1]
-    bi = btn.grab().toImage()
-    ink = QColor(t['ink'])
-    xs = [x for x in range(bi.width()) for y in range(bi.height())
-          if gan(bi.pixelColor(x, y), ink)]
-    rong = (max(xs) - min(xs) + 1) if xs else 0
-    assert rong >= 8, f'icon nút phóng to chỉ rộng {rong} px — bị bóp thành chấm'
-    return f'dấu tích {co_tich} điểm · nhãn nền {goc.name()} · icon zoom {rong} px'
+    # "điểm tối" chứ không so đúng mã màu mực: nét 1,35 px được khử răng cưa,
+    # dấu − nằm trên nửa điểm ảnh nên không điểm nào mang đúng màu 'ink'.
+    def gan(q):
+        return q.lightness() < 128
+    rong = []
+    for b, ic in c.w.viewer._zoom_btns:
+        bi = b.grab().toImage()
+        xs = [x for x in range(bi.width()) for y in range(bi.height())
+              if gan(bi.pixelColor(x, y))]
+        rong.append((max(xs) - min(xs) + 1) if xs else 0)
+        assert rong[-1] >= 8, f'icon {ic!r} chỉ rộng {rong[-1]} px — bị bóp thành chấm'
+    return 'icon rộng ' + ' · '.join(f'{r} px' for r in rong)
 
 
 def kiem_moi_the_ve_duoc(c):
@@ -522,8 +516,8 @@ CHECKS = [
     kiem_khong_co_widget_mo_coi,
     kiem_thanh_trang_thai_khong_chong_chu,
     kiem_huy_hieu_nhat_ky,
-    kiem_mui_ten_o_xoay_va_o_xo,
-    kiem_o_tich_nut_zoom_va_nen_nhan,
+    kiem_qss_khong_dung_dieu_khien_native,
+    kiem_nut_zoom_doc_duoc,
 ]
 
 
@@ -534,7 +528,6 @@ CHECKS = [
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[1])
     ap.add_argument('--only', default='', help='chỉ chạy phép kiểm có tên chứa chuỗi này')
-    ap.add_argument('--themes', default='light,dark', help='bảng màu, ngăn bằng dấu phẩy')
     ap.add_argument('--list', action='store_true', help='liệt kê phép kiểm rồi thoát')
     args = ap.parse_args()
 
@@ -561,30 +554,29 @@ def main():
         return 1
 
     dat = hong = 0
-    for theme in [t.strip() for t in args.themes.split(',') if t.strip()]:
-        print(f'\n── bảng màu {theme} ' + '─' * 46)
-        for f in chay:
-            # Cửa sổ MỚI cho từng phép kiểm: phép kiểm trước đổi mặt cắt đang
-            # chọn, bật/tắt ô, ghi vào project — để dùng chung thì thứ tự chạy
-            # âm thầm quyết định kết quả.
-            w = R.build_window(sections, theme)
-            R.feed_results(w, sections)
-            c = Ctx(app, w, sections, theme)
-            c.step()
-            try:
-                ghi_chu = f(c) or ''
-                dat += 1
-                print(f'  ĐẠT   {f.__name__:38s} {ghi_chu}')
-            except Exception as e:
-                hong += 1
-                print(f'  HỎNG  {f.__name__:38s} {e}')
-                if not isinstance(e, AssertionError):
-                    import traceback
-                    traceback.print_exc()
-            finally:
-                w.hide()
-                w.deleteLater()
-                app.processEvents()
+    print()
+    for f in chay:
+        # Cửa sổ MỚI cho từng phép kiểm: phép kiểm trước đổi mặt cắt đang
+        # chọn, bật/tắt ô, ghi vào project — để dùng chung thì thứ tự chạy
+        # âm thầm quyết định kết quả.
+        w = R.build_window(sections)
+        R.feed_results(w, sections)
+        c = Ctx(app, w, sections, 'light')
+        c.step()
+        try:
+            ghi_chu = f(c) or ''
+            dat += 1
+            print(f'  ĐẠT   {f.__name__:38s} {ghi_chu}')
+        except Exception as e:
+            hong += 1
+            print(f'  HỎNG  {f.__name__:38s} {e}')
+            if not isinstance(e, AssertionError):
+                import traceback
+                traceback.print_exc()
+        finally:
+            w.hide()
+            w.deleteLater()
+            app.processEvents()
 
     print(f'\n{dat} đạt · {hong} hỏng')
     return 1 if hong else 0

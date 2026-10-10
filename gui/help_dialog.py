@@ -385,27 +385,14 @@ f<sub>r</sub> — lúc đó tiết diện chưa nứt. Cột nào bỏ qua thì 
 ở hàng <i>Ghi chú</i>.</p>
 '''),
 
-        ('Tùy chọn giao diện', f'''
+        ('Tùy chọn', f'''
 <h2 style="color:{ink}">Tùy chọn</h2>
 <p>Mở bằng nút <b>⚙</b> cuối thanh công cụ, hoặc <b>Công cụ → Tùy chọn</b>
-(<code>Ctrl+,</code>). Bấm <b>mũi tên</b> cạnh nút bánh răng để đổi nhanh bảng
-màu mà không cần mở hộp thoại. Thiết lập áp dụng ngay, không phải khởi động lại,
-và được nhớ cho lần mở sau.</p>
+(<code>Ctrl+,</code>). Thiết lập áp dụng ngay, không phải khởi động lại, và được
+nhớ cho lần mở sau.</p>
 
-<h3 style="color:{ink}">Giao diện</h3>
-<table cellpadding="7" cellspacing="0" width="100%">
-<tr style="background:{soft}"><td width="120"><b>Bảng màu</b></td>
-    <td><b>Sáng</b> — mặc định, nền xám lệch xanh kiểu phần mềm kỹ thuật.<br>
-        <b>Tối</b> — nền xám than, dùng khi làm việc lâu hoặc phòng thiếu sáng.<br>
-        <b>Tương phản cao</b> — nền trắng, chữ đen thuần, viền đậm; hợp khi
-        trình chiếu hoặc chụp màn hình đưa vào báo cáo.</td></tr>
-<tr><td><b>Màu nhấn</b></td>
-    <td>Màu của nút chính, dòng đang chọn và các chi tiết nhấn.</td></tr>
-<tr style="background:{soft}"><td><b>Mật độ</b></td>
-    <td><b>Chặt</b> cho màn hình nhỏ, <b>Thoáng</b> cho màn hình lớn.</td></tr>
-<tr><td><b>Cỡ chữ · Phông</b></td>
-    <td>8–14 pt. Ô <i>Xem thử</i> ngay bên dưới đổi theo tức thì.</td></tr>
-</table>
+<p style="color:{ink2}">Nút bấm, ô nhập, phông và cỡ chữ theo đúng thiết lập của
+Windows — app không có bảng màu hay mật độ riêng.</p>
 
 <h3 style="color:{ink}">Khung xem</h3>
 <p>Chọn những lớp <b>bật sẵn</b> mỗi khi mở một mặt cắt, và chế độ xem mặc định
@@ -442,7 +429,7 @@ nhất khi khởi động và việc tự chọn mặt cắt vừa thêm.</p>
 <tr style="background:{soft}"><td><code>F7</code></td><td>Kiểm toán mặt cắt</td></tr>
 <tr><td><code>F</code></td><td>Vừa khung nhìn</td></tr>
 <tr style="background:{soft}"><td><code>Ctrl+L</code></td><td>Xoá nhật ký</td></tr>
-<tr><td><code>Ctrl+,</code></td><td>Tùy chọn giao diện</td></tr>
+<tr><td><code>Ctrl+,</code></td><td>Tùy chọn</td></tr>
 <tr><td><code>F1</code></td><td>Mở hướng dẫn này</td></tr>
 </table>
 '''),
@@ -525,7 +512,7 @@ class HelpDialog(QDialog):
         h.setContentsMargins(12, 8, 12, 8)
         h.addStretch()
         close = QPushButton('Đóng')
-        close.setProperty('primary', True)
+        close.setDefault(True)
         close.clicked.connect(self.accept)
         h.addWidget(close)
         lay.addWidget(bar)

@@ -20,7 +20,7 @@ from .viewer_panel import ViewerPanel
 from .frame_view import MODEL, SHAPE, PARTS
 from .widgets import LogView
 from .icons import icon
-from .theme import FONT_MONO, THEMES, apply_theme
+from .theme import FONT_MONO, apply_theme
 from .prefs import Prefs, PreferencesDialog
 from .widgets import StepBar, IDLE, ACTIVE, DONE
 from . import assets
@@ -275,6 +275,13 @@ class MainWindow(QMainWindow):
         self.lb_ver = QLabel(VERSION)
         self.lb_ver.setStyleSheet(
             f'font-family: {FONT_MONO}; color: {self.t["ink_3"]};')
+        # Style native là plugin Qt — bản đóng gói thiếu plugin thì lặng lẽ lui
+        # về Fusion. Rê chuột lên số phiên bản là biết đang chạy style nào
+        # (bản `--windowed` không có console để in ra).
+        app = QApplication.instance()
+        if app is not None:
+            self.lb_ver.setToolTip(
+                f'Qt style: {app.style().metaObject().className()}')
         self.status.addPermanentWidget(self.lb_ver)
 
         # Không nối `messageChanged` nữa: `StatusBar.showMessage` ghi thẳng vào
@@ -368,26 +375,13 @@ class MainWindow(QMainWindow):
         m.addAction(self._act('&Vừa khung', lambda: self.gen_tab.view.fit(), 'F'))
         m.addSeparator()
 
-        # Đổi nhanh bảng màu ngay trong menu Xem, cùng chỗ với bật/tắt panel —
-        # midas Civil cũng để Display Option cạnh Toolbars chứ không chôn hết
-        # vào Preferences.
-        self.theme_menu = m.addMenu('&Bảng màu')
-        self._theme_acts = {}
-        for key, (label, _tbl) in THEMES.items():
-            a = QAction(label, self)
-            a.setCheckable(True)
-            a.triggered.connect(lambda _=False, k=key: self.set_theme(k))
-            self.theme_menu.addAction(a)
-            self._theme_acts[key] = a
-        self._sync_theme_menu()
-
         m = mb.addMenu('&Công cụ')
         m.addAction(self._act('Kiểm tra &template số liệu…', self.check_template,
                               None, 'info',
                               'Đọc thử Excel, liệt kê 40 khóa và đối chiếu ô gốc'))
         m.addSeparator()
         self.a_prefs = self._act('&Tùy chọn…', self.open_prefs, 'Ctrl+,', 'gear',
-                                 'Giao diện, khung xem và giá trị mặc định')
+                                 'Khung xem, giá trị mặc định và chạy Midas')
         m.addAction(self.a_prefs)
 
         m = mb.addMenu('Trợ &giúp')
@@ -415,25 +409,15 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy().Expanding,
                              spacer.sizePolicy().verticalPolicy().Preferred)
-        # Trong suốt: quy tắc `QWidget` của theme tô nền 'ground' cho nó, nên
-        # khoảng đệm hiện thành một ô xám trống giữa thanh công cụ — trông như ô
-        # tìm kiếm bị hỏng.
-        spacer.setStyleSheet('background: transparent;')
         tb.addWidget(spacer)
 
-        # Nút bánh răng cuối thanh: bấm mở Tùy chọn, giữ/mũi tên xổ menu đổi
-        # nhanh bảng màu. Kiểu nút chia đôi này lấy từ thanh công cụ của midas
-        # và SAP2000 — thao tác hay dùng đi thẳng, phần còn lại nằm trong menu.
+        # Nút bánh răng cuối thanh mở Tùy chọn. Chỉ icon: thanh công cụ đã kín
+        # chỗ vì nhãn tiếng Việt dài, thêm chữ nữa là nút bị đẩy khuất khỏi mép
+        # phải trên màn hình hẹp.
         self.btn_prefs = QToolButton()
         self.btn_prefs.setIcon(icon('gear', theme=self.t))
-        # Chỉ icon: thanh công cụ đã kín chỗ vì nhãn tiếng Việt dài, thêm chữ
-        # nữa là nút bị đẩy khuất khỏi mép phải trên màn hình hẹp.
         self.btn_prefs.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.btn_prefs.setToolTip('Tùy chọn (Ctrl+,) — bấm mũi tên để đổi '
-                                  'nhanh bảng màu')
-        self.btn_prefs.setPopupMode(
-            QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        self.btn_prefs.setMenu(self.theme_menu)
+        self.btn_prefs.setToolTip('Tùy chọn (Ctrl+,)')
         self.btn_prefs.clicked.connect(self.open_prefs)
         tb.addWidget(self.btn_prefs)
         self._act_icons.append((self.btn_prefs, 'gear'))
@@ -654,16 +638,14 @@ class MainWindow(QMainWindow):
     # ─────────────────────────────────────────
     # Giao diện / Tùy chọn
     # ─────────────────────────────────────────
-    # Đổi theme không khởi động lại: QSS của QApplication lo phần lớn widget,
-    # nhưng KHÔNG với tới hai thứ — style nội tuyến (`setStyleSheet` trong panel)
-    # và widget tự vẽ bằng QPainter (khung xem, thanh bước, sơ đồ điểm kiểm).
-    # `_push_theme()` là chỗ duy nhất phân phát; panel nào cần thì có
-    # `apply_theme()`. Thêm panel mới mà quên nối vào đây thì nó đứng nguyên
-    # màu cũ — nên danh sách để tập trung một chỗ cho dễ soát.
+    # Nút/ô nhập do Windows vẽ (xem `gui/theme.py`); token chỉ còn cho style
+    # nội tuyến của nhãn và widget tự vẽ bằng QPainter (khung xem, thanh bước,
+    # sơ đồ điểm kiểm). `_push_theme()` là chỗ duy nhất phân phát token xuống
+    # các panel — chỉ chạy một lần lúc dựng cửa sổ vì app chỉ còn bảng Sáng.
     def _push_theme(self):
         app = QApplication.instance()
         if app is not None:
-            apply_theme(app, self.t, self.sizes, self.prefs.font_family)
+            apply_theme(app, self.t)
         self.steps.apply_theme(self.t)
         self.viewer.apply_theme(self.t)
         self.panel.apply_theme(self.t)
@@ -676,11 +658,11 @@ class MainWindow(QMainWindow):
     def _restyle_chrome(self):
         """Style nội tuyến của chính cửa sổ (thanh tab, status bar, nút Tạo MCT)."""
         t = self.t
-        self.mode_bar.setStyleSheet(f'background: {t["panel_alt"]};'
-                                    f' border-bottom: 1px solid {t["border"]};')
+        # Có bộ chọn: QSS trơn lan xuống cả hai thanh cuộn con, `border: 0`
+        # làm Windows thôi vẽ chúng.
         self.mct_view.setStyleSheet(
-            f'font-family: {FONT_MONO}; font-size: {self.sizes["font_mono"]}pt;'
-            f' border: 0;')
+            f'QPlainTextEdit {{ font-family: {FONT_MONO};'
+            f' font-size: {self.sizes["font_mono"]}pt; border: 0; }}')
         mono = f'font-family: {FONT_MONO}; color: {t["ink_2"]};'
         self.lb_count.setStyleSheet(mono)
         self.lb_units.setStyleSheet(mono)
@@ -692,14 +674,13 @@ class MainWindow(QMainWindow):
 
         for a, ic in self._act_icons:
             a.setIcon(icon(ic, theme=t))
+        # Nút chính chỉ in đậm — tô nền màu nhấn bằng QSS thì Windows thôi vẽ nó
+        # và nó lạc loài giữa các nút native còn lại.
         w = self.tb.widgetForAction(self.a_gen) if hasattr(self, 'tb') else None
         if w:
-            w.setStyleSheet(
-                f'QToolButton {{ background: {t["accent"]};'
-                f' color: {t["on_accent"]}; font-weight: 600;'
-                f' border: 1px solid {t["accent"]};'
-                f' border-radius: 3px; padding: 5px 12px; }}'
-                f'QToolButton:hover {{ background: {t["accent_hover"]}; }}')
+            f = w.font()
+            f.setBold(True)
+            w.setFont(f)
 
     def _select_start_mode(self):
         want = {'model': 0, 'shape': 1, 'parts': 2}.get(self.prefs.start_mode, 0)
@@ -713,30 +694,11 @@ class MainWindow(QMainWindow):
         old = self.prefs
         self.prefs = d.result_prefs()
         self.prefs.save(self.settings)
-        self.t = self.prefs.tokens()
-        self.sizes = self.prefs.sizes()
-        self._push_theme()
         if self.prefs.layers != old.layers:
             self.panel.set_layer_states(self.prefs.layers)
         self.panel.select_on_add = self.prefs.select_on_add
         self._sync_midas_action()
-        self._sync_theme_menu()
-        self.status_msg('Đã áp dụng tùy chọn giao diện')
-
-    def set_theme(self, key: str):
-        """Đổi nhanh bảng màu từ menu Xem — vẫn ghi vào cùng một chỗ lưu."""
-        if key == self.prefs.theme:
-            return
-        self.prefs.theme = key
-        self.prefs.save(self.settings)
-        self.t = self.prefs.tokens()
-        self._push_theme()
-        self._sync_theme_menu()
-        self.status_msg(f'Bảng màu: {THEMES[key][0]}')
-
-    def _sync_theme_menu(self):
-        for key, a in self._theme_acts.items():
-            a.setChecked(key == self.prefs.theme)
+        self.status_msg('Đã áp dụng tùy chọn')
 
     # ─────────────────────────────────────────
     # Kéo thả từ Explorer vào bất kỳ đâu trong cửa sổ
@@ -1039,7 +1001,7 @@ class MainWindow(QMainWindow):
         foot.addWidget(cr)
         foot.addStretch()
         ok = QPushButton('Đóng')
-        ok.setProperty('primary', True)
+        ok.setDefault(True)
         ok.clicked.connect(d.accept)
         foot.addWidget(ok)
         lay.addLayout(foot)

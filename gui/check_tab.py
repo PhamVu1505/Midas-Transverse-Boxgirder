@@ -249,7 +249,9 @@ class CheckTab(QWidget):
 
         row.addStretch()
         self.btn_run = QPushButton('Kiểm toán')
-        self.btn_run.setProperty('primary', True)
+        _f = self.btn_run.font()
+        _f.setBold(True)          # nút chính: in đậm, để Windows vẽ thân nút
+        self.btn_run.setFont(_f)
         self.btn_run.setSizePolicy(QSizePolicy.Policy.Fixed,
                                    QSizePolicy.Policy.Fixed)
         self.btn_run.clicked.connect(self.run_check)

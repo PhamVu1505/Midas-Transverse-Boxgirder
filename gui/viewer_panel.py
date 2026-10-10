@@ -78,10 +78,7 @@ class ViewerPanel(QWidget):
         # mang thêm một khung viền riêng chồng trong khung chung.
         self.tools.setStyleSheet(
             f'QWidget#zoomTools {{ background: {t["panel"]};'
-            f' border: 1px solid {t["border"]}; border-radius: 4px; }}'
-            # padding 0: QSS chung cho QToolButton có `padding: 5px 10px`, nút
-            # 28 px chỉ còn 8 px cho icon nên Qt thu dấu + thành một chấm.
-            f'QWidget#zoomTools QToolButton {{ padding: 0; min-height: 0; }}')
+            f' border: 1px solid {t["border"]}; border-radius: 4px; }}')
         for b, ic in self._zoom_btns:
             b.setIcon(icon(ic, size=16, theme=t))
         self.legend.setStyleSheet(

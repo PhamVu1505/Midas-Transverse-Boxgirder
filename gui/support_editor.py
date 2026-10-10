@@ -108,8 +108,11 @@ class SupportEditor(QWidget):
 
     def _row(self, idx, sp):
         box = QFrame()
+        # Bộ chọn theo tên: `QFrame {…}` trơn lan xuống mọi QLabel con (QLabel
+        # là QFrame) — chính vì thế các nhãn bên dưới từng phải tự `border:0`.
+        box.setObjectName('supRow')
         box.setStyleSheet(
-            f'QFrame {{ background:{self.t["panel_alt"]};'
+            f'QFrame#supRow {{ background:{self.t["panel_alt"]};'
             f' border:1px solid {self.t["border_soft"]}; border-radius:3px; }}')
         outer = QVBoxLayout(box)
         outer.setContentsMargins(6, 4, 4, 5)
@@ -139,14 +142,9 @@ class SupportEditor(QWidget):
 
         bx = QToolButton()
         bx.setText('✕')
-        bx.setFixedSize(21, 21)
+        bx.setFixedSize(22, 22)
+        bx.setAutoRaise(True)
         bx.setToolTip('Xóa gối này')
-        # `padding:0` là bắt buộc: QSS chung cho QToolButton đặt padding 5×10px,
-        # nút này lại ghim cứng 21×21 nên chữ chỉ còn 1px bề ngang và Qt rút gọn
-        # dấu ✕ thành một chấm mờ — nhìn tưởng nút hỏng chứ không phải nút xóa.
-        bx.setStyleSheet(f'QToolButton{{border:0;padding:0;min-height:0;'
-                         f'color:{self.t["ink_3"]}}}'
-                         f'QToolButton:hover{{color:{self.t["err"]}}}')
         bx.clicked.connect(lambda _=False, k=idx: self._remove(k))
         top.addWidget(bx)
         outer.addLayout(top)
@@ -162,12 +160,6 @@ class SupportEditor(QWidget):
             b.setChecked(sp.get('kind') == kind)
             b.setFixedSize(34, 30)
             b.setToolTip(f'{SUPPORT_NAME[kind]} — {SUPPORT_CODE[kind]}')
-            b.setStyleSheet(
-                f'QToolButton{{border:1px solid {self.t["border"]};'
-                f' border-radius:3px; background:{self.t["panel"]}}}'
-                f'QToolButton:checked{{background:{self.t["accent_soft"]};'
-                f' border:2px solid {self.t["accent"]}}}'
-                f'QToolButton:hover{{border-color:{self.t["accent"]}}}')
             b.clicked.connect(lambda _=False, k=idx, kk=kind: self._kind(k, kk))
             grp.addButton(b)
             row.addWidget(b)

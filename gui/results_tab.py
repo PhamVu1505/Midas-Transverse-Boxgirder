@@ -385,7 +385,9 @@ class ResultsTab(QWidget):
         btn_bf.clicked.connect(self._assign_bf_selected)
         row_btn.addWidget(btn_bf)
         self.btn_process = QPushButton('Xử lý tất cả')
-        self.btn_process.setProperty('primary', True)
+        _f = self.btn_process.font()
+        _f.setBold(True)          # nút chính: in đậm, để Windows vẽ thân nút
+        self.btn_process.setFont(_f)
         self.btn_process.clicked.connect(self._process)
         row_btn.addWidget(self.btn_process)
         layout.addLayout(row_btn)

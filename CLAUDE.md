@@ -202,7 +202,7 @@ Gối **lưu theo toạ độ X**, không theo ID node: đổi `target_len` hay 
 - Ký hiệu: gối cố định = tam giác đặc, gối di động = tam giác rỗng + 2 bánh lăn, ngàm = khối đặc kề nền gạch chéo (phải khác hẳn nhau).
 - `tests/test_regression.py::test_custom_supports` khoá hành vi này.
 - **Dựng lại danh sách gối phải `setParent(None)` chứ không chỉ `deleteLater()`.** Widget đã bị `takeAt` khỏi layout thì không ai đặt lại kích thước, mà `deleteLater` phải đợi vòng lặp sự kiện — trong khoảng đó nó vẫn là con của editor, giữ nguyên 640×480 mặc định và **vẽ đè lên cả dock Properties**. Mỗi lần rebuild (nạp mô hình, đổi bảng màu) chồng thêm một cặp `GỐI (n)` / `Chưa nạp mô hình` bóng ma. Ảnh chụp chỉ lộ ra hai chữ "Ch" thò khỏi mép nhãn thật, còn `pytest` thì im lặng — dò bằng cách duyệt `findChildren(QWidget)` rồi in `inLayout`.
-- Nút **✕ xóa gối** phải đặt `padding:0`: QSS chung cho `QToolButton` có `padding: 5px 10px`, nút ghim cứng 21×21 nên chữ còn 1px và Qt rút gọn dấu ✕ thành một chấm mờ.
+- Nút **✕ xóa gối** là `QToolButton` `autoRaise` để Windows vẽ. (Thời còn QSS chung `padding: 5px 10px`, nút 21×21 chỉ còn 1 px cho chữ và ✕ rút thành chấm mờ — lỗi đó hết hẳn khi bỏ QSS điều khiển, xem *Giao diện native Windows*.)
 
 ### Boundary Condition
 | Vị trí | Code (Dx,Dy,Dz,Rx,Ry,Rz) | Ghi chú |
@@ -216,8 +216,7 @@ Gối **lưu theo toạ độ X**, không theo ID node: đổi `target_len` hay 
 ### Giao diện (v1.3.0 — Giai đoạn 1)
 Vỏ ứng dụng theo lối phần mềm kỹ thuật (midas / CSI / LUSAS): menu bar, toolbar có icon, thanh bước quy trình, status bar (đơn vị · số mặt cắt · tiến độ · phiên bản).
 
-- `gui/theme.py` — **toàn bộ** token màu/cỡ chữ/mật độ + QSS. Không đặt `setStyleSheet` rải rác trong tab nữa.
-- Ba bảng màu (Sáng / Tối / Tương phản cao) dùng **chung một bộ khóa token** — xem mục *Tùy chọn* bên dưới.
+- `gui/theme.py` — token màu cho phần app **tự vẽ**; nút/ô nhập do Windows vẽ. Xem mục *Giao diện native Windows*.
 - `gui/icons.py` — icon SVG nội tuyến, tô theo token; không cần bundle file ảnh.
 - `gui/widgets/log_view.py` — log phân cấp màu (info/ok/cảnh báo/lỗi), tự đoán mức từ nội dung. Huy hiệu đầu dòng là **ảnh vẽ tay** (`icons.level_image`): cảnh báo = tam giác vàng có chữ `i`, lỗi = tròn đỏ dấu `×`. Dùng `QTextEdit` chứ không phải `QPlainTextEdit` vì văn bản thuần không chèn được ảnh; ký tự `⚠` thì phụ thuộc phông hệ thống, máy thiếu là ra ô vuông — mà đây đúng là thứ người dùng quét mắt tìm. Khoá ảnh trong tài liệu phải gồm **mã màu thật**, không thì đổi bảng màu xong huy hiệu vẫn giữ màu cũ.
 - `gui/widgets/step_bar.py` — 5 bước; bước ③ chạy Midas vẽ **nét đứt + chữ nghiêng** vì nằm ngoài app.
@@ -280,20 +279,20 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 - Mọi lớp vẽ của `FrameView` chịu được danh sách node/phần tử rỗng; `m['preview']` bật dải nhắc "XEM TRƯỚC TỪ DXF".
 - Thêm DXF xong tự chọn mặt cắt vừa thêm → thấy hình luôn. Kéo thả `.dxf`, thư mục chứa `.dxf`, hoặc `.mtbproj` vào bất kỳ đâu trong cửa sổ đều được (`MainWindow.dropEvent` + `ProjectPanel.dropEvent`).
 
-### Tùy chọn giao diện (v1.3.1)
-`src`… không đụng tới; toàn bộ nằm ở `gui/prefs.py` (`Prefs` + `PreferencesDialog`) và `gui/theme.py`. Mở bằng nút ⚙ cuối toolbar (mũi tên = đổi nhanh bảng màu), `Công cụ → Tùy chọn`, hoặc `Ctrl+,`. Ba trang: **Giao diện** (bảng màu · màu nhấn · mật độ · cỡ chữ · phông, có ô xem thử sống) · **Khung xem** (lớp bật sẵn, chế độ mặc định) · **Mặc định** (thư mục kết quả, template, mở lại project, tự chọn mặt cắt vừa thêm).
+### Giao diện native Windows (VuPQ chốt 2026-10-10)
+**Nút, ô nhập, ô xổ, ô tích, thanh cuộn, thẻ, menu, dock: để Windows tự vẽ.** Quyết định sau khi so với `PhamVu1505/caldintav` — app đó không có một dòng QSS nào, chỉ là Qt Designer + style native, mà nút/ô của nó trông "đẹp và thân thiện" hơn hẳn. Lý do không nằm ở thư viện (caldintav dùng PyQt5, ta PyQt6) mà ở chỗ ta **ép `Fusion` rồi phủ ~250 dòng QSS lên mọi điều khiển**: chỉ một thuộc tính hộp (`border`/`background`/`padding`/`margin`) là Qt thôi để Windows vẽ, rồi phải tự dựng lại mũi tên ô xoay (PNG), dấu tích (PNG), độ nổi của nút (gradient)… mà vẫn thua bản native. Đã bỏ hết. **Đừng thêm QSS cho điều khiển trở lại.**
 
-- **Mặc định lần chạy đầu = y hệt v1.3.0** (Sáng · Xanh kỹ thuật · mật độ Vừa · 10pt). QSS sinh với `Prefs()` **không đổi một dòng nào** so với bản cũ — chỉ thêm quy tắc `QSlider`/`QRadioButton` cho hộp thoại Tùy chọn. Sắc thái nhấn của bản cũ (`#E3EDF7`, `#A9C6E3`, `#17538B`) chọn bằng mắt chứ không phải pha tuyến tính nên **ghim cứng** trong `_LEGACY_LIGHT_BLUE`, chỉ áp cho đúng cặp mặc định. `tests/test_theme.py` khoá lại.
-- Ba token `grp_*` từng là **mã chết** (bảng Results tự viết cứng `QColor(255,230,230)`…), nay đã nối dây và mang đúng mã màu **đã hiển thị** ở bản cũ, không phải giá trị token cũ.
-- **Widget chỉ được đọc token, không viết mã màu thẳng.** Mã màu cứng đứng yên khi đổi theme và chỉ lộ ra khi đã sang bản Tối — đã dọn `PART_HUE`, `GROUP_COLORS`, `POINT_COLORS`, `#667085`, `#17538B`, `#B42318`.
-- **`MainWindow._push_theme()` là chỗ phân phát duy nhất.** QSS của `QApplication` lo phần lớn, nhưng không với tới hai thứ: style nội tuyến trong panel, và widget tự vẽ bằng QPainter (`FrameView`, `StepBar`, `CheckPointDiagram`). Panel nào cần thì có `apply_theme(t)`; thêm panel mới mà quên nối vào `_push_theme` là nó đứng nguyên màu cũ.
-- `make_theme(theme, accent)` **suy ra** `accent_soft/line/hover/on_accent`; nền nhấn nhạt pha về phía **nền của theme**, không pha về trắng. `on_accent` chọn đen/trắng theo độ sáng màu nhấn.
-- Bảng gốc `LIGHT`/`DARK`/`CONTRAST` được bơm sẵn màu nhấn mặc định lúc import — rất nhiều widget nhận `theme=None` rồi lui về `LIGHT`, bảng thiếu `accent` là KeyError.
-- Cache icon phải gồm **màu thật** trong khóa, không thì đổi theme xong icon vẫn lấy bản cũ.
-- `LogView` giữ `_lines` thô để **vẽ lại** khi đổi theme: màu nằm trong `QTextCharFormat` đã chèn, không vẽ lại thì log cũ là chữ đen trên nền than.
-- `run_gui.py` áp theme đã lưu **trước** khi dựng `MainWindow` — dựng sáng rồi mới đổi tối thì thấy một nháy trắng.
-- `'scroll'` là token riêng: bản Tương phản cao có `border` đen thuần, dùng nó cho tay nắm thanh cuộn thì thành vệt đen sì chạy dọc panel.
-- **Mũi tên ô xoay và ô xổ phải là ảnh thật** (`icons.spin_arrows()` → PNG trong thư mục tạm, tên theo mã màu). Đặt `border`/`background` lên `QSpinBox`/`QComboBox` là Qt thôi nhờ style vẽ mũi tên, mà `QSpinBox::up-arrow` / `QComboBox::down-arrow` **chỉ** nhận `image: url(...)` — không nhận SVG nội tuyến, không nhận QIcon, còn mẹo tam giác bằng viền trong suốt của CSS thì Qt vẽ ra **ô vuông**. Không có ảnh thì mọi ô nhập số chỉ còn hai vạch ngang và **mọi ô xổ trông y như ô chỉ đọc** (đúng hiện trạng v1.3.1). `_spin_qss()` tách riêng và trả chuỗi rỗng khi chưa có `QGuiApplication`, nên `tests/test_theme.py` (dựng QSS không cần Qt app) không đổi.
+- `gui/theme.py::apply_theme()` **không gọi `setStyle` trên Windows** (Qt tự chọn `windows11`/`windowsvista`); máy khác (dev, CI, chụp ảnh) dùng `Fusion`. `build_qss()` cố ý gần như rỗng — chỉ tay nắm `QSplitter`.
+- **Chỉ một bảng màu Sáng; bỏ Tối, Tương phản cao, màu nhấn, mật độ, cỡ chữ, phông** — bỏ luôn trang *Giao diện* trong Tùy chọn, theo lối caldintav. `windowsvista` bỏ qua bảng màu của app, còn `windows11` đi theo sáng/tối của **Windows** trong khi panel tự vẽ chỉ có bảng Sáng → vỏ một màu, panel một màu. App ghim chế độ Sáng (`styleHints().setColorScheme`, có từ Qt 6.8).
+- `LIGHT` còn lại cho widget tự vẽ bằng QPainter (`FrameView`, `StepBar`, `CheckPointDiagram`, biểu đồ bao, log), màu chữ trạng thái trên nhãn và tô ô bảng kiểm toán. Mã màu giữ đúng v1.3.0 — `tests/test_theme.py` khoá.
+- **QSS nội tuyến chỉ được mang `color`/`font` trên nhãn**, hoặc khung trang trí có **bộ chọn theo tên** (`QWidget#zoomTools`, `QFrame#supRow`). QSS **không bộ chọn** đặt trên khung cha lan xuống mọi con: `mct_view` từng mang `border: 0` trơn nên cả hai thanh cuộn mất dáng native; `QFrame {…}` trơn lan xuống mọi `QLabel` (QLabel là QFrame).
+- Nút chính: **in đậm bằng `QFont.setBold`**, trong hộp thoại thì `setDefault(True)` — không tô nền màu nhấn. Thụt lề ô tích con bằng **layout**, không bằng `margin-left`.
+- `tools/check_gui.py::kiem_qss_khong_dung_dieu_khien_native` soát QSS của app, QSS nội tuyến trên điều khiển và QSS trơn trên khung cha — cả cửa sổ chính lẫn hộp thoại Tùy chọn/Hướng dẫn. Đã chứng minh bắt được khi dựng lại lỗi (thêm `padding` vào QSS app · vào một nút) và **chính nó tìm ra** vụ `mct_view`.
+- **Thiết lập cũ của v1.4.1** (`theme`, `accent`, `density`, `font_pt`, `font_family`) còn trong registry máy đã cài: `Prefs.load()` đọc theo danh sách trường nên bỏ qua êm — `tests/test_theme.py` khoá.
+- **Ảnh chụp ngoài Windows là Fusion**: `tools/render_ui.py` soát được bố cục, không soát được *dáng nút*. Dáng nút phải xem trên Windows.
+- **Bản đóng gói**: style native là plugin Qt (`plugins/styles/`). PyInstaller sót plugin thì exe **lặng lẽ lui về Fusion**. rê chuột lên **số phiên bản ở góc phải thanh trạng thái** thấy `Qt style: …` — kiểm bản đóng gói phải thấy `QWindows11Style`/`QWindowsVistaStyle`, không phải `QFusionStyle` (bản `--windowed` không có console nên không in ra stderr được).
+- Vẫn đúng từ thời QSS: widget chỉ đọc token, không viết mã màu thẳng · cache icon gồm **mã màu thật** trong khoá · `MainWindow._push_theme()` là chỗ duy nhất phân phát token xuống panel (nay chỉ chạy một lần lúc dựng cửa sổ).
+- Nút zoom của khung xem dùng **icon vẽ tay** (`remove`/`add`/`fit`) thay ký tự `− + ⤢` — máy thiếu glyph `⤢` thì ra vạch chéo. `kiem_nut_zoom_doc_duoc` đo trên điểm ảnh.
 
 ### Tài liệu hướng dẫn
 `docs/USER-GUIDE.txt` **sinh tự động** từ `gui/help_dialog._topics()` — đừng sửa tay. Sửa nội dung trong app rồi chạy `python tools/make_user_guide.py`. Installer đóng gói file .txt này và tạo lối tắt "User Guide" ở Start Menu, nên hai bản phải luôn khớp.
@@ -301,8 +300,8 @@ Vùng trung tâm là tab **chế độ xem**, không phải tab quy trình:
 ## Lệnh thường dùng
 ```bash
 python run_gui.py
-python -m pytest tests -q                        # 113 bài: MCT, kiểm toán, số liệu, driver, NX
-python tools/check_gui.py                        # 28 phép kiểm, bấm thật (skill kiem-gui)
+python -m pytest tests -q                        # 100 bài: MCT, kiểm toán, số liệu, driver, NX
+python tools/check_gui.py                        # 15 phép kiểm, bấm thật (skill kiem-gui)
 python tools/audit_gui.py                        # soát ĐỘ PHỦ: bấm hết 56 điều khiển
 python tools/nx_crosscheck.py                    # kiểm chéo nội lực bằng Midas NX API
 python tools/render_ui.py                        # ảnh mọi thẻ → docs/ui-snapshots/
@@ -330,11 +329,11 @@ Quy trình đầy đủ trước khi phát hành: `docs/kiem-thu/huong-dan-kiem-
 `tools/check_gui.py` dựng cửa sổ thật, bấm thật (`textActivated` chứ không phải `setCurrentText`), rồi so cái **người dùng đọc được**: chữ trong dock, mục đang chọn trong cây, chữ ở thanh trạng thái. Mỗi phép kiểm gắn với **một lỗi đã xảy ra thật**, và đã được chứng minh là bắt được lỗi đó bằng cách dựng lại lỗi cũ. Sửa xong lỗi giao diện nào thì thêm phép kiểm cho đúng lỗi đó — xem `.claude/skills/kiem-gui/SKILL.md`.
 
 ### Sửa giao diện thì chụp ảnh trước, đừng đọc lại code
-`tools/render_ui.py` dựng project mẫu từ dữ liệu thật trong `output/`, đi qua **mọi thẻ**, hai bảng màu, cả mặt cắt một hộp lẫn hai hộp, rồi ghi ~26 ảnh vào `docs/ui-snapshots/` (đã gitignore vì đổi mỗi lần sửa UI).
+`tools/render_ui.py` dựng project mẫu từ dữ liệu thật trong `output/`, đi qua **mọi thẻ**, cả mặt cắt một hộp lẫn hai hộp, rồi ghi ~26 ảnh vào `docs/ui-snapshots/` (đã gitignore vì đổi mỗi lần sửa UI).
 
 - Lỗi bố cục Qt **không có traceback** — nút cắt chữ, bảng còn một dòng, `minimumSizeHint` của một trang kéo rộng cả vùng trung tâm. Chỉ nhìn mới thấy. Xem `[[feedback_verify_gui_by_rendering]]`.
-- Mở thư mục ảnh là biết hiện trạng, không phải đọc lại nghìn dòng widget hay dựng lại script nháp. `--only check`, `--themes dark`, `--out` để chụp một phần.
-- Công cụ **vô hiệu hoá `Prefs.save`** trong lúc chạy: bảng màu và project gần đây của người dùng không bị đụng.
+- Mở thư mục ảnh là biết hiện trạng, không phải đọc lại nghìn dòng widget hay dựng lại script nháp. `--only check`, `--out` để chụp một phần. Ngoài Windows ảnh là style Fusion — soát bố cục, không soát dáng nút.
+- Công cụ **vô hiệu hoá `Prefs.save`** trong lúc chạy: tùy chọn và project gần đây của người dùng không bị đụng.
 - Mặt cắt chưa có Beam Force thì dựng nội lực **giả** để còn nhìn bố cục — ảnh mang hậu tố `-demo`, đừng lấy số trong đó ra dùng.
 - Phải `repaint()` trước `grab()`: chỉ `processEvents()` thì có lúc chụp trúng khung hình dở, thanh trạng thái ra ba dòng chồng nhau trông y như lỗi bố cục.
 
@@ -551,7 +550,7 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 ## Current Sprint
 **Goal:** phát hành **V1 = sinh MCT cho Midas Civil 2022**. Thẻ Midas NX để sau (VuPQ chốt 2026-08-20).
 
-**Trạng thái:** `pytest tests -q` **113/113** · `tools/check_gui.py` **28/28** · `tools/audit_gui.py` **53 đạt · 0 hỏng** · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ. **`master` = `4bf929c`**, đã gồm cả `feature/t13-twin-box` lẫn `feature/v1-release-qa` (bộ kiểm thử `audit_gui` + tài liệu kiểm thử · `*VERSION` · ba bản vá driver), đã đẩy remote. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
+**Trạng thái:** `pytest tests -q` **100 bài** · `tools/check_gui.py` **15/15** (sau đợt giao diện native 2026-10-10, đo trên Linux; `audit_gui` chưa chạy lại — số cũ **53 đạt · 0 hỏng** là trước khi bỏ trang Giao diện) · kiểm chéo NX **4/4 đạt**. Đã bump **v1.4.1** ở đủ 5 chỗ. **`master` = `4bf929c`**, đã gồm cả `feature/t13-twin-box` lẫn `feature/v1-release-qa` (bộ kiểm thử `audit_gui` + tài liệu kiểm thử · `*VERSION` · ba bản vá driver), đã đẩy remote. Cả 6 mặt cắt đã chạy trên Midas thật: **6 đạt · 0 hỏng**.
 
 Đã làm (phần backend, các session trước):
 1. **Đọc HẾT các sheet Beam Force** (`9d2fc2c`) — bản cũ chỉ `sheet_by_index(0)`; Midas tách bảng khi vượt 65 536 dòng nên mô hình lớn mất số liệu mà bảng vẫn ra đủ. Dò hàng tiêu đề theo **tên cột** thay vì đếm cột cứng. Nhãn tham chiếu đổi thành `nút · phần tử`.
@@ -617,6 +616,7 @@ file đó là phép kiểm độc lập rẻ nhất: 3 lệnh HTTP, không chạ
 - Đổi số hiệu node/phần tử; mặt cắt ≥3 hộp (công thức đã tổng quát, chưa có DXF để thử).
 
 ## Session Log
+- 2026-10-10: **Giao diện native Windows.** VuPQ nhờ so với `caldintav` vì nút/ô của nó đẹp hơn. Hoá ra caldintav không có QSS nào — chỉ Qt Designer + style native; khác biệt nằm ở việc ta ép Fusion + phủ QSS lên mọi điều khiển. Lượt đầu tôi dựng lại độ nổi bằng QSS (dấu tích PNG, gradient nút…) rồi VuPQ chốt hướng ngược lại: **để Windows tự vẽ**, chỉ giữ bảng Sáng, bỏ trang Giao diện như caldintav. Gỡ toàn bộ QSS điều khiển, `spin_arrows`/`tick_image`, bảng Tối/Tương phản, màu nhấn, mật độ, phông. Thêm `kiem_qss_khong_dung_dieu_khien_native` (tìm ra ngay `mct_view` mang `border: 0` lan xuống thanh cuộn). **Chưa nhìn trên Windows thật** — ảnh chụp ở đây là Fusion.
 - 2026-08-21: **Phương ngữ MCT — đo xong, hoá ra chỉ cần MỘT file.** VuPQ đề xuất sinh hai bản MCT (2022 / NX) theo lẽ "bản cao đọc được bản thấp". Lẽ đúng, nhưng bằng chứng bác chính phương án hai file: `9.1.0` là tag **chính Civil 2022 ghi ra khi export** (`output/TP_BL_test/S1/S1.mct` nằm cạnh `S1.mcb` + `S1.CA*` cùng lượt giải), tức ta ghi tag **thấp** và NX đọc xuống — hai file sẽ khác nhau đúng 0 dòng. Cài thành tham số `mct_version` mặc định TẮT, rồi **chạy A/B 12 lượt trên Civil 2022 thật**: 6/6 trùng khít, 44.940 bản ghi, `ΔMy = ΔVz = 0,0000`. VuPQ chốt V1 vẫn để TẮT, bật ở v1.5. Vá 3 lỗi lộ ra dọc đường: `nargs='?'` nuốt mất DXF đầu tiên · Midas **cắt tiêu đề cửa sổ ở 159 ký tự** làm driver từ chối chính sản phẩm của nó (hỏng dây chuyền cả loạt 6 mặt cắt) · NX và Civil 2022 **dùng chung lớp cửa sổ** nên driver đếm 2 rồi từ chối, mà nếu chỉ NX mở thì bám nhầm vào NX. `pytest` 113/113.
 - 2026-08-20: **Cảnh báo hoạt tải lên giao diện · dọn mã chết · kiểm chéo bằng Midas NX API.** VuPQ chốt không sửa template hộ mà báo rõ để người dùng tự sửa → khối *Dải tương đương* ở dock Properties, tra được bất cứ lúc nào. Dọn 13 chỗ mã chết (khối `__main__` hỏng của `material_reader`, khối "API công khai" viết hai lần trong `results_tab`, `PT_LAYER_RE` chặt hơn quy tắc thật…) — **MCT trùng khít từng byte cho cả 15 mặt cắt**. Xoá `tests/_check_web_logic.py` (script in ra màn hình, kỳ vọng đã lạc hậu) thay bằng bất biến bề dày bụng. **Dò xong API của MIDAS CIVIL NX** và kiểm chéo 4/4 đạt trên ~35.000 bản ghi; truy ra lệch 133% của S1_V2 là `mv2` — tải làn có sáu dòng `VL, lane` chồng nhau, chỗ đã biết từ trước. Bump **v1.4.1**.
 - 2026-07-30: **Sửa vách giữa mặt cắt hai hộp** — `center_top` nội suy tại tim thay vì tìm đỉnh có sẵn (mặt cầu dốc một chiều không có đỉnh nào ở tim), đỉnh vách giữa đọc từ đỉnh mặt void thay vì `deck − gap_width` (trừ kích thước ngang vào cao độ). SLT lần đầu chạy được trên Midas; S1_V2 mất một phần tử dày 8 mm; sáu mặt cắt một hộp trùng khít từng byte. Thêm `_kiem_hinh_hoc()` + SLT vào `CASES`. **Chạy loạt 6/6 đạt.**

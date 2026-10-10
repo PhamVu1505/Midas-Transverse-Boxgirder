@@ -14,15 +14,19 @@ khi nhìn. Nên mỗi lần sửa giao diện lại phải dựng một đoạn 
 màn hình, và phiên làm việc sau lại dựng lại từ đầu.
 
 Đây là bản dùng chung của đám script nháp đó: dựng project mẫu từ dữ liệu thật
-trong `output/`, đi qua mọi thẻ, hai bảng màu, cả mặt cắt một hộp lẫn hai hộp,
+trong `output/`, đi qua mọi thẻ, cả mặt cắt một hộp lẫn hai hộp,
 rồi ghi ảnh ra đĩa. Mở thư mục ảnh là thấy ngay hiện trạng, không phải đọc lại
 code hay viết lại harness.
 
 Nguyên tắc
 ──────────
-* **Không đụng vào thiết lập đã lưu của người dùng.** `MainWindow.set_theme()`
-  ghi thẳng vào `QSettings`; ở đây `Prefs.save` bị vô hiệu trong lúc chạy nên
-  bảng màu, vị trí cửa sổ và project gần đây của VuPQ giữ nguyên.
+* **Không đụng vào thiết lập đã lưu của người dùng.** `Prefs.save` bị vô hiệu
+  trong lúc chạy nên tùy chọn, vị trí cửa sổ và project gần đây của VuPQ giữ
+  nguyên.
+* **Ảnh chụp ngoài Windows là style Fusion**, không phải dáng nút native mà
+  VuPQ thấy (app để Windows tự vẽ điều khiển — xem `gui/theme.py`). Ảnh dùng để
+  soát bố cục, chữ cắt, bảng cụt; muốn soát *dáng nút* thì phải chạy trên
+  Windows.
 * **Chạy được cả khi chưa có Beam Force.** Mặt cắt nào chưa có file kết quả thì
   dựng nội lực GIẢ để còn nhìn được bố cục — ảnh đó có hậu tố `-demo` và công cụ
   nói rõ trên màn hình. Đừng lấy số trong ảnh `-demo` ra dùng.
@@ -137,21 +141,17 @@ def demo_rebars(points):
 # Cửa sổ
 # ─────────────────────────────────────────────────────────────
 
-def build_window(sections, theme_key):
-    """MainWindow đã nạp project và đặt bảng màu, KHÔNG ghi vào QSettings."""
+def build_window(sections):
+    """MainWindow đã nạp project, KHÔNG ghi vào QSettings."""
     from src.project import Project, Section, GENERATED
     from gui.prefs import Prefs
     from gui.main_window import MainWindow
 
     # Vô hiệu hoá việc lưu thiết lập: công cụ chỉ được đọc, không được sửa
-    # bảng màu / project gần đây của người dùng.
+    # tùy chọn / project gần đây của người dùng.
     Prefs.save = lambda self, settings: None
 
     w = MainWindow()
-    w.prefs.theme = theme_key
-    w.t = w.prefs.tokens()
-    w._push_theme()
-    w._sync_theme_menu()
 
     p = Project()
     p.name = 'Ảnh giao diện'
@@ -289,8 +289,6 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[1])
     ap.add_argument('--out', default=OUT_DIR, help=f'thư mục ra (mặc định {OUT_DIR})')
     ap.add_argument('--only', default='', help='chỉ chụp cảnh có tên chứa chuỗi này')
-    ap.add_argument('--themes', default='light,dark',
-                    help='bảng màu, ngăn bằng dấu phẩy (light/dark/contrast)')
     ap.add_argument('--list', action='store_true', help='liệt kê cảnh rồi thoát')
     args = ap.parse_args()
 
@@ -309,37 +307,33 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     written = []
 
-    for theme_key in [t.strip() for t in args.themes.split(',') if t.strip()]:
-        w = build_window(sections, theme_key)
-        fake = feed_results(w, sections)
-        if fake:
-            print(f'  · nội lực GIẢ cho: {", ".join(fake)} — ảnh có hậu tố -demo')
+    w = build_window(sections)
+    fake = feed_results(w, sections)
+    if fake:
+        print(f'  · nội lực GIẢ cho: {", ".join(fake)} — ảnh có hậu tố -demo')
 
-        def save(name, widget, panel=None, sec=None):
-            if args.only and args.only.lower() not in name.lower():
-                return
-            if panel:
-                widget.resize(*panel)
-            # Vẽ lại HẲN trước khi chụp: chỉ `processEvents()` thì đôi khi
-            # `grab()` bắt được khung hình dở dang.
-            # (Ba dòng chữ chồng nhau ở thanh trạng thái thì KHÔNG phải do chụp
-            #  — đó là thông điệp tạm của QStatusBar vẽ đè lên widget, đã sửa
-            #  bằng lớp `StatusBar` trong gui/main_window.py.)
-            app.processEvents()
-            widget.repaint()
-            app.processEvents()
-            suffix = '-demo' if sec in fake else ''
-            path = os.path.join(args.out, f'{name}_{theme_key}{suffix}.png')
-            widget.grab().save(path)
-            written.append(path)
-            if args.list:
-                print(f'  {name}')
-
+    def save(name, widget, panel=None, sec=None):
+        if args.only and args.only.lower() not in name.lower():
+            return
+        if panel:
+            widget.resize(*panel)
+        # Vẽ lại HẲN trước khi chụp: chỉ `processEvents()` thì đôi khi
+        # `grab()` bắt được khung hình dở dang.
+        # (Ba dòng chữ chồng nhau ở thanh trạng thái thì KHÔNG phải do chụp
+        #  — đó là thông điệp tạm của QStatusBar vẽ đè lên widget, đã sửa
+        #  bằng lớp `StatusBar` trong gui/main_window.py.)
+        app.processEvents()
+        widget.repaint()
+        app.processEvents()
+        suffix = '-demo' if sec in fake else ''
+        path = os.path.join(args.out, f'{name}{suffix}.png')
+        widget.grab().save(path)
+        written.append(path)
         if args.list:
-            scenes(app, w, sections, save)
-            break
-        scenes(app, w, sections, save)
-        w.hide()
+            print(f'  {name}')
+
+    scenes(app, w, sections, save)
+    w.hide()
 
     print(f'Đã ghi {len(written)} ảnh vào {args.out}')
     for p in written:

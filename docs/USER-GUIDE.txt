@@ -18,7 +18,7 @@ MỤC LỤC
   7. Chạy Midas/Civil
   8. Đọc kết quả
   9. Kiểm toán mặt cắt
-  10. Tùy chọn giao diện
+  10. Tùy chọn
   11. Phím tắt
   12. Xử lý sự cố
 
@@ -404,25 +404,17 @@ khi ứng suất kéo ở trạng thái Sử dụng chưa tới 80% fr — lúc 
 nứt. Cột nào bỏ qua thì cột đó ghi rõ lý do ở hàng Ghi chú.
 
 ==============================================================================
-10. TÙY CHỌN GIAO DIỆN
+10. TÙY CHỌN
 ==============================================================================
 
 TÙY CHỌN
 --------
 
-Mở bằng nút ⚙ cuối thanh công cụ, hoặc Công cụ → Tùy chọn (Ctrl+,). Bấm mũi
-tên cạnh nút bánh răng để đổi nhanh bảng màu mà không cần mở hộp thoại. Thiết
-lập áp dụng ngay, không phải khởi động lại, và được nhớ cho lần mở sau.
+Mở bằng nút ⚙ cuối thanh công cụ, hoặc Công cụ → Tùy chọn (Ctrl+,). Thiết lập
+áp dụng ngay, không phải khởi động lại, và được nhớ cho lần mở sau.
 
-Giao diện
-
-  Bảng màu        Sáng — mặc định, nền xám lệch xanh kiểu phần mềm kỹ thuật.
-                  Tối — nền xám than, dùng khi làm việc lâu hoặc phòng thiếu
-                  sáng. Tương phản cao — nền trắng, chữ đen thuần, viền đậm;
-                  hợp khi trình chiếu hoặc chụp màn hình đưa vào báo cáo.
-  Màu nhấn        Màu của nút chính, dòng đang chọn và các chi tiết nhấn.
-  Mật độ          Chặt cho màn hình nhỏ, Thoáng cho màn hình lớn.
-  Cỡ chữ · Phông  8–14 pt. Ô Xem thử ngay bên dưới đổi theo tức thì.
+Nút bấm, ô nhập, phông và cỡ chữ theo đúng thiết lập của Windows — app không
+có bảng màu hay mật độ riêng.
 
 Khung xem
 
@@ -458,7 +450,7 @@ PHÍM TẮT
   F7            Kiểm toán mặt cắt
   F             Vừa khung nhìn
   Ctrl+L        Xoá nhật ký
-  Ctrl+,        Tùy chọn giao diện
+  Ctrl+,        Tùy chọn
   F1            Mở hướng dẫn này
 
 ==============================================================================
